@@ -47,28 +47,22 @@ fn main() {
     // println!("{:#?}", opt);
 
     // let common_config = parse_config(&current_dir.join(CONFIG_FILE_NAME));
-    // let content = std::fs::read_to_string(file_path.as_path()).unwrap();
 
     remove_all(&None, opt.to_remove);
     install_all(&None, opt.to_install);
 }
 
 /// parse config file
-fn parse_config(_config_path: &Path) -> Option<Config> {
+fn parse_config<P:AsRef<Path>>(_config_path: P) -> Option<Config> {
     // todo
     None
-}
-
-/// parse config file
-fn merge_config(conf1: Option<Config>, conf2: &Option<Config>) -> Option<Config> {
-    conf1.merge(conf2)
 }
 
 /// install packages
 fn install_all(common_config: &Option<Config>, packs: Vec<PathBuf>) {
     for pack in packs {
         let customer_config = parse_config(&pack.join(CONFIG_FILE_NAME));
-        let config = merge_config(customer_config, common_config).unwrap_or_default();
+        let config = customer_config.merge(common_config).unwrap_or_default();
         install(config, pack);
     }
 }
@@ -123,7 +117,7 @@ fn install<P: AsRef<Path>>(config: Config, pack: P) {
 fn remove_all(common_config: &Option<Config>, packs: Vec<PathBuf>) {
     for pack in packs {
         let customer_config = parse_config(&pack.join(CONFIG_FILE_NAME));
-        let config = merge_config(customer_config, common_config).unwrap_or_default();
+        let config = customer_config.merge(common_config).unwrap_or_default();
         remove(config, pack);
     }
 }
