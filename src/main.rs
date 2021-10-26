@@ -33,7 +33,7 @@ struct Config {
 impl Default for Config {
     fn default() -> Config {
         Config {
-            target: Some(get_home_dir().join("temp/temp2/temp3")),
+            target: Some(shell_expend_tilde("~/temp/temp2/temp3")),
             ignore: None,
         }
     }
@@ -209,8 +209,8 @@ impl<T: Clone> Merge<Vec<T>> for Vec<T> {
     }
 }
 
-// fn shell_expend_tilde(path: &PathBuf) -> PathBuf {
-//     let mut home = get_home_dir();
-//     home.push(path.strip_prefix("~/").unwrap());
-//     home
-// }
+fn shell_expend_tilde<P:AsRef<Path>>(path: P) -> PathBuf {
+    let mut home = get_home_dir();
+    home.push(path.as_ref().strip_prefix("~/").unwrap());
+    home
+}
