@@ -1,3 +1,4 @@
+use regex::RegexSet;
 use std::fs;
 use std::os::unix::fs::symlink;
 use std::path::Path;
@@ -76,7 +77,10 @@ fn install_all(common_config: &Option<Config>, packs: Vec<PathBuf>) {
 fn install<P: AsRef<Path>>(config: Config, pack: P) {
     println!("install pack: {:?}", pack.as_ref());
     let target = config.target.unwrap();
-    let _ignore = config.ignore;
+    let ignore_re = match &config.ignore {
+        Some(ignore_regexs) => Some(RegexSet::new(ignore_regexs)),
+        None => None,
+    };
     let mut it = WalkDir::new(&pack).min_depth(1).into_iter();
     loop {
         let entry = match it.next() {
@@ -84,13 +88,22 @@ fn install<P: AsRef<Path>>(config: Config, pack: P) {
             Some(Err(err)) => panic!("ERROR: {}", err),
             Some(Ok(entry)) => entry,
         };
+
+        if let Some(Ok(ignore_re)) = &ignore_re {
+            if ignore_re.is_match(&entry.file_name().to_str().unwrap()) {
+                it.skip_current_dir();
+                continue;
+            }
+        }
         let entry_target = PathBuf::from(&target).join(
             PathBuf::from(&entry.path())
                 .strip_prefix(pack.as_ref())
                 .unwrap(),
         );
         if entry_target.exists() {
-            if entry_target.is_file() {
+            if let Ok(true) = same_file::is_same_file(&entry.path(), &entry_target) {
+                it.skip_current_dir();
+            } else if entry_target.is_file() {
                 eprintln!("target has exists, target:{:?}", entry_target);
             }
             continue;
@@ -98,11 +111,7 @@ fn install<P: AsRef<Path>>(config: Config, pack: P) {
         if let Some(parent) = entry_target.parent() {
             fs::create_dir_all(parent).unwrap();
         }
-        println!(
-            "create symlink, source:{:?}, target:{:?}",
-            entry.path(),
-            entry_target
-        );
+        println!("{:?} -> {:?}", entry_target, entry.path(),);
         symlink(&entry.path(), &entry_target).unwrap();
         if entry.file_type().is_dir() {
             it.skip_current_dir();
@@ -123,7 +132,10 @@ fn remove_all(common_config: &Option<Config>, packs: Vec<PathBuf>) {
 fn remove<P: AsRef<Path>>(config: Config, pack: P) {
     println!("remove pack: {:?}", pack.as_ref());
     let target = config.target.unwrap();
-    let _ignore = config.ignore;
+    let ignore_re = match &config.ignore {
+        Some(ignore_regexs) => Some(RegexSet::new(ignore_regexs)),
+        None => None,
+    };
     let mut it = WalkDir::new(&pack).min_depth(1).into_iter();
     loop {
         let entry = match it.next() {
@@ -131,6 +143,12 @@ fn remove<P: AsRef<Path>>(config: Config, pack: P) {
             Some(Err(err)) => panic!("ERROR: {}", err),
             Some(Ok(entry)) => entry,
         };
+        if let Some(Ok(ignore_re)) = &ignore_re {
+            if ignore_re.is_match(&entry.file_name().to_str().unwrap()) {
+                it.skip_current_dir();
+                continue;
+            }
+        }
         let entry_target = PathBuf::from(&target).join(
             PathBuf::from(&entry.path())
                 .strip_prefix(pack.as_ref())
@@ -150,12 +168,6 @@ fn remove<P: AsRef<Path>>(config: Config, pack: P) {
         }
     }
 }
-
-// fn shell_expend_tilde(path: &PathBuf) -> PathBuf {
-//     let mut home = get_home_dir();
-//     home.push(path.strip_prefix("~/").unwrap());
-//     home
-// }
 
 fn get_home_dir() -> PathBuf {
     let home = std::env::var("HOME").unwrap();
@@ -180,7 +192,25 @@ impl<T: Merge<T> + Clone> Merge<Option<T>> for Option<T> {
 impl Merge<Config> for Config {
     fn merge(mut self, other: &Config) -> Config {
         self.target = self.target.or_else(|| other.target.clone());
-        self.ignore = self.ignore.or_else(|| other.ignore.clone());
+        self.ignore = match (self.ignore, &other.ignore) {
+            (Some(a), Some(b)) => Some(a.merge(b)),
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b.clone()),
+            (None, None) => None,
+        };
         self
     }
 }
+
+impl<T: Clone> Merge<Vec<T>> for Vec<T> {
+    fn merge(mut self, other: &Vec<T>) -> Vec<T> {
+        self.append(&mut other.clone());
+        self
+    }
+}
+
+// fn shell_expend_tilde(path: &PathBuf) -> PathBuf {
+//     let mut home = get_home_dir();
+//     home.push(path.strip_prefix("~/").unwrap());
+//     home
+// }
