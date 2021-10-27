@@ -2,6 +2,16 @@
 
 ## USEAGE
 
+```sh
+# -i install pack
+# -r remove pack
+stow -i ./nvim /foo/bar
+stow -r ./nvim /foo/bar
+stow -r ./nvim /foo/bar -i ./tmux
+```
+
+## CONFIG
+
 - config file location
 
     - `./.stowrc`
