@@ -6,6 +6,8 @@ use std::path::PathBuf;
 use std::vec::Vec;
 use structopt::StructOpt;
 use walkdir::WalkDir;
+// use std::env::current_dir;
+use serde::{Deserialize, Serialize};
 
 /// config manager (simple impl of gnu-stow)
 #[derive(StructOpt, Debug)]
@@ -21,7 +23,7 @@ struct Opt {
 }
 
 /// special config
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct Config {
     /// install to target dir
     target: Option<PathBuf>,
@@ -33,7 +35,7 @@ struct Config {
 impl Default for Config {
     fn default() -> Config {
         Config {
-            target: Some(shell_expend_tilde("~/temp/temp2/temp3")),
+            target: Some(shell_expend_tilde("~")),
             ignore: None,
         }
     }
@@ -46,16 +48,21 @@ fn main() {
     // println!("{:?}", opt);
     // println!("{:#?}", opt);
 
-    // let common_config = parse_config(&current_dir.join(CONFIG_FILE_NAME));
+    let common_config =
+        parse_config(format!("./{}", CONFIG_FILE_NAME)).merge(&Some(Default::default()));
 
-    remove_all(&None, opt.to_remove);
-    install_all(&None, opt.to_install);
+    remove_all(&common_config, opt.to_remove);
+    install_all(&common_config, opt.to_install);
 }
 
 /// parse config file
-fn parse_config<P:AsRef<Path>>(_config_path: P) -> Option<Config> {
-    // todo
-    None
+fn parse_config<P: AsRef<Path>>(config_path: P) -> Option<Config> {
+    let config_str = fs::read_to_string(config_path.as_ref()).ok()?;
+    let mut config : Config = toml::from_str(&config_str).unwrap();
+    if let Some(target) = config.target {
+        config.target = Some(shell_expend_tilde(target));
+    }
+    return Some(config);
 }
 
 /// install packages
@@ -203,7 +210,7 @@ impl<T: Clone> Merge<Vec<T>> for Vec<T> {
     }
 }
 
-fn shell_expend_tilde<P:AsRef<Path>>(path: P) -> PathBuf {
+fn shell_expend_tilde<P: AsRef<Path>>(path: P) -> PathBuf {
     let mut home = get_home_dir();
     home.push(path.as_ref().strip_prefix("~/").unwrap());
     home
