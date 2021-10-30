@@ -34,7 +34,7 @@ impl Default for Config {
     fn default() -> Config {
         Config {
             target: Some(shell_expend_tilde("~")),
-            ignore: None,
+            ignore: Some(vec![CONFIG_FILE_NAME.to_string()]),
         }
     }
 }
