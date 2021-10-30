@@ -38,3 +38,4 @@ ignore = [
 - [ ] ignore 正则
 - [ ] 控制台颜色
 - [ ] unused 处理
+- [ ] git ignore

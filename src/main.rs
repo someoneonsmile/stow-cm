@@ -1,13 +1,11 @@
 use regex::RegexSet;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::path::PathBuf;
 use std::vec::Vec;
 use structopt::StructOpt;
-use walkdir::WalkDir;
-// use std::env::current_dir;
-use serde::{Deserialize, Serialize};
 
 /// config manager (simple impl of gnu-stow)
 #[derive(StructOpt, Debug)]
@@ -22,7 +20,7 @@ struct Opt {
     to_remove: Vec<PathBuf>,
 }
 
-/// special config
+/// pack config
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Config {
     /// install to target dir
@@ -58,7 +56,7 @@ fn main() {
 /// parse config file
 fn parse_config<P: AsRef<Path>>(config_path: P) -> Option<Config> {
     let config_str = fs::read_to_string(config_path.as_ref()).ok()?;
-    let mut config : Config = toml::from_str(&config_str).unwrap();
+    let mut config: Config = toml::from_str(&config_str).unwrap();
     if let Some(target) = config.target {
         config.target = Some(shell_expend_tilde(target));
     }
@@ -79,32 +77,22 @@ fn install<P: AsRef<Path>>(config: Config, pack: P) {
     println!("install pack: {:?}", pack.as_ref());
     let target = config.target.unwrap();
     let ignore_re = match &config.ignore {
-        Some(ignore_regexs) => Some(RegexSet::new(ignore_regexs)),
+        Some(ignore_regexs) => Some(RegexSet::new(ignore_regexs).unwrap()),
         None => None,
     };
-    let mut it = WalkDir::new(&pack).min_depth(1).into_iter();
-    loop {
-        let entry = match it.next() {
-            None => break,
-            Some(Err(err)) => panic!("ERROR: {}", err),
-            Some(Ok(entry)) => entry,
-        };
 
-        if let Some(Ok(ignore_re)) = &ignore_re {
-            if ignore_re.is_match(&entry.file_name().to_str().unwrap()) {
-                it.skip_current_dir();
-                continue;
-            }
+    let mut paths = Vec::new();
+    for path in fs::read_dir(pack.as_ref()).unwrap() {
+        let (_, sub_path_option) = CollectBot::new(path.unwrap().path(), &ignore_re).collect();
+        if let Some(mut sub_paths) = sub_path_option {
+            paths.append(&mut sub_paths);
         }
-        let entry_target = PathBuf::from(&target).join(
-            PathBuf::from(&entry.path())
-                .strip_prefix(pack.as_ref())
-                .unwrap(),
-        );
+    }
+
+    for path in paths {
+        let entry_target = PathBuf::from(&target).join(path.strip_prefix(pack.as_ref()).unwrap());
         if entry_target.exists() {
-            if let Ok(true) = same_file::is_same_file(&entry.path(), &entry_target) {
-                it.skip_current_dir();
-            } else if entry_target.is_file() {
+            if let Ok(false) = same_file::is_same_file(&path, &entry_target) {
                 eprintln!("target has exists, target:{:?}", entry_target);
             }
             continue;
@@ -112,11 +100,56 @@ fn install<P: AsRef<Path>>(config: Config, pack: P) {
         if let Some(parent) = entry_target.parent() {
             fs::create_dir_all(parent).unwrap();
         }
-        println!("{:?} -> {:?}", entry_target, entry.path(),);
-        symlink(&entry.path(), &entry_target).unwrap();
-        if entry.file_type().is_dir() {
-            it.skip_current_dir();
+        println!("{:?} -> {:?}", entry_target, path);
+        symlink(&path, &entry_target).unwrap();
+    }
+}
+
+struct CollectBot<'a> {
+    path: PathBuf,
+    ignore: &'a Option<RegexSet>,
+}
+
+impl<'a> CollectBot<'a> {
+    fn new<P: AsRef<Path>>(path: P, ignore: &'a Option<RegexSet>) -> Self {
+        CollectBot {
+            path: path.as_ref().to_path_buf(),
+            ignore,
         }
+    }
+
+    fn collect(self) -> (bool, Option<Vec<PathBuf>>) {
+        if !self.path.exists() {
+            return (false, None);
+        }
+
+        if let Some(ignore_re) = &self.ignore {
+            if ignore_re.is_match(self.path.file_name().unwrap().to_str().unwrap()) {
+                return (true, None);
+            }
+        }
+
+        if self.path.is_file() {
+            return (false, Some(vec![self.path]));
+        }
+
+        let mut has_ignore = false;
+
+        let mut paths = Vec::new();
+        for path in fs::read_dir(&self.path).unwrap() {
+            let (sub_ignore, sub_paths_option) =
+                CollectBot::new(&path.unwrap().path(), &self.ignore).collect();
+            has_ignore |= sub_ignore;
+            if let Some(mut sub_paths) = sub_paths_option {
+                paths.append(&mut sub_paths)
+            }
+        }
+
+        if !has_ignore {
+            return (false, Some(vec![self.path]));
+        }
+
+        return (true, Some(paths));
     }
 }
 
@@ -134,39 +167,31 @@ fn remove<P: AsRef<Path>>(config: Config, pack: P) {
     println!("remove pack: {:?}", pack.as_ref());
     let target = config.target.unwrap();
     let ignore_re = match &config.ignore {
-        Some(ignore_regexs) => Some(RegexSet::new(ignore_regexs)),
+        Some(ignore_regexs) => Some(RegexSet::new(ignore_regexs).unwrap()),
         None => None,
     };
-    let mut it = WalkDir::new(&pack).min_depth(1).into_iter();
-    loop {
-        let entry = match it.next() {
-            None => break,
-            Some(Err(err)) => panic!("ERROR: {}", err),
-            Some(Ok(entry)) => entry,
-        };
-        if let Some(Ok(ignore_re)) = &ignore_re {
-            if ignore_re.is_match(&entry.file_name().to_str().unwrap()) {
-                it.skip_current_dir();
-                continue;
-            }
+
+    let mut paths = Vec::new();
+    for path in fs::read_dir(&pack).unwrap() {
+        let (_, sub_path_option) = CollectBot::new(&path.unwrap().path(), &ignore_re).collect();
+        if let Some(mut sub_paths) = sub_path_option {
+            paths.append(&mut sub_paths);
         }
+    }
+    for path in paths {
         let entry_target = PathBuf::from(&target).join(
-            PathBuf::from(&entry.path())
+            PathBuf::from(&path)
                 .strip_prefix(pack.as_ref())
                 .unwrap(),
         );
         if !entry_target.exists() {
-            it.skip_current_dir();
             continue;
         }
-        if let Ok(false) = same_file::is_same_file(&entry_target, &entry.path()) {
+        if let Ok(false) = same_file::is_same_file(&entry_target, &path) {
             eprintln!("remove symlink, not same_file, target:{:?}", entry_target);
             continue;
         }
         fs::remove_file(&entry_target).unwrap();
-        if entry.file_type().is_dir() {
-            it.skip_current_dir();
-        }
     }
 }
 
