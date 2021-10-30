@@ -118,6 +118,9 @@ impl<'a> CollectBot<'a> {
         }
     }
 
+    /// 从树的叶子节点回溯
+    /// 没有 Ignore 的时候, 折叠目录
+    /// 返回当前根节点
     fn collect(self) -> (bool, Option<Vec<PathBuf>>) {
         if !self.path.exists() {
             return (false, None);
