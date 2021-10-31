@@ -8,9 +8,10 @@ edition = "2021"
 
 [dependencies]
 structopt = "0"
-walkdir = "2"
 same-file = "1"
-ignore = "0"
 regex = "1"
 toml = "0"
 serde = { version = "1", features = ["derive"] }
+
+# ignore = "0"
+# walkdir = "2"
