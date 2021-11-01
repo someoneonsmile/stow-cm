@@ -4,10 +4,14 @@
 
 ```sh
 # -i install pack
-# -r remove pack
+# -d remove pack
+# -r reload pack
+# -f force replace target file
 stow -i ./nvim /foo/bar
+stow -i ./nvim /foo/bar -f
+stow -d ./nvim /foo/bar
 stow -r ./nvim /foo/bar
-stow -r ./nvim /foo/bar -i ./tmux
+stow -r ./nvim /foo/bar -d /bar
 ```
 
 ## CONFIG
@@ -23,6 +27,7 @@ stow -r ./nvim /foo/bar -i ./tmux
 # toml format
 
 target = "~"
+force = true
 ignore = [
     ".*\\.md",
     ".*\\.lock",
