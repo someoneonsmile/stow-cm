@@ -1,4 +1,5 @@
 use crate::config::Config;
+use crate::custom_type::Flag;
 
 pub trait Merge<T> {
     fn merge(self, other: &T) -> T;
@@ -32,5 +33,11 @@ impl<T: Clone> Merge<Vec<T>> for Vec<T> {
     fn merge(mut self, other: &Vec<T>) -> Vec<T> {
         self.append(&mut other.clone());
         self
+    }
+}
+
+impl Merge<Flag> for Flag {
+    fn merge(self, other: &Flag) -> bool {
+        self || *other
     }
 }

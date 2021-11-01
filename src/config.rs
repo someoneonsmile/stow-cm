@@ -15,6 +15,9 @@ pub struct Config {
 
     /// ignore file regx
     pub ignore: Option<Vec<String>>,
+
+    /// ignore file regx
+    pub force: Option<bool>,
 }
 
 impl Config {
@@ -37,6 +40,7 @@ impl Default for Config {
         Config {
             target: Some(util::shell_expend_tilde("~")),
             ignore: Some(vec![CONFIG_FILE_NAME.to_string()]),
+            force: None,
         }
     }
 }

@@ -13,6 +13,7 @@ use crate::merge::Merge;
 
 mod cli;
 mod config;
+mod custom_type;
 mod error;
 mod ignore;
 mod merge;
@@ -23,11 +24,25 @@ fn main() -> StowResult<()> {
     // println!("{:?}", opt);
     // println!("{:#?}", opt);
 
-    let common_config =
+    let mut common_config =
         Config::from_path(format!("./{}", CONFIG_FILE_NAME))?.merge(&Some(Default::default()));
 
-    remove_all(&common_config, opt.to_remove)?;
-    install_all(&common_config, opt.to_install)?;
+    common_config = common_config.and_then(|mut config| {
+        config.force = config
+            .force
+            .map(|config_force| config_force || opt.force);
+        Some(config)
+    });
+
+    if let Some(to_remove) = opt.to_remove {
+        remove_all(&common_config, to_remove)?;
+    }
+    if let Some(to_install) = opt.to_install {
+        install_all(&common_config, to_install)?;
+    }
+    if let Some(to_reload) = opt.to_reload {
+        reload_all(&common_config, to_reload)?;
+    }
 
     Ok(())
 }
@@ -35,17 +50,44 @@ fn main() -> StowResult<()> {
 /// install packages
 fn install_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> StowResult<()> {
     for pack in packs {
-        let customer_config = Config::from_path(&pack.join(CONFIG_FILE_NAME))?;
+        let customer_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
         let config = customer_config.merge(common_config).unwrap_or_default();
-        install(config, pack)?;
+        install(&config, fs::canonicalize(&pack)?)?;
     }
     Ok(())
 }
 
+/// remove packages
+fn remove_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> StowResult<()> {
+    for pack in packs {
+        let customer_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
+        let config = customer_config.merge(common_config).unwrap_or_default();
+        remove(&config, fs::canonicalize(&pack)?)?;
+    }
+    Ok(())
+}
+
+/// remove packages
+fn reload_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> StowResult<()> {
+    for pack in packs {
+        let customer_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
+        let config = customer_config.merge(common_config).unwrap_or_default();
+        reload(&config, fs::canonicalize(&pack)?)?;
+    }
+    Ok(())
+}
+
+/// reload packages
+fn reload<P: AsRef<Path>>(config: &Config, pack: P) -> StowResult<()> {
+    remove(config, fs::canonicalize(&pack)?)?;
+    install(config, fs::canonicalize(&pack)?)?;
+    Ok(())
+}
+
 /// install packages
-fn install<P: AsRef<Path>>(config: Config, pack: P) -> StowResult<()> {
+fn install<P: AsRef<Path>>(config: &Config, pack: P) -> StowResult<()> {
     println!("install pack: {:?}", pack.as_ref());
-    let target = config.target.ok_or("target is None")?;
+    let target = config.target.as_ref().ok_or("target is None")?;
     let ignore_re = match &config.ignore {
         Some(ignore_regexs) => RegexSet::new(ignore_regexs).ok(),
         None => None,
@@ -62,15 +104,19 @@ fn install<P: AsRef<Path>>(config: Config, pack: P) -> StowResult<()> {
     for path in paths {
         let entry_target = PathBuf::from(&target).join(path.strip_prefix(pack.as_ref())?);
         if entry_target.exists() {
-            if let Ok(false) = same_file::is_same_file(&path, &entry_target) {
-                eprintln!("target has exists, target:{:?}", entry_target);
+            if let Some(true) = &config.force {
+            } else {
+                if let Ok(false) = same_file::is_same_file(&path, &entry_target) {
+                    eprintln!("target has exists, target:{:?}", entry_target);
+                }
+                continue;
             }
-            continue;
         }
         if let Some(parent) = entry_target.parent() {
             fs::create_dir_all(parent)?;
         }
-        println!("{:?} -> {:?}", entry_target, path);
+        let _ = fs::remove_file(&entry_target);
+        println!("install {:?} -> {:?}", entry_target, path);
         symlink(&path, &entry_target)?;
     }
 
@@ -78,19 +124,9 @@ fn install<P: AsRef<Path>>(config: Config, pack: P) -> StowResult<()> {
 }
 
 /// remove packages
-fn remove_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> StowResult<()> {
-    for pack in packs {
-        let customer_config = Config::from_path(&pack.join(CONFIG_FILE_NAME))?;
-        let config = customer_config.merge(common_config).unwrap_or_default();
-        remove(config, pack)?;
-    }
-    Ok(())
-}
-
-/// remove packages
-fn remove<P: AsRef<Path>>(config: Config, pack: P) -> StowResult<()> {
+fn remove<P: AsRef<Path>>(config: &Config, pack: P) -> StowResult<()> {
     println!("remove pack: {:?}", pack.as_ref());
-    let target = config.target.ok_or("config target is None")?;
+    let target = config.target.as_ref().ok_or("config target is None")?;
     let ignore_re = match &config.ignore {
         Some(ignore_regexs) => RegexSet::new(ignore_regexs).ok(),
         None => None,
@@ -107,12 +143,14 @@ fn remove<P: AsRef<Path>>(config: Config, pack: P) -> StowResult<()> {
         let entry_target =
             PathBuf::from(&target).join(PathBuf::from(&path).strip_prefix(pack.as_ref())?);
         if !entry_target.exists() {
+            let _ = fs::remove_file(&entry_target);
             continue;
         }
         if let Ok(false) = same_file::is_same_file(&entry_target, &path) {
             eprintln!("remove symlink, not same_file, target:{:?}", entry_target);
             continue;
         }
+        println!("remove {:?} -> {:?}", entry_target, path);
         fs::remove_file(&entry_target)?;
     }
     Ok(())
