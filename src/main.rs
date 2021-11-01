@@ -25,12 +25,11 @@ fn main() -> StowResult<()> {
     let mut common_config =
         Config::from_path(format!("./{}", CONFIG_FILE_NAME))?.merge(&Some(Default::default()));
 
-    common_config = common_config.and_then(|mut config| {
-        config.force = config
-            .force
-            .map(|config_force| config_force || opt.force);
-        Some(config)
+    common_config.as_mut().map(|config| {
+        config.force = config.force.merge(&Some(opt.force));
+        config
     });
+    println!("common_config: {:?}", common_config);
 
     if let Some(to_remove) = opt.to_remove {
         remove_all(&common_config, to_remove)?;
