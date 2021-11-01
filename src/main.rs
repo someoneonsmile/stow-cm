@@ -21,8 +21,6 @@ mod util;
 
 fn main() -> StowResult<()> {
     let opt = Opt::parse();
-    // println!("{:?}", opt);
-    // println!("{:#?}", opt);
 
     let mut common_config =
         Config::from_path(format!("./{}", CONFIG_FILE_NAME))?.merge(&Some(Default::default()));
