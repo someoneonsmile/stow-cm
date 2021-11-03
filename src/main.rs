@@ -11,6 +11,7 @@ use crate::error::StowResult;
 use crate::ignore::CollectBot;
 use crate::merge::Merge;
 
+
 mod cli;
 mod config;
 mod custom_type;
@@ -19,7 +20,8 @@ mod ignore;
 mod merge;
 mod util;
 
-fn main() -> StowResult<()> {
+#[tokio::main]
+async fn main() -> StowResult<()> {
     let opt = Opt::parse();
 
     let common_config = Config::from_path(format!("./{}", CONFIG_FILE_NAME))?;
@@ -29,57 +31,57 @@ fn main() -> StowResult<()> {
         .merge(&Some(Default::default()));
 
     if let Some(to_remove) = opt.to_remove {
-        remove_all(&config, to_remove)?;
+        remove_all(&config, to_remove).await?;
     }
     if let Some(to_install) = opt.to_install {
-        install_all(&config, to_install)?;
+        install_all(&config, to_install).await?;
     }
     if let Some(to_reload) = opt.to_reload {
-        reload_all(&config, to_reload)?;
+        reload_all(&config, to_reload).await?;
     }
 
     Ok(())
 }
 
 /// install packages
-fn install_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> StowResult<()> {
+async fn install_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> StowResult<()> {
     for pack in packs {
         let customer_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
         let config = customer_config.merge(common_config).unwrap_or_default();
-        install(&config, fs::canonicalize(&pack)?)?;
+        install(&config, fs::canonicalize(&pack)?).await?;
     }
     Ok(())
 }
 
 /// remove packages
-fn remove_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> StowResult<()> {
+async fn remove_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> StowResult<()> {
     for pack in packs {
         let customer_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
         let config = customer_config.merge(common_config).unwrap_or_default();
-        remove(&config, fs::canonicalize(&pack)?)?;
+        remove(&config, fs::canonicalize(&pack)?).await?;
     }
     Ok(())
 }
 
 /// remove packages
-fn reload_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> StowResult<()> {
+async fn reload_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> StowResult<()> {
     for pack in packs {
         let customer_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
         let config = customer_config.merge(common_config).unwrap_or_default();
-        reload(&config, fs::canonicalize(&pack)?)?;
+        reload(&config, fs::canonicalize(&pack)?).await?;
     }
     Ok(())
 }
 
 /// reload packages
-fn reload<P: AsRef<Path>>(config: &Config, pack: P) -> StowResult<()> {
-    remove(config, fs::canonicalize(&pack)?)?;
-    install(config, fs::canonicalize(&pack)?)?;
+async fn reload<P: AsRef<Path>>(config: &Config, pack: P) -> StowResult<()> {
+    remove(config, fs::canonicalize(&pack)?).await?;
+    install(config, fs::canonicalize(&pack)?).await?;
     Ok(())
 }
 
 /// install packages
-fn install<P: AsRef<Path>>(config: &Config, pack: P) -> StowResult<()> {
+async fn install<P: AsRef<Path>>(config: &Config, pack: P) -> StowResult<()> {
     println!("install pack: {:?}", pack.as_ref());
     let target = config.target.as_ref().ok_or("target is None")?;
     let ignore_re = match &config.ignore {
@@ -118,7 +120,7 @@ fn install<P: AsRef<Path>>(config: &Config, pack: P) -> StowResult<()> {
 }
 
 /// remove packages
-fn remove<P: AsRef<Path>>(config: &Config, pack: P) -> StowResult<()> {
+async fn remove<P: AsRef<Path>>(config: &Config, pack: P) -> StowResult<()> {
     println!("remove pack: {:?}", pack.as_ref());
     let target = config.target.as_ref().ok_or("config target is None")?;
     let ignore_re = match &config.ignore {
