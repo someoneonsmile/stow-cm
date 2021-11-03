@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::{ Path, PathBuf };
+use std::path::{Path, PathBuf};
 
+use crate::cli::Opt;
 use crate::error::StowResult;
 use crate::util;
 
@@ -33,6 +34,15 @@ impl Config {
         }
         return Ok(Some(config));
     }
+
+    /// parse config from cli args
+    pub fn from_cli(opt: &Opt) -> StowResult<Option<Config>> {
+        Ok(Some(Config {
+            target: None,
+            ignore: None,
+            force: Some(opt.force),
+        }))
+    }
 }
 
 impl Default for Config {
@@ -44,4 +54,3 @@ impl Default for Config {
         }
     }
 }
-

@@ -22,23 +22,20 @@ mod util;
 fn main() -> StowResult<()> {
     let opt = Opt::parse();
 
-    let mut common_config =
-        Config::from_path(format!("./{}", CONFIG_FILE_NAME))?.merge(&Some(Default::default()));
+    let common_config = Config::from_path(format!("./{}", CONFIG_FILE_NAME))?;
 
-    common_config.as_mut().map(|config| {
-        config.force = config.force.merge(&Some(opt.force));
-        config
-    });
-    println!("common_config: {:?}", common_config);
+    let config = Config::from_cli(&opt)?
+        .merge(&common_config)
+        .merge(&Some(Default::default()));
 
     if let Some(to_remove) = opt.to_remove {
-        remove_all(&common_config, to_remove)?;
+        remove_all(&config, to_remove)?;
     }
     if let Some(to_install) = opt.to_install {
-        install_all(&common_config, to_install)?;
+        install_all(&config, to_install)?;
     }
     if let Some(to_reload) = opt.to_reload {
-        reload_all(&common_config, to_reload)?;
+        reload_all(&config, to_reload)?;
     }
 
     Ok(())
