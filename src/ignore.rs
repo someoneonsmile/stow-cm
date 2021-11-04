@@ -1,8 +1,7 @@
 use regex::RegexSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-
-use crate::error::StowResult;
+use anyhow::{ anyhow, Result };
 
 pub struct CollectBot<'a> {
     path: PathBuf,
@@ -20,7 +19,7 @@ impl<'a> CollectBot<'a> {
     /// 从树的叶子节点回溯
     /// 没有 Ignore 的时候, 折叠目录
     /// 返回当前根节点
-    pub fn collect(self) -> StowResult<(bool, Option<Vec<PathBuf>>)> {
+    pub fn collect(self) -> Result<(bool, Option<Vec<PathBuf>>)> {
         if !self.path.exists() {
             return Ok((false, None));
         }
@@ -30,7 +29,7 @@ impl<'a> CollectBot<'a> {
                 self.path
                     .file_name()
                     .and_then(|s| s.to_str())
-                    .ok_or("invalid file name")?,
+                    .ok_or(anyhow!("invalid file name"))?,
             ) {
                 return Ok((true, None));
             }

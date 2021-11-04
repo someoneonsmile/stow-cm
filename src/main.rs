@@ -1,16 +1,16 @@
+use anyhow::{anyhow, Result};
 use regex::RegexSet;
 use std::fs;
 use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::path::PathBuf;
 use std::vec::Vec;
+use tokio::task::JoinHandle;
 
 use crate::cli::Opt;
 use crate::config::{Config, CONFIG_FILE_NAME};
-use crate::error::StowResult;
 use crate::ignore::CollectBot;
 use crate::merge::Merge;
-
 
 mod cli;
 mod config;
@@ -21,7 +21,7 @@ mod merge;
 mod util;
 
 #[tokio::main]
-async fn main() -> StowResult<()> {
+async fn main() -> Result<()> {
     let opt = Opt::parse();
 
     let common_config = Config::from_path(format!("./{}", CONFIG_FILE_NAME))?;
@@ -30,60 +30,76 @@ async fn main() -> StowResult<()> {
         .merge(&common_config)
         .merge(&Some(Default::default()));
 
+    let mut handles = Vec::<JoinHandle<Result<()>>>::new();
     if let Some(to_remove) = opt.to_remove {
-        remove_all(&config, to_remove).await?;
+        let config = config.clone();
+        handles.push(tokio::spawn(async move {
+            remove_all(config, to_remove).await?;
+            Ok(())
+        }));
     }
     if let Some(to_install) = opt.to_install {
-        install_all(&config, to_install).await?;
+        let config = config.clone();
+        handles.push(tokio::spawn(async move {
+            install_all(config, to_install).await?;
+            Ok(())
+        }));
     }
     if let Some(to_reload) = opt.to_reload {
-        reload_all(&config, to_reload).await?;
+        let config = config.clone();
+        handles.push(tokio::spawn(async move {
+            reload_all(config, to_reload).await?;
+            Ok(())
+        }));
+    }
+    for handle in handles {
+        let _ = handle.await?;
     }
 
     Ok(())
 }
 
 /// install packages
-async fn install_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> StowResult<()> {
+async fn install_all(common_config: Option<Config>, packs: Vec<PathBuf>) -> Result<()> {
     for pack in packs {
         let customer_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
-        let config = customer_config.merge(common_config).unwrap_or_default();
+        let config = customer_config.merge(&common_config).unwrap_or_default();
         install(&config, fs::canonicalize(&pack)?).await?;
     }
     Ok(())
 }
 
 /// remove packages
-async fn remove_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> StowResult<()> {
+async fn remove_all(common_config: Option<Config>, packs: Vec<PathBuf>) -> Result<()> {
     for pack in packs {
         let customer_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
-        let config = customer_config.merge(common_config).unwrap_or_default();
+        let config = customer_config.merge(&common_config).unwrap_or_default();
         remove(&config, fs::canonicalize(&pack)?).await?;
     }
     Ok(())
 }
 
 /// remove packages
-async fn reload_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> StowResult<()> {
+async fn reload_all(common_config: Option<Config>, packs: Vec<PathBuf>) -> Result<()> {
     for pack in packs {
         let customer_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
-        let config = customer_config.merge(common_config).unwrap_or_default();
+        let config = customer_config.merge(&common_config).unwrap_or_default();
         reload(&config, fs::canonicalize(&pack)?).await?;
     }
     Ok(())
 }
 
 /// reload packages
-async fn reload<P: AsRef<Path>>(config: &Config, pack: P) -> StowResult<()> {
+async fn reload<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
     remove(config, fs::canonicalize(&pack)?).await?;
     install(config, fs::canonicalize(&pack)?).await?;
     Ok(())
 }
 
 /// install packages
-async fn install<P: AsRef<Path>>(config: &Config, pack: P) -> StowResult<()> {
+async fn install<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
     println!("install pack: {:?}", pack.as_ref());
-    let target = config.target.as_ref().ok_or("target is None")?;
+    let target = config.target.as_ref().ok_or(anyhow!("target is None"))?;
     let ignore_re = match &config.ignore {
         Some(ignore_regexs) => RegexSet::new(ignore_regexs).ok(),
         None => None,
@@ -120,9 +136,9 @@ async fn install<P: AsRef<Path>>(config: &Config, pack: P) -> StowResult<()> {
 }
 
 /// remove packages
-async fn remove<P: AsRef<Path>>(config: &Config, pack: P) -> StowResult<()> {
+async fn remove<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
     println!("remove pack: {:?}", pack.as_ref());
-    let target = config.target.as_ref().ok_or("config target is None")?;
+    let target = config.target.as_ref().ok_or(anyhow!("config target is None"))?;
     let ignore_re = match &config.ignore {
         Some(ignore_regexs) => RegexSet::new(ignore_regexs).ok(),
         None => None,

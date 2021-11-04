@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use anyhow::Result;
 
 use crate::cli::Opt;
-use crate::error::StowResult;
 use crate::util;
 
 pub static CONFIG_FILE_NAME: &'static str = ".stowrc";
@@ -23,7 +23,7 @@ pub struct Config {
 
 impl Config {
     /// parse config file
-    pub fn from_path<P: AsRef<Path>>(config_path: P) -> StowResult<Option<Config>> {
+    pub fn from_path<P: AsRef<Path>>(config_path: P) -> Result<Option<Config>> {
         if !config_path.as_ref().exists() {
             return Ok(None);
         }
@@ -36,7 +36,7 @@ impl Config {
     }
 
     /// parse config from cli args
-    pub fn from_cli(opt: &Opt) -> StowResult<Option<Config>> {
+    pub fn from_cli(opt: &Opt) -> Result<Option<Config>> {
         Ok(Some(Config {
             target: None,
             ignore: None,
