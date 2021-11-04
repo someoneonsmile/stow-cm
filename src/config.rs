@@ -30,7 +30,7 @@ impl Config {
         let config_str = fs::read_to_string(config_path.as_ref())?;
         let mut config: Config = toml::from_str(&config_str)?;
         if let Some(target) = config.target {
-            config.target = Some(util::shell_expend_tilde(target));
+            config.target = Some(util::shell_expend_full(target)?);
         }
         return Ok(Some(config));
     }

@@ -11,6 +11,7 @@ structopt = "0"
 same-file = "1"
 toml = "0"
 serde = { version = "1", features = ["derive"] }
+shellexpand = "2"
 # ignore = "0"
 # walkdir = "2"
 
