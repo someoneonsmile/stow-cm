@@ -6,6 +6,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::vec::Vec;
 use tokio::task::JoinHandle;
+use std::sync::Arc;
 
 use crate::cli::Opt;
 use crate::config::{Config, CONFIG_FILE_NAME};
@@ -29,6 +30,8 @@ async fn main() -> Result<()> {
     let config = Config::from_cli(&opt)?
         .merge(&common_config)
         .merge(&Some(Default::default()));
+
+    let config = Arc::new(config);
 
     let mut handles = Vec::<JoinHandle<Result<()>>>::new();
     if let Some(to_remove) = opt.to_remove {
@@ -60,31 +63,55 @@ async fn main() -> Result<()> {
 }
 
 /// install packages
-async fn install_all(common_config: Option<Config>, packs: Vec<PathBuf>) -> Result<()> {
+async fn install_all(common_config: Arc<Option<Config>>, packs: Vec<PathBuf>) -> Result<()> {
+    let mut handles = Vec::<JoinHandle<Result<()>>>::new();
     for pack in packs {
-        let customer_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
-        let config = customer_config.merge(&common_config).unwrap_or_default();
-        install(&config, fs::canonicalize(&pack)?).await?;
+        let common_config = common_config.clone();
+        handles.push(tokio::spawn(async move {
+            let customer_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
+            let config = customer_config.merge(&common_config).unwrap_or_default();
+            install(&config, fs::canonicalize(&pack)?).await?;
+            Ok(())
+        }))
+    }
+    for handle in handles {
+        let _ = handle.await?;
     }
     Ok(())
 }
 
 /// remove packages
-async fn remove_all(common_config: Option<Config>, packs: Vec<PathBuf>) -> Result<()> {
+async fn remove_all(common_config: Arc<Option<Config>>, packs: Vec<PathBuf>) -> Result<()> {
+    let mut handles = Vec::<JoinHandle<Result<()>>>::new();
     for pack in packs {
-        let customer_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
-        let config = customer_config.merge(&common_config).unwrap_or_default();
-        remove(&config, fs::canonicalize(&pack)?).await?;
+        let common_config = common_config.clone();
+        handles.push(tokio::spawn(async move {
+            let customer_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
+            let config = customer_config.merge(&common_config).unwrap_or_default();
+            remove(&config, fs::canonicalize(&pack)?).await?;
+            Ok(())
+        }))
+    }
+    for handle in handles {
+        let _ = handle.await?;
     }
     Ok(())
 }
 
 /// remove packages
-async fn reload_all(common_config: Option<Config>, packs: Vec<PathBuf>) -> Result<()> {
+async fn reload_all(common_config: Arc<Option<Config>>, packs: Vec<PathBuf>) -> Result<()> {
+    let mut handles = Vec::<JoinHandle<Result<()>>>::new();
     for pack in packs {
-        let customer_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
-        let config = customer_config.merge(&common_config).unwrap_or_default();
-        reload(&config, fs::canonicalize(&pack)?).await?;
+        let common_config = common_config.clone();
+        handles.push(tokio::spawn(async move {
+            let customer_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
+            let config = customer_config.merge(&common_config).unwrap_or_default();
+            reload(&config, fs::canonicalize(&pack)?).await?;
+            Ok(())
+        }));
+    }
+    for handle in handles {
+        let _ = handle.await?;
     }
     Ok(())
 }
