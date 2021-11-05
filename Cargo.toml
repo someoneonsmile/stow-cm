@@ -14,6 +14,7 @@ serde = { version = "1", features = ["derive"] }
 shellexpand = "2"
 tokio = { version = "1", features = ["full"] }
 anyhow = "1"
+# futures = "0"
 # ignore = "0"
 # walkdir = "2"
 
