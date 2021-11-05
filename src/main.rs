@@ -137,6 +137,7 @@ async fn install<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
         }
     }
 
+    let mut handles = Vec::<JoinHandle<Result<()>>>::new();
     for path in paths {
         let entry_target = PathBuf::from(&target).join(path.strip_prefix(pack.as_ref())?);
         if entry_target.exists() {
@@ -148,12 +149,18 @@ async fn install<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
                 continue;
             }
         }
-        if let Some(parent) = entry_target.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        let _ = fs::remove_file(&entry_target);
-        println!("install {:?} -> {:?}", entry_target, path);
-        symlink(&path, &entry_target)?;
+        handles.push(tokio::spawn(async move {
+            if let Some(parent) = entry_target.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            let _ = fs::remove_file(&entry_target);
+            println!("install {:?} -> {:?}", entry_target, path);
+            symlink(&path, &entry_target)?;
+            Ok(())
+        }));
+    }
+    for handle in handles {
+        let _ = handle.await?;
     }
 
     Ok(())
@@ -175,6 +182,8 @@ async fn remove<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
             paths.append(&mut sub_paths);
         }
     }
+
+    let mut handles = Vec::<JoinHandle<Result<()>>>::new();
     for path in paths {
         let entry_target =
             PathBuf::from(&target).join(PathBuf::from(&path).strip_prefix(pack.as_ref())?);
@@ -186,8 +195,15 @@ async fn remove<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
             eprintln!("remove symlink, not same_file, target:{:?}", entry_target);
             continue;
         }
-        println!("remove {:?} -> {:?}", entry_target, path);
-        fs::remove_file(&entry_target)?;
+        handles.push(tokio::spawn(async move {
+            println!("remove {:?} -> {:?}", entry_target, path);
+            fs::remove_file(&entry_target)?;
+            Ok(())
+        }))
     }
+    for handle in handles {
+        let _ = handle.await?;
+    }
+
     Ok(())
 }
