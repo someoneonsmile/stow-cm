@@ -1,5 +1,5 @@
 [package]
-name = "stow"
+name = "stow-async"
 version = "0.1.0"
 authors = ["someone"]
 edition = "2021"
