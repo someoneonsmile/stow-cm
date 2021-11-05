@@ -12,6 +12,7 @@ stow -i ./nvim /foo/bar -f
 stow -d ./nvim /foo/bar
 stow -r ./nvim /foo/bar
 stow -r ./nvim /foo/bar -d /bar
+stow -r ./*
 ```
 
 ## CONFIG
