@@ -1,7 +1,8 @@
 use regex::RegexSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use anyhow::{ anyhow, Result };
+
+use crate::error::{anyhow, Result};
 
 pub struct CollectBot<'a> {
     path: PathBuf,

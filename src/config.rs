@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use anyhow::Result;
 
 use crate::cli::Opt;
+use crate::error::Result;
 use crate::util;
 
 pub static CONFIG_FILE_NAME: &str = ".stowrc";
