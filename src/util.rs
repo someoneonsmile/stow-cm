@@ -1,6 +1,7 @@
-use std::path::{ Path, PathBuf };
 use std::env;
-use anyhow::{ anyhow, Result };
+use std::path::{Path, PathBuf};
+
+use crate::error::{anyhow, Result};
 
 pub(crate) fn get_home_dir() -> PathBuf {
     let home = env::var("HOME").unwrap();

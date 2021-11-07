@@ -1,15 +1,15 @@
-use anyhow::{anyhow, Result};
 use regex::RegexSet;
 use std::fs;
 use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::vec::Vec;
 use tokio::task::JoinHandle;
-use std::sync::Arc;
 
 use crate::cli::Opt;
 use crate::config::{Config, CONFIG_FILE_NAME};
+use crate::error::{anyhow, Result};
 use crate::ignore::CollectBot;
 use crate::merge::Merge;
 
@@ -169,7 +169,10 @@ async fn install<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
 /// remove packages
 async fn remove<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
     println!("remove pack: {:?}", pack.as_ref());
-    let target = config.target.as_ref().ok_or(anyhow!("config target is None"))?;
+    let target = config
+        .target
+        .as_ref()
+        .ok_or(anyhow!("config target is None"))?;
     let ignore_re = match &config.ignore {
         Some(ignore_regexs) => RegexSet::new(ignore_regexs).ok(),
         None => None,
