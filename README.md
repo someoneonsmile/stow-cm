@@ -47,3 +47,4 @@ ignore = [
 - [ ] unused 处理
 - [ ] git ignore
 - [ ] backup replace file
+- [ ] 加密
