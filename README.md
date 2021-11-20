@@ -46,3 +46,4 @@ ignore = [
 - [ ] 控制台颜色
 - [ ] unused 处理
 - [ ] git ignore
+- [ ] 加密
