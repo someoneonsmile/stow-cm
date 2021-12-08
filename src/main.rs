@@ -112,8 +112,8 @@ async fn install<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
     };
 
     let mut paths = Vec::new();
-    for path in fs::read_dir(pack.as_ref())? {
-        let (_, sub_path_option) = CollectBot::new(path?.path(), &ignore_re).collect()?;
+    for entry in fs::read_dir(pack.as_ref())? {
+        let (_, sub_path_option) = CollectBot::new(entry?.path(), &ignore_re).collect()?;
         if let Some(mut sub_paths) = sub_path_option {
             paths.append(&mut sub_paths);
         }
@@ -161,8 +161,8 @@ async fn remove<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
     };
 
     let mut paths = Vec::new();
-    for path in fs::read_dir(&pack).unwrap() {
-        let (_, sub_path_option) = CollectBot::new(&path?.path(), &ignore_re).collect()?;
+    for entry in fs::read_dir(&pack)? {
+        let (_, sub_path_option) = CollectBot::new(&entry?.path(), &ignore_re).collect()?;
         if let Some(mut sub_paths) = sub_path_option {
             paths.append(&mut sub_paths);
         }
