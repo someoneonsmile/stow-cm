@@ -22,6 +22,7 @@ mod util;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    pretty_env_logger::init();
     let opt = Opt::parse();
 
     let common_config = Config::from_path(format!("./{}", CONFIG_FILE_NAME))?;
@@ -29,7 +30,6 @@ async fn main() -> Result<()> {
     let config = Config::from_cli(&opt)?
         .merge(&common_config)
         .merge(&Some(Default::default()));
-
 
     if let Some(to_remove) = opt.to_remove {
         remove_all(&config, to_remove).await?;
@@ -104,7 +104,7 @@ async fn reload<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
 
 /// install packages
 async fn install<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
-    println!("install pack: {:?}", pack.as_ref());
+    log::info!("install pack: {:?}", pack.as_ref());
     let target = config.target.as_ref().ok_or(anyhow!("target is None"))?;
     let ignore_re = match &config.ignore {
         Some(ignore_regexs) => RegexSet::new(ignore_regexs).ok(),
@@ -126,7 +126,7 @@ async fn install<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
             if let Some(true) = &config.force {
             } else {
                 if let Ok(false) = same_file::is_same_file(&path, &entry_target) {
-                    eprintln!("target has exists, target:{:?}", entry_target);
+                    log::error!("target has exists, target:{:?}", entry_target);
                 }
                 continue;
             }
@@ -136,7 +136,7 @@ async fn install<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
                 fs::create_dir_all(parent)?;
             }
             let _ = fs::remove_file(&entry_target);
-            println!("install {:?} -> {:?}", entry_target, path);
+            log::info!("install {:?} -> {:?}", entry_target, path);
             symlink(&path, &entry_target)?;
             Ok(())
         }));
@@ -150,7 +150,7 @@ async fn install<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
 
 /// remove packages
 async fn remove<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
-    println!("remove pack: {:?}", pack.as_ref());
+    log::info!("remove pack: {:?}", pack.as_ref());
     let target = config
         .target
         .as_ref()
@@ -177,11 +177,11 @@ async fn remove<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
             continue;
         }
         if let Ok(false) = same_file::is_same_file(&entry_target, &path) {
-            eprintln!("remove symlink, not same_file, target:{:?}", entry_target);
+            log::error!("remove symlink, not same_file, target:{:?}", entry_target);
             continue;
         }
         handles.push(tokio::spawn(async move {
-            println!("remove {:?} -> {:?}", entry_target, path);
+            log::info!("remove {:?} -> {:?}", entry_target, path);
             fs::remove_file(&entry_target)?;
             Ok(())
         }))
