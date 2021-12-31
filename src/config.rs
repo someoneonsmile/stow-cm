@@ -6,7 +6,7 @@ use crate::cli::Opt;
 use crate::error::StowResult;
 use crate::util;
 
-pub static CONFIG_FILE_NAME: &'static str = ".stowrc";
+pub static CONFIG_FILE_NAME: &str = ".stowrc";
 
 /// pack config
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,7 +32,7 @@ impl Config {
         if let Some(target) = config.target {
             config.target = Some(util::shell_expend_full(target)?);
         }
-        return Ok(Some(config));
+        Ok(Some(config))
     }
 
     /// parse config from cli args
