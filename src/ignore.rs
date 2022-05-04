@@ -45,7 +45,7 @@ impl<'a> CollectBot<'a> {
         let mut paths = Vec::new();
         for path in fs::read_dir(&self.path)? {
             let (sub_ignore, sub_paths_option) =
-                CollectBot::new(&path?.path(), &self.ignore).collect()?;
+                CollectBot::new(&path?.path(), self.ignore).collect()?;
             has_ignore |= sub_ignore;
             if let Some(mut sub_paths) = sub_paths_option {
                 paths.append(&mut sub_paths)
@@ -56,6 +56,6 @@ impl<'a> CollectBot<'a> {
             return Ok((false, Some(vec![self.path])));
         }
 
-        return Ok((true, Some(paths)));
+        Ok((true, Some(paths)))
     }
 }
