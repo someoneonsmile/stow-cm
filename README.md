@@ -1,5 +1,4 @@
 # config manager (simple impl of gnu-stow)
-
 ## USEAGE
 
 ```sh
@@ -48,3 +47,4 @@ ignore = [
 - [ ] git ignore
 - [ ] backup replace file
 - [ ] 加密
+- [ ] protect mode (don't excute in non stow dir)
