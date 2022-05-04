@@ -15,7 +15,7 @@ shellexpand = "2"
 tokio = { version = "1", features = ["full"] }
 anyhow = "1"
 log = { version = "0" }
-pretty_env_logger = "0"
+env_logger = "0"
 # futures = "0"
 # ignore = "0"
 # walkdir = "2"

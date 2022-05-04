@@ -22,7 +22,15 @@ mod util;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    pretty_env_logger::init();
+    env_logger::Builder::from_default_env()
+        .parse_filters("info")
+        .default_format()
+        .format_level(false)
+        .format_target(false)
+        .format_module_path(false)
+        .format_timestamp(None)
+        .init();
+
     let opt = Opt::parse();
 
     let common_config = Config::from_path(format!("./{}", CONFIG_FILE_NAME))?;
