@@ -17,17 +17,18 @@ pub struct Config {
     /// ignore file regx
     pub ignore: Option<Vec<String>>,
 
-    /// ignore file regx
+    /// force override
     pub force: Option<bool>,
 }
 
 impl Config {
     /// parse config file
     pub fn from_path<P: AsRef<Path>>(config_path: P) -> Result<Option<Config>> {
-        if !config_path.as_ref().exists() {
+        let config_path = util::shell_expend_full(config_path)?;
+        if !config_path.exists() {
             return Ok(None);
         }
-        let config_str = fs::read_to_string(config_path.as_ref())?;
+        let config_str = fs::read_to_string(config_path)?;
         let mut config: Config = toml::from_str(&config_str)?;
         if let Some(target) = config.target {
             config.target = Some(util::shell_expend_full(target)?);

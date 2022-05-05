@@ -5,7 +5,7 @@
 # -i install pack
 # -d remove pack
 # -r reload pack
-# -f force replace target file
+# -f force replace target file, if the pack config not config the force option
 stow -i ./nvim /foo/bar
 stow -i ./nvim /foo/bar -f
 stow -d ./nvim /foo/bar
@@ -21,11 +21,14 @@ stow -r ./*
     - `./.stowrc`
     - `{stow pack dir}/.stowrc`
 
+    > note: it not use the pack/pack_sub_path/.stowrc
+
 - config file format
 
 ```toml
 # toml format
 
+# target = "$XDG_CONFIG_HOME/stow/"
 target = "~"
 force = true
 ignore = [

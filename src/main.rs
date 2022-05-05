@@ -1,3 +1,4 @@
+use log::{debug, info, warn, error};
 use regex::RegexSet;
 use std::fs;
 use std::os::unix::fs::symlink;
@@ -9,14 +10,14 @@ use tokio::task::JoinHandle;
 use crate::cli::Opt;
 use crate::config::{Config, CONFIG_FILE_NAME};
 use crate::error::{anyhow, Result};
-use crate::ignore::CollectBot;
+use crate::collect_bot::CollectBot;
 use crate::merge::Merge;
 
 mod cli;
 mod config;
 mod custom_type;
 mod error;
-mod ignore;
+mod collect_bot;
 mod merge;
 mod util;
 
@@ -25,16 +26,20 @@ async fn main() -> Result<()> {
     env_logger::Builder::from_default_env()
         .parse_filters("info")
         .default_format()
-        .format_level(false)
+        .format_level(true)
         .format_target(false)
         .format_module_path(false)
         .format_timestamp(None)
         .init();
 
     let opt = Opt::parse();
+    debug!("opt: {:?}", opt);
 
     // TODO: path config fixed (ex: ~/.config/stow/config)
-    let common_config = Config::from_path(format!("./{}", CONFIG_FILE_NAME))?;
+    // TODO: make the cli config not be override ?
+    // let common_config = Config::from_path("$XDG_CONFIG_HOME/stow/config")?;
+    let common_config = Config::from_path(format!("./{:?}", CONFIG_FILE_NAME))?;
+    debug!("common_config: {:?}", common_config);
 
     let config = Config::from_cli(&opt)?
         .merge(&common_config)
@@ -58,9 +63,13 @@ async fn install_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> Res
     let mut handles = Vec::<JoinHandle<Result<()>>>::new();
     for pack in packs {
         // TODO: rename to home_config or pack_config, and determine whether it is a pack
-        // should we move then resolve pack config and judge if it's a valid pack logic into install ?
-        let customer_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
-        let config = customer_config.merge(common_config).unwrap();
+        // should we move the resolve pack config and judge if it's a valid pack logic into install ?
+        let pack_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
+        if pack_config.is_none() {
+            warn!("{:?} is not the pack_home (witch contains .stowrc config file)", pack);
+            continue;
+        }
+        let config = pack_config.merge(common_config).unwrap();
         handles.push(tokio::spawn(async move {
             install(&config, fs::canonicalize(&pack)?).await?;
             Ok(())
@@ -76,8 +85,12 @@ async fn install_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> Res
 async fn remove_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> Result<()> {
     let mut handles = Vec::<JoinHandle<Result<()>>>::new();
     for pack in packs {
-        let customer_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
-        let config = customer_config.merge(common_config).unwrap();
+        let pack_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
+        if pack_config.is_none() {
+            warn!("{:?} is not the pack_home (witch contains .stowrc config file)", pack);
+            continue;
+        }
+        let config = pack_config.merge(common_config).unwrap();
         handles.push(tokio::spawn(async move {
             remove(&config, fs::canonicalize(&pack)?).await?;
             Ok(())
@@ -93,13 +106,18 @@ async fn remove_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> Resu
 async fn reload_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> Result<()> {
     let mut handles = Vec::<JoinHandle<Result<()>>>::new();
     for pack in packs {
-        let customer_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
-        let config = customer_config.merge(common_config).unwrap();
+        let pack_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
+        if pack_config.is_none() {
+            warn!("{:?} is not the pack_home (witch contains .stowrc config file)", pack);
+            continue;
+        }
+        let config = pack_config.merge(common_config).unwrap();
         handles.push(tokio::spawn(async move {
             reload(&config, fs::canonicalize(&pack)?).await?;
             Ok(())
         }));
     }
+    // TODO: replace with await all, and handle the result
     for handle in handles {
         let _ = handle.await?;
     }
@@ -115,7 +133,7 @@ async fn reload<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
 
 /// install packages
 async fn install<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
-    log::info!("install pack: {:?}", pack.as_ref());
+    info!("install pack: {:?}", pack.as_ref());
     let target = config.target.as_ref().ok_or(anyhow!("target is None"))?;
     let ignore_re = match &config.ignore {
         Some(ignore_regexs) => RegexSet::new(ignore_regexs).ok(),
@@ -132,23 +150,23 @@ async fn install<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
 
     let mut handles = Vec::<JoinHandle<Result<()>>>::new();
     for path in paths {
-        let entry_target = PathBuf::from(&target).join(path.strip_prefix(pack.as_ref())?);
-        if entry_target.exists() {
+        let path_target = PathBuf::from(&target).join(path.strip_prefix(pack.as_ref())?);
+        if path_target.exists() {
             if let Some(true) = &config.force {
             } else {
-                if let Ok(false) = same_file::is_same_file(&path, &entry_target) {
-                    log::error!("target has exists, target:{:?}", entry_target);
+                if let Ok(false) = same_file::is_same_file(&path, &path_target) {
+                    error!("target has exists, target:{:?}", path_target);
                 }
                 continue;
             }
         }
         handles.push(tokio::spawn(async move {
-            if let Some(parent) = entry_target.parent() {
+            if let Some(parent) = path_target.parent() {
                 fs::create_dir_all(parent)?;
             }
-            let _ = fs::remove_file(&entry_target);
-            log::info!("install {:?} -> {:?}", entry_target, path);
-            symlink(&path, &entry_target)?;
+            let _ = fs::remove_file(&path_target);
+            info!("install {:?} -> {:?}", path_target, path);
+            symlink(&path, &path_target)?;
             Ok(())
         }));
     }
@@ -161,7 +179,7 @@ async fn install<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
 
 /// remove packages
 async fn remove<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
-    log::info!("remove pack: {:?}", pack.as_ref());
+    info!("remove pack: {:?}", pack.as_ref());
     let target = config
         .target
         .as_ref()
@@ -181,22 +199,23 @@ async fn remove<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
 
     let mut handles = Vec::<JoinHandle<Result<()>>>::new();
     for path in paths {
-        let entry_target =
+        let path_target =
             PathBuf::from(&target).join(PathBuf::from(&path).strip_prefix(pack.as_ref())?);
-        if !entry_target.exists() {
-            let _ = fs::remove_file(&entry_target);
+        if !path_target.exists() {
+            let _ = fs::remove_file(&path_target);
             continue;
         }
-        if let Ok(false) = same_file::is_same_file(&entry_target, &path) {
-            log::error!("remove symlink, not same_file, target:{:?}", entry_target);
+        if let Ok(false) = same_file::is_same_file(&path_target, &path) {
+            error!("remove symlink, not same_file, target:{:?}", path_target);
             continue;
         }
         handles.push(tokio::spawn(async move {
-            log::info!("remove {:?} -> {:?}", entry_target, path);
-            fs::remove_file(&entry_target)?;
+            info!("remove {:?} -> {:?}", path_target, path);
+            fs::remove_file(&path_target)?;
             Ok(())
         }))
     }
+    // TODO: replace with await all, and handle the result
     for handle in handles {
         let _ = handle.await?;
     }

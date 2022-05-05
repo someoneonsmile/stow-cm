@@ -20,12 +20,8 @@ impl<T: Merge<T> + Clone> Merge<Option<T>> for Option<T> {
 impl Merge<Config> for Config {
     fn merge(mut self, other: &Config) -> Config {
         self.target = self.target.or_else(|| other.target.clone());
-        self.ignore = match (self.ignore, &other.ignore) {
-            (Some(a), Some(b)) => Some(a.merge(b)),
-            (Some(a), None) => Some(a),
-            (None, Some(b)) => Some(b.clone()),
-            (None, None) => None,
-        };
+        self.ignore = self.ignore.merge(&other.ignore);
+        self.force = self.force.merge(&other.force);
         self
     }
 }
