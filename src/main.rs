@@ -33,6 +33,7 @@ async fn main() -> Result<()> {
 
     let opt = Opt::parse();
 
+    // TODO: path config fixed (ex: ~/.config/stow/config)
     let common_config = Config::from_path(format!("./{}", CONFIG_FILE_NAME))?;
 
     let config = Config::from_cli(&opt)?
@@ -56,8 +57,10 @@ async fn main() -> Result<()> {
 async fn install_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> Result<()> {
     let mut handles = Vec::<JoinHandle<Result<()>>>::new();
     for pack in packs {
+        // TODO: rename to home_config or pack_config, and determine whether it is a pack
+        // should we move then resolve pack config and judge if it's a valid pack logic into install ?
         let customer_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
-        let config = customer_config.merge(common_config).unwrap_or_default();
+        let config = customer_config.merge(common_config).unwrap();
         handles.push(tokio::spawn(async move {
             install(&config, fs::canonicalize(&pack)?).await?;
             Ok(())
@@ -74,7 +77,7 @@ async fn remove_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> Resu
     let mut handles = Vec::<JoinHandle<Result<()>>>::new();
     for pack in packs {
         let customer_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
-        let config = customer_config.merge(common_config).unwrap_or_default();
+        let config = customer_config.merge(common_config).unwrap();
         handles.push(tokio::spawn(async move {
             remove(&config, fs::canonicalize(&pack)?).await?;
             Ok(())
@@ -91,7 +94,7 @@ async fn reload_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> Resu
     let mut handles = Vec::<JoinHandle<Result<()>>>::new();
     for pack in packs {
         let customer_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
-        let config = customer_config.merge(common_config).unwrap_or_default();
+        let config = customer_config.merge(common_config).unwrap();
         handles.push(tokio::spawn(async move {
             reload(&config, fs::canonicalize(&pack)?).await?;
             Ok(())

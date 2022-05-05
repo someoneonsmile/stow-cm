@@ -16,6 +16,7 @@ impl<T: Merge<T> + Clone> Merge<Option<T>> for Option<T> {
     }
 }
 
+// TODO: maybe should move them to the defined file
 impl Merge<Config> for Config {
     fn merge(mut self, other: &Config) -> Config {
         self.target = self.target.or_else(|| other.target.clone());

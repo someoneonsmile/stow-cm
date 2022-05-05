@@ -48,7 +48,8 @@ impl Config {
 impl Default for Config {
     fn default() -> Config {
         Config {
-            target: Some(util::shell_expend_tilde("~")),
+            // target: Some(util::shell_expend_tilde("~")),
+            target: None,
             ignore: Some(vec![CONFIG_FILE_NAME.to_string()]),
             force: None,
         }
