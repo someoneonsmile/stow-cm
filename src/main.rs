@@ -1,4 +1,4 @@
-use log::{debug, info, warn, error};
+use log::{debug, error, info, warn};
 use regex::RegexSet;
 use std::fs;
 use std::os::unix::fs::symlink;
@@ -8,16 +8,16 @@ use std::vec::Vec;
 use tokio::task::JoinHandle;
 
 use crate::cli::Opt;
+use crate::collect_bot::CollectBot;
 use crate::config::{Config, CONFIG_FILE_NAME};
 use crate::error::{anyhow, Result};
-use crate::collect_bot::CollectBot;
 use crate::merge::Merge;
 
 mod cli;
+mod collect_bot;
 mod config;
 mod custom_type;
 mod error;
-mod collect_bot;
 mod merge;
 mod util;
 
@@ -37,8 +37,9 @@ async fn main() -> Result<()> {
 
     // TODO: path config fixed (ex: ~/.config/stow/config)
     // TODO: make the cli config not be override ?
-    // let common_config = Config::from_path("$XDG_CONFIG_HOME/stow/config")?;
-    let common_config = Config::from_path(format!("./{:?}", CONFIG_FILE_NAME))?;
+    let common_config = Config::from_path("$XDG_CONFIG_HOME/stow/config")?;
+    let common_config =
+        common_config.merge(&Config::from_path(format!("./{:?}", CONFIG_FILE_NAME))?);
     debug!("common_config: {:?}", common_config);
 
     let config = Config::from_cli(&opt)?
@@ -66,7 +67,10 @@ async fn install_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> Res
         // should we move the resolve pack config and judge if it's a valid pack logic into install ?
         let pack_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
         if pack_config.is_none() {
-            warn!("{:?} is not the pack_home (witch contains .stowrc config file)", pack);
+            warn!(
+                "{:?} is not the pack_home (witch contains .stowrc config file)",
+                pack
+            );
             continue;
         }
         let config = pack_config.merge(common_config).unwrap();
@@ -87,7 +91,10 @@ async fn remove_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> Resu
     for pack in packs {
         let pack_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
         if pack_config.is_none() {
-            warn!("{:?} is not the pack_home (witch contains .stowrc config file)", pack);
+            warn!(
+                "{:?} is not the pack_home (witch contains .stowrc config file)",
+                pack
+            );
             continue;
         }
         let config = pack_config.merge(common_config).unwrap();
@@ -108,7 +115,10 @@ async fn reload_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> Resu
     for pack in packs {
         let pack_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
         if pack_config.is_none() {
-            warn!("{:?} is not the pack_home (witch contains .stowrc config file)", pack);
+            warn!(
+                "{:?} is not the pack_home (witch contains .stowrc config file)",
+                pack
+            );
             continue;
         }
         let config = pack_config.merge(common_config).unwrap();

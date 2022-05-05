@@ -16,8 +16,9 @@ stow -r ./*
 
 ## CONFIG
 
-- config file location
+- config file location and find order
 
+    - `$XDG_CONFIG_HOME/stow/config`
     - `./.stowrc`
     - `{stow pack dir}/.stowrc`
 
