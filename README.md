@@ -52,3 +52,4 @@ ignore = [
 - [ ] backup replace file
 - [ ] 加密
 - [ ] protect mode (don't excute in non stow dir)
+- [ ] github action (auto archive)
