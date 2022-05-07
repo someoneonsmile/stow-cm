@@ -187,10 +187,12 @@ jobs:
             cp "target/${{ matrix.build.target }}/release/stow.exe" "$staging/"
             7z a "$staging.zip" "$staging"
             echo "ASSET=$staging.zip" >> $GITHUB_ENV
+            sha256sum "$staging.zip" > "$staging.zip.sha256sum"
           else
             cp "target/${{ matrix.build.target }}/release/stow" "$staging/"
             tar czf "$staging.tar.gz" "$staging"
             echo "ASSET=$staging.tar.gz" >> $GITHUB_ENV
+            sha256sum "$staging.tar.gz" > "$staging.tar.gz.sha256sum"
           fi
       - name: Upload release archive
         uses: actions/upload-release-asset@v1.0.1
@@ -201,4 +203,12 @@ jobs:
           asset_path: ${{ env.ASSET }}
           asset_name: ${{ env.ASSET }}
           asset_content_type: application/octet-stream
-
+      - name: Upload release archive sha256sum
+        uses: actions/upload-release-asset@v1.0.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ matrix.upload_url }}
+          asset_path: "${{ env.ASSET }}.sha256sum"
+          asset_name: "${{ env.ASSET }}.sha256sum"
+          asset_content_type: application/octet-stream
