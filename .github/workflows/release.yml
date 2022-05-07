@@ -21,8 +21,8 @@ jobs:
     name: create-release
     runs-on: ubuntu-latest
     outputs:
-      upload_url: ${{ steps.release.outputs.upload_url }}
       release_version: ${{ env.release_version }}
+      upload_url: ${{ steps.release.outputs.upload_url }}
     steps:
       - if: github.event_name == 'workflow_dispatch'
         run: echo "release_version=${{ github.event.inputs.tag_name }}" >> $GITHUB_ENV
@@ -91,7 +91,6 @@ jobs:
     runs-on: ${{ matrix.build.os }}
     strategy:
       matrix:
-        upload_url: ${{ fromJSON(needs.create-release.outputs.upload_url) }}
         # build: [linux, linux-arm, macos, win-msvc, win-gnu, win32-msvc]
         build: [
           {
@@ -131,6 +130,7 @@ jobs:
           #   target: i686-pc-windows-msvc
           # },
         ]
+        upload_url: ${{ fromJSON(needs.create-release.outputs.upload_url) }}
     steps:
       - uses: actions/checkout@v3
         with:
