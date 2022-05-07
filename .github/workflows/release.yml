@@ -106,7 +106,9 @@ jobs:
     name: update-release
     needs: ['create-release']
     runs-on: ${{ matrix.build.os }}
+    continue-on-error: true
     strategy:
+      fail-fast: false
       matrix:
         # build: [linux, linux-arm, macos, win-msvc, win-gnu, win32-msvc]
         build: [
