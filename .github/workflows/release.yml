@@ -57,7 +57,7 @@ jobs:
               await github.rest.git.deleteRef({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                ref: `refs/tags/${release_label}`,
+                ref: `tags/${release_label}`,
               });
             } catch (e) {
               console.error(e)
@@ -65,6 +65,7 @@ jobs:
             let is_nightly = 'nightly' === release_label
             let upload_url = [];
             // create tag release
+            let target_commitish;
             if (!is_nightly) {
               const { data: { upload_url: tag_update_url } } = await github.rest.repos.createRelease({
                 owner: context.repo.owner,
@@ -73,15 +74,31 @@ jobs:
                 name: 'Release ${{ env.release_version }}',
               });
               upload_url.push(tag_update_url);
+              const { data: { object: { sha: tag_sha } } } = await github.rest.git.getRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: 'tags/${{ env.release_version }}',
+              });
+              const { data: { object: { sha: commit_sha } } } = await github.rest.git.getTag({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                tag_sha: tag_sha,
+              });
+              target_commitish = commit_sha;
             }
             // create label release
-            const { data: { upload_url: label_update_url } } = await github.rest.repos.createRelease({
+            let opts = {
               owner: context.repo.owner,
               repo: context.repo.repo,
               tag_name: release_label,
               name: `Release ${ release_label }`,
               prerelease: is_nightly,
-            });
+            }
+            if (target_commitish) {
+              opts.target_commitish = target_commitish
+            }
+            console.log('opts:', JSON.stringify(opts))
+            const { data: { upload_url: label_update_url } } = await github.rest.repos.createRelease(opts);
             upload_url.push(label_update_url);
             core.setOutput('upload_url', JSON.stringify(upload_url));
 
