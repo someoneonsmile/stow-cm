@@ -62,23 +62,27 @@ jobs:
             } catch (e) {
               console.error(e)
             }
+            let is_nightly = 'nightly' === release_label
             let upload_url = [];
-            const { data: { upload_url: tag_update_url } } = await github.rest.repos.createRelease({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              tag_name: '${{ env.release_version }}',
-              name: 'Release ${{ env.release_version }}',
-            });
-            upload_url.push(tag_update_url);
-            if ('nightly' !== release_label) {
-            const { data: { upload_url: label_update_url } } = await github.rest.repos.createRelease({
+            // create tag release
+            if (!is_nightly) {
+              const { data: { upload_url: tag_update_url } } = await github.rest.repos.createRelease({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                tag_name: release_label,
-                name: `Release ${ release_label }`,
+                tag_name: '${{ env.release_version }}',
+                name: 'Release ${{ env.release_version }}',
               });
-              upload_url.push(label_update_url);
+              upload_url.push(tag_update_url);
             }
+            // create label release
+            const { data: { upload_url: label_update_url } } = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: release_label,
+              name: `Release ${ release_label }`,
+              prerelease: is_nightly,
+            });
+            upload_url.push(label_update_url);
             core.setOutput('upload_url', JSON.stringify(upload_url));
 
   update-release:
