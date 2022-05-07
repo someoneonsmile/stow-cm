@@ -14,6 +14,7 @@ on:
       - "[0-9]+.[0-9]+.[0-9]+"
 env:
   CARGO_TERM_COLOR: always
+  USE_CROSS: false
 
 jobs:
 
@@ -165,7 +166,7 @@ jobs:
         with:
           command: build
           args: --release --target=${{ matrix.build.target }}
-          use-cross: true
+          use-cross: ${{ env.USE_CROSS }}
       - name: Strip release binary (linux and macos)
         if: matrix.build.plat == 'linux' || matrix.build.plat == 'macos'
         run: strip "target/${{ matrix.build.target }}/release/stow"
