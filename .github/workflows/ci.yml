@@ -8,12 +8,16 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  FETCH_DEPTH: 0
+  USE_CROSS: false
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+      with:
+        fetch-depth: ${{ env.FETCH_DEPTH }}
     - uses: Swatinem/rust-cache@v1
     - uses: actions-rs/toolchain@v1
       with:
@@ -23,18 +27,20 @@ jobs:
     - name: check
       uses: actions-rs/cargo@v1
       with:
-        use-cross: false
+        use-cross: ${{ env.USE_CROSS }}
         command: check
     - name: Run tests
       uses: actions-rs/cargo@v1
       with:
-        use-cross: false
+        use-cross: ${{ env.USE_CROSS }}
         command: test
 
   rustfmt:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+      with:
+        fetch-depth: ${{ env.FETCH_DEPTH }}
     - uses: Swatinem/rust-cache@v1
     - uses: actions-rs/toolchain@v1
       with:
@@ -45,7 +51,7 @@ jobs:
     - name: build
       uses: actions-rs/cargo@v1
       with:
-        use-cross: false
+        use-cross: ${{ env.USE_CROSS }}
         command: fmt
         args: --all -- --check
 
@@ -53,6 +59,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+      with:
+        fetch-depth: ${{ env.FETCH_DEPTH }}
     - uses: Swatinem/rust-cache@v1
     - uses: actions-rs/toolchain@v1
       with:
@@ -64,5 +72,5 @@ jobs:
       uses: actions-rs/clippy-check@v1
       with:
         token: ${{ secrets.GITHUB_TOKEN}}
-        use-cross: false
+        use-cross: ${{ env.USE_CROSS }}
         args: --all-features
