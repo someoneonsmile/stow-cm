@@ -80,7 +80,7 @@ async fn install_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> Res
         }))
     }
     for handle in handles {
-        let _ = handle.await?;
+        handle.await??;
     }
     Ok(())
 }
@@ -104,7 +104,7 @@ async fn remove_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> Resu
         }))
     }
     for handle in handles {
-        let _ = handle.await?;
+        handle.await??;
     }
     Ok(())
 }
@@ -129,7 +129,7 @@ async fn reload_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> Resu
     }
     // TODO: replace with await all, and handle the result
     for handle in handles {
-        let _ = handle.await?;
+        handle.await??;
     }
     Ok(())
 }
@@ -170,7 +170,7 @@ async fn install<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
                 continue;
             }
         }
-        handles.push(tokio::spawn(async move {
+        handles.push(tokio::task::spawn_blocking(move || {
             if let Some(parent) = path_target.parent() {
                 fs::create_dir_all(parent)?;
             }
@@ -181,7 +181,7 @@ async fn install<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
         }));
     }
     for handle in handles {
-        let _ = handle.await?;
+        handle.await??;
     }
 
     Ok(())
@@ -219,7 +219,7 @@ async fn remove<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
             error!("remove symlink, not same_file, target:{:?}", path_target);
             continue;
         }
-        handles.push(tokio::spawn(async move {
+        handles.push(tokio::task::spawn_blocking(move || {
             info!("remove {:?} -> {:?}", path_target, path);
             fs::remove_file(&path_target)?;
             Ok(())
@@ -227,7 +227,7 @@ async fn remove<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
     }
     // TODO: replace with await all, and handle the result
     for handle in handles {
-        let _ = handle.await?;
+        handle.await??;
     }
 
     Ok(())

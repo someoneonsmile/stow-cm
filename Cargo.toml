@@ -26,6 +26,9 @@ default-features = false
 features = ["std"]
 
 [profile.release]
-opt-level = 's'
+opt-level = "s"
 lto = true
-panic = 'abort'
+panic = "abort"
+# options["none", "debuginfo", "symbols", true, false]
+# the default is "none", true = "symbols", false = "none"
+strip = true
