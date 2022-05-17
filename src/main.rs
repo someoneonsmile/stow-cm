@@ -39,12 +39,12 @@ async fn main() -> Result<()> {
     // TODO: make the cli config not be override ?
     let common_config = Config::from_path("$XDG_CONFIG_HOME/stow/config")?;
     let common_config =
-        common_config.merge(&Config::from_path(format!("./{:?}", CONFIG_FILE_NAME))?);
+        common_config.merge(Config::from_path(format!("./{:?}", CONFIG_FILE_NAME))?);
     debug!("common_config: {:?}", common_config);
 
     let config = Config::from_cli(&opt)?
-        .merge(&common_config)
-        .merge(&Some(Default::default()));
+        .merge(common_config)
+        .merge(Some(Default::default()));
 
     if let Some(to_remove) = opt.to_remove {
         remove_all(&config, to_remove).await?;
@@ -73,7 +73,7 @@ async fn install_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> Res
             );
             continue;
         }
-        let config = pack_config.merge(common_config).unwrap();
+        let config = pack_config.merge(common_config.clone()).unwrap();
         handles.push(tokio::spawn(async move {
             install(&config, fs::canonicalize(&pack)?).await?;
             Ok(())
@@ -97,7 +97,7 @@ async fn remove_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> Resu
             );
             continue;
         }
-        let config = pack_config.merge(common_config).unwrap();
+        let config = pack_config.merge(common_config.clone()).unwrap();
         handles.push(tokio::spawn(async move {
             remove(&config, fs::canonicalize(&pack)?).await?;
             Ok(())
@@ -121,7 +121,7 @@ async fn reload_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> Resu
             );
             continue;
         }
-        let config = pack_config.merge(common_config).unwrap();
+        let config = pack_config.merge(common_config.clone()).unwrap();
         handles.push(tokio::spawn(async move {
             reload(&config, fs::canonicalize(&pack)?).await?;
             Ok(())
