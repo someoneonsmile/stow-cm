@@ -2,22 +2,22 @@ name: release
 
 on:
   schedule:
-    - cron: '5 5 * * *'
+    - cron: "5 5 * * *"
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Tag name for release'
+        description: "Tag name for release"
         required: false
         default: nightly
   push:
     tags:
-      - '[0-9]+.[0-9]+.[0-9]+'
+      - "[0-9]+.[0-9]+.[0-9]+"
 
 env:
   CARGO_TERM_COLOR: always
   USE_CROSS: true
   FETCH_DEPTH: 0
-  RELEASE_NAME: 'stow'
+  RELEASE_NAME: "stow"
 
 defaults:
   run:
@@ -34,7 +34,7 @@ jobs:
       - if: github.event_name == 'workflow_dispatch'
         run: echo "release_version=${{ github.event.inputs.tag_name }}" >> $GITHUB_ENV
       - if: github.event_name == 'schedule'
-        run: echo 'release_version=nightly' >> $GITHUB_ENV
+        run: echo "release_version=nightly" >> $GITHUB_ENV
       - if: github.event_name == 'push'
         run: echo "release_version=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
           # echo "::set-output name=release_version::${{ env.release_version }}"
@@ -43,10 +43,10 @@ jobs:
         with:
           script: |
             let release_label
-            if ('nightly' === '${{ env.release_version }}') {
-              release_label = 'nightly';
+            if ("nightly" === "${{ env.release_version }}") {
+              release_label = "nightly";
             } else {
-              release_label = 'stable';
+              release_label = "stable";
             }
             try {
               const { data: { id:release_id } } = await github.rest.repos.getReleaseByTag({
@@ -69,7 +69,7 @@ jobs:
             } catch (e) {
               console.error(e)
             }
-            let is_nightly = 'nightly' === release_label
+            let is_nightly = "nightly" === release_label
             let upload_url = [];
             // create tag release
             let target_commitish;
@@ -77,14 +77,14 @@ jobs:
               const { data: { upload_url: tag_update_url } } = await github.rest.repos.createRelease({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                tag_name: '${{ env.release_version }}',
-                name: 'Release ${{ env.release_version }}',
+                tag_name: "${{ env.release_version }}",
+                name: "Release ${{ env.release_version }}",
               });
               upload_url.push(tag_update_url);
               const { data: { object: { sha: tag_sha } } } = await github.rest.git.getRef({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                ref: 'tags/${{ env.release_version }}',
+                ref: "tags/${{ env.release_version }}",
               });
               const { data: { object: { sha: commit_sha } } } = await github.rest.git.getTag({
                 owner: context.repo.owner,
@@ -105,14 +105,14 @@ jobs:
             if (target_commitish) {
               opts.target_commitish = target_commitish
             }
-            console.log('opts:', JSON.stringify(opts))
+            console.log("opts:", JSON.stringify(opts))
             const { data: { upload_url: label_update_url } } = await github.rest.repos.createRelease(opts);
             upload_url.push(label_update_url);
-            core.setOutput('upload_url', JSON.stringify(upload_url));
+            core.setOutput("upload_url", JSON.stringify(upload_url));
 
   update-release:
     name: update-release
-    needs: ['create-release']
+    needs: [create-release]
     runs-on: ${{ matrix.build.os }}
     continue-on-error: true
     strategy:
@@ -140,19 +140,19 @@ jobs:
           # },
           # {
           #   plat: win-msvc,
-          #   os: windows-2019,
+          #   os: windows-latest,
           #   rust: stable,
           #   target: x86_64-pc-windows-msvc
           # },
           # {
           #   plat: win-gnu,
-          #   os: windows-2019,
+          #   os: windows-latest,
           #   rust: stable-x86_64-gnu,
           #   target: x86_64-pc-windows-gnu
           # },
           # {
           #   plat: win32-msvc,
-          #   os: windows-2019,
+          #   os: windows-latest,
           #   rust: stable,
           #   target: i686-pc-windows-msvc
           # },
@@ -176,7 +176,7 @@ jobs:
           use-cross: ${{ env.USE_CROSS }}
       - name: Strip release binary (linux and macos)
         if: matrix.build.plat == 'linux' || matrix.build.plat == 'macos'
-        run: strip "target/${{ matrix.build.target }}/release/{{ env.RELEASE_NAME }}"
+        run: strip "target/${{ matrix.build.target }}/release/${{ env.RELEASE_NAME }}"
       - name: Strip release binary (arm)
         if: matrix.build.plat == 'linux-arm'
         run: |
@@ -184,21 +184,21 @@ jobs:
             "$PWD/target:/target:Z" \
             rustembedded/cross:arm-unknown-linux-gnueabihf \
             arm-linux-gnueabihf-strip \
-            /target/arm-unknown-linux-gnueabihf/release/{{ env.RELEASE_NAME }}
+            /target/arm-unknown-linux-gnueabihf/release/${{ env.RELEASE_NAME }}
       - name: Build archive
         shell: bash
         run: |
-          staging="{{ env.RELEASE_NAME }}-${{ needs.create-release.outputs.release_version }}-${{ matrix.build.target }}"
+          staging="${{ env.RELEASE_NAME }}-${{ needs.create-release.outputs.release_version }}-${{ matrix.build.target }}"
           mkdir -p "$staging"
           cp {README.md,LICENSE} "$staging/"
-          if [ "${{ matrix.build.os }}" = "windows-2019" ]; then
-            cp 'target/${{ matrix.build.target }}/release/{{ env.RELEASE_NAME }}.exe' '$staging/'
+          if [ "${{ matrix.build.os }}" = "windows-latest" ]; then
+            cp "target/${{ matrix.build.target }}/release/${{ env.RELEASE_NAME }}.exe" "$staging/"
             7z a "$staging.zip" "$staging"
             echo "ASSET=$staging.zip" >> $GITHUB_ENV
             sha256sum "$staging.zip" > "$staging.zip.sha256sum"
             echo "ASSET_SHA256SUM=$staging.zip.sha256sum" >> $GITHUB_ENV
           else
-            cp "target/${{ matrix.build.target }}/release/{{ env.RELEASE_NAME }}" "$staging/"
+            cp "target/${{ matrix.build.target }}/release/${{ env.RELEASE_NAME }}" "$staging/"
             tar czf "$staging.tar.gz" "$staging"
             echo "ASSET=$staging.tar.gz" >> $GITHUB_ENV
             shasum -a 256 "$staging.tar.gz" > "$staging.tar.gz.sha256sum"
@@ -220,6 +220,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ matrix.upload_url }}
-          asset_path: "${{ env.ASSET }}.sha256sum"
-          asset_name: "${{ env.ASSET }}.sha256sum"
+          asset_path: ${{ env.ASSET }}.sha256sum
+          asset_name: ${{ env.ASSET }}.sha256sum
           asset_content_type: application/octet-stream
