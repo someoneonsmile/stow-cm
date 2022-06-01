@@ -10,7 +10,7 @@ impl<T: Merge<T> + Clone> Merge<Option<T>> for Option<T> {
         match (self, other) {
             (Some(a), Some(b)) => Some(a.merge(b)),
             (Some(a), None) => Some(a),
-            (None, Some(b)) => Some(b.clone()),
+            (None, Some(b)) => Some(b),
             (None, None) => None,
         }
     }
@@ -19,7 +19,7 @@ impl<T: Merge<T> + Clone> Merge<Option<T>> for Option<T> {
 // TODO: maybe should move them to the defined file
 impl Merge<Config> for Config {
     fn merge(mut self, other: Config) -> Config {
-        self.target = self.target.or_else(|| other.target.clone());
+        self.target = self.target.or(other.target);
         self.ignore = self.ignore.merge(other.ignore);
         self.force = self.force.merge(other.force);
         self

@@ -30,7 +30,7 @@ impl<'a> CollectBot<'a> {
                 self.path
                     .file_name()
                     .and_then(|s| s.to_str())
-                    .ok_or(anyhow!("invalid file name"))?,
+                    .ok_or_else(|| anyhow!("invalid file name"))?,
             ) {
                 return Ok((true, None));
             }

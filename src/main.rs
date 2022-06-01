@@ -144,7 +144,10 @@ async fn reload<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
 /// install packages
 async fn install<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
     info!("install pack: {:?}", pack.as_ref());
-    let target = config.target.as_ref().ok_or(anyhow!("target is None"))?;
+    let target = config
+        .target
+        .as_ref()
+        .ok_or_else(|| anyhow!("target is None"))?;
     let ignore_re = match &config.ignore {
         Some(ignore_regexs) => RegexSet::new(ignore_regexs).ok(),
         None => None,
@@ -193,7 +196,7 @@ async fn remove<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
     let target = config
         .target
         .as_ref()
-        .ok_or(anyhow!("config target is None"))?;
+        .ok_or_else(|| anyhow!("config target is None"))?;
     let ignore_re = match &config.ignore {
         Some(ignore_regexs) => RegexSet::new(ignore_regexs).ok(),
         None => None,
