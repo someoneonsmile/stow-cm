@@ -1,4 +1,5 @@
 # config manager (simple impl of gnu-stow)
+
 ## USEAGE
 
 ```sh
@@ -18,11 +19,11 @@ stow -r ./*
 
 - config file location and find order
 
-    - `$XDG_CONFIG_HOME/stow/config`
-    - `./.stowrc`
-    - `{stow pack dir}/.stowrc`
+  - `$XDG_CONFIG_HOME/stow/config`
+  - `./.stowrc`
+  - `{stow pack dir}/.stowrc`
 
-    > note: it not use the pack/pack_sub_path/.stowrc
+  > note: it not use the pack/pack_sub_path/.stowrc
 
 - config file format
 
@@ -53,3 +54,6 @@ ignore = [
 - [ ] 加密
 - [ ] protect mode (don't excute in non stow dir)
 - [ ] github action (auto archive)
+
+- [ ] start script
+- [ ] tracing log
