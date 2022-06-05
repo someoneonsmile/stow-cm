@@ -37,23 +37,18 @@ async fn main() -> Result<()> {
 
     // TODO: path config fixed (ex: ~/.config/stow/config)
     // TODO: make the cli config not be override ?
-    let common_config = Config::from_path("$XDG_CONFIG_HOME/stow/config")?;
-    let common_config =
-        common_config.merge(Config::from_path(format!("./{:?}", CONFIG_FILE_NAME))?);
+    let common_config = Config::from_path("${XDG_CONFIG_HOME:-~/.config}/stow/config")?;
+
     debug!("common_config: {:?}", common_config);
 
-    let config = Config::from_cli(&opt)?
-        .merge(common_config)
-        .merge(Some(Default::default()));
-
     if let Some(to_remove) = opt.to_remove {
-        remove_all(&config, to_remove).await?;
+        remove_all(&common_config, to_remove).await?;
     }
     if let Some(to_install) = opt.to_install {
-        install_all(&config, to_install).await?;
+        install_all(&common_config, to_install).await?;
     }
     if let Some(to_reload) = opt.to_reload {
-        reload_all(&config, to_reload).await?;
+        reload_all(&common_config, to_reload).await?;
     }
 
     Ok(())

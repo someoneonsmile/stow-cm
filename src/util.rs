@@ -22,5 +22,7 @@ pub(crate) fn shell_expend_full<P: AsRef<Path>>(path: P) -> Result<PathBuf> {
         .as_ref()
         .to_str()
         .ok_or_else(|| anyhow!("path error"))?;
-    return Ok(PathBuf::from(shellexpand::full(origin)?.as_ref()));
+    return Ok(PathBuf::from(
+        shellexpand::tilde(shellexpand::full(origin)?.as_ref()).as_ref(),
+    ));
 }

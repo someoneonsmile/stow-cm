@@ -17,15 +17,14 @@ stow -r ./*
 
 ## CONFIG
 
-- config file location and find order
+### Location
 
-  - `$XDG_CONFIG_HOME/stow/config`
-  - `./.stowrc`
-  - `{stow pack dir}/.stowrc`
+- `$XDG_CONFIG_HOME/stow/config`: common config
+- `{stow pack dir}/.stowrc`: pack config
 
-  > note: it not use the pack/pack_sub_path/.stowrc
+> note: it not use the pack/pack_sub_path/.stowrc
 
-- config file format
+### Format
 
 ```toml
 # toml format
