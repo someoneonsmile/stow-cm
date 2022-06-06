@@ -6,7 +6,6 @@
 # -i install pack
 # -d remove pack
 # -r reload pack
-# -f force replace target file, if the pack config not config the force option
 stow -i ./nvim /foo/bar
 stow -i ./nvim /foo/bar
 stow -d ./nvim /foo/bar
