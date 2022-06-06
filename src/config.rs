@@ -127,7 +127,7 @@ impl Command {
                     .stdin
                     .take()
                     .unwrap()
-                    .write(content.as_bytes())
+                    .write_all(content.as_bytes())
                     .await?;
                 c
             }
