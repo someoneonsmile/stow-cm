@@ -70,7 +70,7 @@ async fn install_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> Res
         }
         let config = pack_config.merge(common_config.clone()).unwrap();
         handles.push(tokio::spawn(async move {
-            install(&config, fs::canonicalize(&pack)?).await?;
+            install(&config, pack).await?;
             Ok(())
         }))
     }
@@ -94,7 +94,7 @@ async fn remove_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> Resu
         }
         let config = pack_config.merge(common_config.clone()).unwrap();
         handles.push(tokio::spawn(async move {
-            remove(&config, fs::canonicalize(&pack)?).await?;
+            remove(&config, pack).await?;
             Ok(())
         }))
     }
@@ -118,7 +118,7 @@ async fn reload_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> Resu
         }
         let config = pack_config.merge(common_config.clone()).unwrap();
         handles.push(tokio::spawn(async move {
-            reload(&config, fs::canonicalize(&pack)?).await?;
+            reload(&config, pack).await?;
             Ok(())
         }));
     }
@@ -131,14 +131,15 @@ async fn reload_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> Resu
 
 /// reload packages
 async fn reload<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
-    remove(config, fs::canonicalize(&pack)?).await?;
-    install(config, fs::canonicalize(&pack)?).await?;
+    remove(config, &pack).await?;
+    install(config, pack).await?;
     Ok(())
 }
 
 /// install packages
 async fn install<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
-    info!("install pack: {:?}", pack.as_ref());
+    let pack = fs::canonicalize(pack.as_ref())?;
+    info!("install pack: {:?}", pack);
     let target = config
         .target
         .as_ref()
@@ -149,7 +150,7 @@ async fn install<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
     };
 
     let mut paths = Vec::new();
-    for entry in fs::read_dir(pack.as_ref())? {
+    for entry in fs::read_dir(&pack)? {
         let (_, sub_path_option) = CollectBot::new(entry?.path(), &ignore_re).collect()?;
         if let Some(mut sub_paths) = sub_path_option {
             paths.append(&mut sub_paths);
@@ -158,11 +159,10 @@ async fn install<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
 
     let mut handles = Vec::<JoinHandle<Result<()>>>::new();
     for path in paths {
-        let path_target = PathBuf::from(&target).join(path.strip_prefix(pack.as_ref())?);
+        let path_target = PathBuf::from(&target).join(path.strip_prefix(&pack)?);
         if path_target.exists() {
-            if let Some(true) = &config.force {
-            } else {
-                if let Ok(false) = same_file::is_same_file(&path, &path_target) {
+            if let Some(false) | None = &config.force {
+                if let Ok(false) | Err(_) = same_file::is_same_file(&path, &path_target) {
                     error!("target has exists, target:{:?}", path_target);
                 }
                 continue;
@@ -182,12 +182,18 @@ async fn install<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
         handle.await??;
     }
 
+    // TODO: execute the init script
+    if let Some(command) = &config.init {
+        command.exec_async(&pack).await?;
+    }
+
     Ok(())
 }
 
 /// remove packages
 async fn remove<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
-    info!("remove pack: {:?}", pack.as_ref());
+    let pack = fs::canonicalize(pack.as_ref())?;
+    info!("remove pack: {:?}", pack);
     let target = config
         .target
         .as_ref()
@@ -207,13 +213,14 @@ async fn remove<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
 
     let mut handles = Vec::<JoinHandle<Result<()>>>::new();
     for path in paths {
-        let path_target =
-            PathBuf::from(&target).join(PathBuf::from(&path).strip_prefix(pack.as_ref())?);
+        let path_target = PathBuf::from(&target).join(PathBuf::from(&path).strip_prefix(&pack)?);
         if !path_target.exists() {
-            let _ = fs::remove_file(&path_target);
             continue;
         }
-        if let Ok(false) = same_file::is_same_file(&path_target, &path) {
+        if matches!(
+            same_file::is_same_file(&path_target, &path),
+            Ok(false) | Err(_)
+        ) {
             error!("remove symlink, not same_file, target:{:?}", path_target);
             continue;
         }
@@ -226,6 +233,11 @@ async fn remove<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
     // TODO: replace with await all, and handle the result
     for handle in handles {
         handle.await??;
+    }
+
+    // TODO: execute the clear script
+    if let Some(command) = &config.clear {
+        command.exec_async(&pack).await?;
     }
 
     Ok(())

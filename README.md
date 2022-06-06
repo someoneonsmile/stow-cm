@@ -8,7 +8,7 @@
 # -r reload pack
 # -f force replace target file, if the pack config not config the force option
 stow -i ./nvim /foo/bar
-stow -i ./nvim /foo/bar -f
+stow -i ./nvim /foo/bar
 stow -d ./nvim /foo/bar
 stow -r ./nvim /foo/bar
 stow -r ./nvim /foo/bar -d /bar
@@ -36,6 +36,18 @@ ignore = [
     ".*\\.md",
     ".*\\.lock",
 ]
+
+[init]
+type = "[Bin/Shell/Python/Make/Script]"
+# Bin/Shell/Python/Make: file path on the pack
+# Script: string
+content = "file path on the pack"
+
+[clear]
+type = "[Bin/Shell/Python/Make/Script]"
+# Bin/Shell/Python/Make: file path on the pack
+# Script: string
+content = "file path on the pack"
 ```
 
 ## TODO
@@ -54,5 +66,5 @@ ignore = [
 - [ ] protect mode (don't excute in non stow dir)
 - [ ] github action (auto archive)
 
-- [ ] start script
+- [x] start script
 - [ ] tracing log

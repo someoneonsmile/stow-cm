@@ -17,10 +17,9 @@ pub struct Opt {
     /// packages to install
     #[structopt(short = "r", long = "reload")]
     pub to_reload: Option<Vec<PathBuf>>,
-
-    /// force replace
-    #[structopt(short = "f", long = "force", parse(from_flag))]
-    pub force: bool,
+    // force replace
+    // #[structopt(short = "f", long = "force", parse(from_flag))]
+    // pub force: bool,
 }
 
 impl Opt {
