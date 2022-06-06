@@ -36,10 +36,10 @@ pub(crate) enum Command {
     Bin(PathBuf),
 
     /// shell 脚本
-    Sh(PathBuf),
+    Shell(PathBuf),
 
     /// 脚本字符串
-    ShStr(String),
+    ShellStr(String),
 
     /// Makefile
     Make(PathBuf),
@@ -102,7 +102,7 @@ impl Command {
                 c
             }
 
-            Self::Sh(path) => {
+            Self::Shell(path) => {
                 let mut c = tokio::process::Command::new("sh");
                 c.arg(path.as_os_str());
                 c
@@ -120,7 +120,7 @@ impl Command {
                 c
             }
 
-            Self::ShStr(content) => {
+            Self::ShellStr(content) => {
                 let mut c = tokio::process::Command::new("sh");
                 c.stdin(Stdio::piped())
                     .spawn()?
