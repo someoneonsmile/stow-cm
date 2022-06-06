@@ -87,7 +87,11 @@ impl Default for Config {
 impl Command {
     pub(crate) async fn exec_async(&self, wd: impl AsRef<Path>) -> Result<()> {
         let mut command = match self {
-            Self::Bin(path) => tokio::process::Command::new(path.as_os_str()),
+            Self::Bin(path) => {
+                let path = fs::canonicalize(PathBuf::from(".").join(path))?;
+                let c = tokio::process::Command::new(path.as_os_str());
+                c
+            }
             Self::Make(path) => {
                 let mut c = tokio::process::Command::new("make");
                 c.arg(path.as_os_str());
