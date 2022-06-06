@@ -37,13 +37,13 @@ ignore = [
 ]
 
 [init]
-type = "[Bin/Shell/Python/Make/Script]"
-# Bin/Shell/Python/Make: file path on the pack
-# Script: string
+type = "[Bin/Python/Make/Lua/Shell/ShellStr]"
+# Bin/Shell/Python/Make/Lua: file path on the pack
+# ShellStr: string
 content = "file path on the pack"
 
 [clear]
-type = "[Bin/Shell/Python/Make/Script]"
+type = "[Bin/Python/Make/Lua/Shell/ShellStr]"
 # Bin/Shell/Python/Make: file path on the pack
 # Script: string
 content = "file path on the pack"

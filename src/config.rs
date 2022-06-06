@@ -36,16 +36,19 @@ pub(crate) enum Command {
     Bin(PathBuf),
 
     /// shell 脚本
-    Make(PathBuf),
+    Sh(PathBuf),
 
-    /// shell 脚本
-    Shell(PathBuf),
+    /// 脚本字符串
+    ShStr(String),
+
+    /// Makefile
+    Make(PathBuf),
 
     /// python 脚本
     Python(PathBuf),
 
-    /// 脚本字符串
-    Script(String),
+    /// lua 脚本
+    Lua(PathBuf),
 }
 
 impl Config {
@@ -92,23 +95,32 @@ impl Command {
                 let c = tokio::process::Command::new(path.as_os_str());
                 c
             }
+
             Self::Make(path) => {
                 let mut c = tokio::process::Command::new("make");
                 c.arg(path.as_os_str());
                 c
             }
-            Self::Shell(path) => {
+
+            Self::Sh(path) => {
                 let mut c = tokio::process::Command::new("sh");
                 c.arg(path.as_os_str());
                 c
             }
+
             Self::Python(path) => {
                 let mut c = tokio::process::Command::new("python");
                 c.arg(path.as_os_str());
                 c
             }
 
-            Self::Script(content) => {
+            Self::Lua(path) => {
+                let mut c = tokio::process::Command::new("lua");
+                c.arg(path.as_os_str());
+                c
+            }
+
+            Self::ShStr(content) => {
                 let mut c = tokio::process::Command::new("sh");
                 c.stdin(Stdio::piped())
                     .spawn()?
