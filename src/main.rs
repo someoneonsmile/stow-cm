@@ -38,8 +38,6 @@ async fn main() -> Result<()> {
     let opt = Opt::parse();
     debug!("opt: {:?}", opt);
 
-    // TODO: path config fixed (ex: ~/.config/stow/config)
-    // TODO: make the cli config not be override ?
     let common_config = Config::from_path("${XDG_CONFIG_HOME:-~/.config}/stow/config")?;
     let common_config = Arc::new(common_config);
 
@@ -159,7 +157,7 @@ async fn install<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
         })
         .await?;
 
-    // TODO: execute the init script
+    // execute the init script
     if let Some(command) = &config.init {
         command.exec_async(pack.deref()).await?;
     }
@@ -218,7 +216,7 @@ async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
         })
         .await?;
 
-    // TODO: execute the clear script
+    // execute the clear script
     if let Some(command) = &config.clear {
         command.exec_async(pack.deref()).await?;
     }
