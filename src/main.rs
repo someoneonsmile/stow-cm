@@ -89,31 +89,6 @@ where
     //     handle.await??;
     // }
 
-    // futures::stream::iter(packs.into_iter().filter_map(|pack| {
-    //     let pack_config = Config::from_path(pack.as_ref().join(CONFIG_FILE_NAME)).ok();
-    //     if pack_config.is_none() || pack_config.as_ref()?.is_none() {
-    //         warn!(
-    //             "{:?} is not the pack_home (witch contains .stowrc config file)",
-    //             pack.as_ref()
-    //         );
-    //         return None;
-    //     };
-    //     let config = Arc::new(pack_config?.merge(common_config.deref().clone())?);
-    //     Some(Ok((config, pack)) as Result<_>)
-    // }))
-    // .try_for_each_concurrent(None, |(config, pack)| {
-    //     let fu = (f)(config, pack);
-    //     async {
-    //         tokio::spawn(async {
-    //             fu.await?;
-    //             Ok(()) as Result<()>
-    //         })
-    //         .await??;
-    //         Ok(())
-    //     }
-    // })
-    // .await?;
-
     futures::stream::iter(packs.into_iter().map(Ok))
         .try_filter_map(|pack| async {
             let pack_config = Config::from_path(pack.as_ref().join(CONFIG_FILE_NAME))?;
@@ -125,18 +100,14 @@ where
                 return Ok(None);
             };
             let config = match pack_config.merge_lazy(|| common_config.deref().clone()) {
-                Some(v) => v,
+                Some(v) => Arc::new(v),
                 None => unreachable!(),
             };
-            let fut = (f)(Arc::new(config), pack);
-            Ok(Some(fut)) as Result<_>
+            let fut = tokio::spawn((f)(config, pack));
+            Ok(Some(fut)) as Result<Option<JoinHandle<Result<()>>>>
         })
         .try_for_each_concurrent(None, |future| async move {
-            tokio::spawn(async {
-                future.await?;
-                Ok(()) as Result<()>
-            })
-            .await??;
+            future.await??;
             Ok(())
         })
         .await?;
@@ -214,20 +185,20 @@ async fn install<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
                         return Ok(None);
                     }
                 }
+                fs::remove_file(&path_target)?;
             }
-            Ok(Some((path, path_target))) as Result<Option<(PathBuf, PathBuf)>>
-        })
-        .try_for_each_concurrent(None, |(path, path_target)| async move {
-            tokio::task::spawn_blocking(move || {
+            let fut = tokio::task::spawn_blocking(move || {
                 if let Some(parent) = path_target.parent() {
                     fs::create_dir_all(parent)?;
                 }
-                let _ = fs::remove_file(&path_target);
                 info!("install {:?} -> {:?}", path_target, path);
                 symlink(&path, &path_target)?;
                 Ok(()) as Result<()>
-            })
-            .await??;
+            });
+            Ok(Some(fut)) as Result<Option<JoinHandle<Result<()>>>>
+        })
+        .try_for_each_concurrent(None, |future| async move {
+            future.await??;
             Ok(())
         })
         .await?;
@@ -276,30 +247,53 @@ async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
         .await??
     };
 
-    let mut handles = Vec::<JoinHandle<Result<()>>>::new();
-    for path in paths {
-        let path_target =
-            PathBuf::from(&target).join(PathBuf::from(&path).strip_prefix(pack.deref())?);
-        if !path_target.exists() {
-            continue;
-        }
-        if matches!(
-            same_file::is_same_file(&path_target, &path),
-            Ok(false) | Err(_)
-        ) {
-            error!("remove symlink, not same_file, target:{:?}", path_target);
-            continue;
-        }
-        handles.push(tokio::task::spawn_blocking(move || {
-            info!("remove {:?} -> {:?}", path_target, path);
-            fs::remove_file(&path_target)?;
+    // let mut handles = Vec::<JoinHandle<Result<()>>>::new();
+    // for path in paths {
+    //     let path_target =
+    //         PathBuf::from(&target).join(PathBuf::from(&path).strip_prefix(pack.deref())?);
+    //     if !path_target.exists() {
+    //         continue;
+    //     }
+    //     if matches!(
+    //         same_file::is_same_file(&path_target, &path),
+    //         Ok(false) | Err(_)
+    //     ) {
+    //         error!("remove symlink, not same_file, target:{:?}", path_target);
+    //         continue;
+    //     }
+    //     handles.push(tokio::task::spawn_blocking(move || {
+    //         info!("remove {:?} -> {:?}", path_target, path);
+    //         fs::remove_file(&path_target)?;
+    //         Ok(())
+    //     }))
+    // }
+    // // TODO: replace with await all, and handle the result
+    // for handle in handles {
+    //     handle.await??;
+    // }
+
+    futures::stream::iter(paths.into_iter().map(Ok))
+        .try_filter_map(|path| async {
+            let path_target = PathBuf::from(target).join(path.strip_prefix(pack.deref())?);
+            if path_target.exists() {
+                return Ok(None);
+            }
+            if !same_file::is_same_file(&path, &path_target)? {
+                error!("remove symlink, not same_file, target:{:?}", path_target);
+                return Ok(None);
+            }
+            let fut = tokio::task::spawn_blocking(move || {
+                info!("remove {:?} -> {:?}", path_target, path);
+                fs::remove_file(&path_target)?;
+                Ok(()) as Result<()>
+            });
+            Ok(Some(fut)) as Result<Option<JoinHandle<Result<()>>>>
+        })
+        .try_for_each_concurrent(None, |future| async move {
+            future.await??;
             Ok(())
-        }))
-    }
-    // TODO: replace with await all, and handle the result
-    for handle in handles {
-        handle.await??;
-    }
+        })
+        .await?;
 
     // TODO: execute the clear script
     if let Some(command) = &config.clear {
