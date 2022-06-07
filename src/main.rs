@@ -2,13 +2,13 @@ use futures::prelude::*;
 use log::{debug, error, info, warn};
 use merge::MergeLazy;
 use regex::RegexSet;
-use std::fs;
 use std::ops::Deref;
 use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::vec::Vec;
+use tokio::fs;
 use tokio::task::JoinHandle;
 
 use crate::cli::Opt;
@@ -124,7 +124,7 @@ async fn reload<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
 
 /// install packages
 async fn install<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
-    let pack = Arc::new(fs::canonicalize(pack.as_ref())?);
+    let pack = Arc::new(fs::canonicalize(pack.as_ref()).await?);
     info!("install pack: {:?}", pack);
     let target = config
         .target
@@ -139,7 +139,7 @@ async fn install<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
         let pack = pack.clone();
         tokio::task::spawn_blocking(move || {
             let mut paths = Vec::new();
-            for entry in fs::read_dir(pack.deref())? {
+            for entry in std::fs::read_dir(pack.deref())? {
                 let (_, sub_path_option) = CollectBot::new(entry?.path(), &ignore_re).collect()?;
                 if let Some(mut sub_paths) = sub_path_option {
                     paths.append(&mut sub_paths);
@@ -185,20 +185,22 @@ async fn install<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
                         return Ok(None);
                     }
                 }
-                fs::remove_file(&path_target)?;
             }
-            let fut = tokio::task::spawn_blocking(move || {
+            let fut = async move {
+                if path_target.exists() {
+                    fs::remove_file(&path_target).await?;
+                }
                 if let Some(parent) = path_target.parent() {
-                    fs::create_dir_all(parent)?;
+                    fs::create_dir_all(parent).await?;
                 }
                 info!("install {:?} -> {:?}", path_target, path);
                 symlink(&path, &path_target)?;
                 Ok(()) as Result<()>
-            });
-            Ok(Some(fut)) as Result<Option<JoinHandle<Result<()>>>>
+            };
+            Ok(Some(fut)) as Result<_>
         })
         .try_for_each_concurrent(None, |future| async move {
-            future.await??;
+            future.await?;
             Ok(())
         })
         .await?;
@@ -213,7 +215,7 @@ async fn install<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
 
 /// remove packages
 async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
-    let pack = Arc::new(fs::canonicalize(pack.as_ref())?);
+    let pack = Arc::new(fs::canonicalize(pack.as_ref()).await?);
     info!("remove pack: {:?}", pack);
     let target = config
         .target
@@ -236,7 +238,7 @@ async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
         let pack = pack.clone();
         tokio::task::spawn_blocking(move || {
             let mut paths = Vec::new();
-            for entry in fs::read_dir(pack.deref())? {
+            for entry in std::fs::read_dir(pack.deref())? {
                 let (_, sub_path_option) = CollectBot::new(entry?.path(), &ignore_re).collect()?;
                 if let Some(mut sub_paths) = sub_path_option {
                     paths.append(&mut sub_paths);
@@ -282,15 +284,15 @@ async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
                 error!("remove symlink, not same_file, target:{:?}", path_target);
                 return Ok(None);
             }
-            let fut = tokio::task::spawn_blocking(move || {
+            let fut = async move {
                 info!("remove {:?} -> {:?}", path_target, path);
-                fs::remove_file(&path_target)?;
+                fs::remove_file(&path_target).await?;
                 Ok(()) as Result<()>
-            });
-            Ok(Some(fut)) as Result<Option<JoinHandle<Result<()>>>>
+            };
+            Ok(Some(fut)) as Result<_>
         })
         .try_for_each_concurrent(None, |future| async move {
-            future.await??;
+            future.await?;
             Ok(())
         })
         .await?;
