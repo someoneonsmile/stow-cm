@@ -5,6 +5,16 @@ pub trait Merge<T> {
     fn merge(self, other: T) -> T;
 }
 
+pub trait MergeLazy<T, F: Fn() -> T> {
+    fn merge_lazy(self, other: F) -> T;
+}
+
+impl<T: Merge<T>, F: Fn() -> T> MergeLazy<T, F> for T {
+    fn merge_lazy(self, other: F) -> T {
+        self.merge((other)())
+    }
+}
+
 impl<T: Merge<T> + Clone> Merge<Self> for Option<T> {
     fn merge(self, other: Option<T>) -> Option<T> {
         match (self, other) {

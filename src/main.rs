@@ -1,9 +1,13 @@
+use futures::prelude::*;
 use log::{debug, error, info, warn};
+use merge::MergeLazy;
 use regex::RegexSet;
 use std::fs;
+use std::ops::Deref;
 use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::vec::Vec;
 use tokio::task::JoinHandle;
 
@@ -11,7 +15,6 @@ use crate::cli::Opt;
 use crate::collect_bot::CollectBot;
 use crate::config::{Config, CONFIG_FILE_NAME};
 use crate::error::{anyhow, Result};
-use crate::merge::Merge;
 
 mod cli;
 mod collect_bot;
@@ -38,107 +41,119 @@ async fn main() -> Result<()> {
     // TODO: path config fixed (ex: ~/.config/stow/config)
     // TODO: make the cli config not be override ?
     let common_config = Config::from_path("${XDG_CONFIG_HOME:-~/.config}/stow/config")?;
+    let common_config = Arc::new(common_config);
 
     debug!("common_config: {:?}", common_config);
 
     if let Some(to_remove) = opt.to_remove {
-        remove_all(&common_config, to_remove).await?;
+        let common_config = common_config.clone();
+        exec_all(common_config, to_remove, remove).await?;
     }
     if let Some(to_install) = opt.to_install {
-        install_all(&common_config, to_install).await?;
+        let common_config = common_config.clone();
+        exec_all(common_config, to_install, install).await?;
     }
     if let Some(to_reload) = opt.to_reload {
-        reload_all(&common_config, to_reload).await?;
+        let common_config = common_config.clone();
+        exec_all(common_config, to_reload, reload).await?;
     }
 
     Ok(())
 }
 
-/// install packages
-async fn install_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> Result<()> {
-    let mut handles = Vec::<JoinHandle<Result<()>>>::new();
-    for pack in packs {
-        // TODO: rename to home_config or pack_config, and determine whether it is a pack
-        // should we move the resolve pack config and judge if it's a valid pack logic into install ?
-        let pack_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
-        if pack_config.is_none() {
-            warn!(
-                "{:?} is not the pack_home (witch contains .stowrc config file)",
-                pack
-            );
-            continue;
-        }
-        let config = pack_config.merge(common_config.clone()).unwrap();
-        handles.push(tokio::spawn(async move {
-            install(&config, pack).await?;
-            Ok(())
-        }))
-    }
-    for handle in handles {
-        handle.await??;
-    }
-    Ok(())
-}
+/// exec packages
+async fn exec_all<F, P, Fut>(common_config: Arc<Option<Config>>, packs: Vec<P>, f: F) -> Result<()>
+where
+    F: Fn(Arc<Config>, P) -> Fut,
+    P: AsRef<Path>,
+    Fut: std::future::Future<Output = Result<()>> + Send + 'static,
+{
+    // let mut handles = Vec::<JoinHandle<Result<()>>>::new();
+    // for pack in packs {
+    //     let pack_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
+    //     if pack_config.is_none() {
+    //         warn!(
+    //             "{:?} is not the pack_home (witch contains .stowrc config file)",
+    //             pack
+    //         );
+    //         continue;
+    //     }
+    //     let config = pack_config.merge(common_config.clone()).unwrap();
+    //     handles.push(tokio::spawn(async move {
+    //         reload(&config, pack).await?;
+    //         Ok(())
+    //     }));
+    // }
+    // // TODO: replace with await all, and handle the result
+    // for handle in handles {
+    //     handle.await??;
+    // }
 
-/// remove packages
-async fn remove_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> Result<()> {
-    let mut handles = Vec::<JoinHandle<Result<()>>>::new();
-    for pack in packs {
-        let pack_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
-        if pack_config.is_none() {
-            warn!(
-                "{:?} is not the pack_home (witch contains .stowrc config file)",
-                pack
-            );
-            continue;
-        }
-        let config = pack_config.merge(common_config.clone()).unwrap();
-        handles.push(tokio::spawn(async move {
-            remove(&config, pack).await?;
-            Ok(())
-        }))
-    }
-    for handle in handles {
-        handle.await??;
-    }
-    Ok(())
-}
+    // futures::stream::iter(packs.into_iter().filter_map(|pack| {
+    //     let pack_config = Config::from_path(pack.as_ref().join(CONFIG_FILE_NAME)).ok();
+    //     if pack_config.is_none() || pack_config.as_ref()?.is_none() {
+    //         warn!(
+    //             "{:?} is not the pack_home (witch contains .stowrc config file)",
+    //             pack.as_ref()
+    //         );
+    //         return None;
+    //     };
+    //     let config = Arc::new(pack_config?.merge(common_config.deref().clone())?);
+    //     Some(Ok((config, pack)) as Result<_>)
+    // }))
+    // .try_for_each_concurrent(None, |(config, pack)| {
+    //     let fu = (f)(config, pack);
+    //     async {
+    //         tokio::spawn(async {
+    //             fu.await?;
+    //             Ok(()) as Result<()>
+    //         })
+    //         .await??;
+    //         Ok(())
+    //     }
+    // })
+    // .await?;
 
-/// remove packages
-async fn reload_all(common_config: &Option<Config>, packs: Vec<PathBuf>) -> Result<()> {
-    let mut handles = Vec::<JoinHandle<Result<()>>>::new();
-    for pack in packs {
-        let pack_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
-        if pack_config.is_none() {
-            warn!(
-                "{:?} is not the pack_home (witch contains .stowrc config file)",
-                pack
-            );
-            continue;
-        }
-        let config = pack_config.merge(common_config.clone()).unwrap();
-        handles.push(tokio::spawn(async move {
-            reload(&config, pack).await?;
+    futures::stream::iter(packs.into_iter().map(Ok))
+        .try_filter_map(|pack| async {
+            let pack_config = Config::from_path(pack.as_ref().join(CONFIG_FILE_NAME))?;
+            if pack_config.is_none() {
+                warn!(
+                    "{:?} is not the pack_home (witch contains .stowrc config file)",
+                    pack.as_ref()
+                );
+                return Ok(None);
+            };
+            let config = match pack_config.merge_lazy(|| common_config.deref().clone()) {
+                Some(v) => v,
+                None => unreachable!(),
+            };
+            let fut = (f)(Arc::new(config), pack);
+            Ok(Some(fut)) as Result<_>
+        })
+        .try_for_each_concurrent(None, |future| async move {
+            tokio::spawn(async {
+                future.await?;
+                Ok(()) as Result<()>
+            })
+            .await??;
             Ok(())
-        }));
-    }
-    // TODO: replace with await all, and handle the result
-    for handle in handles {
-        handle.await??;
-    }
+        })
+        .await?;
+
     Ok(())
 }
 
 /// reload packages
-async fn reload<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
-    remove(config, &pack).await?;
-    install(config, pack).await?;
+async fn reload<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
+    remove(config.clone(), &pack).await?;
+    install(config, &pack).await?;
     Ok(())
 }
 
 /// install packages
-async fn install<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
-    let pack = fs::canonicalize(pack.as_ref())?;
+async fn install<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
+    let pack = Arc::new(fs::canonicalize(pack.as_ref())?);
     info!("install pack: {:?}", pack);
     let target = config
         .target
@@ -149,50 +164,85 @@ async fn install<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
         None => None,
     };
 
-    let mut paths = Vec::new();
-    for entry in fs::read_dir(&pack)? {
-        let (_, sub_path_option) = CollectBot::new(entry?.path(), &ignore_re).collect()?;
-        if let Some(mut sub_paths) = sub_path_option {
-            paths.append(&mut sub_paths);
-        }
-    }
-
-    let mut handles = Vec::<JoinHandle<Result<()>>>::new();
-    for path in paths {
-        let path_target = PathBuf::from(&target).join(path.strip_prefix(&pack)?);
-        if path_target.exists() {
-            if let Some(false) | None = &config.force {
-                if let Ok(false) | Err(_) = same_file::is_same_file(&path, &path_target) {
-                    error!("target has exists, target:{:?}", path_target);
+    let paths = {
+        let pack = pack.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut paths = Vec::new();
+            for entry in fs::read_dir(pack.deref())? {
+                let (_, sub_path_option) = CollectBot::new(entry?.path(), &ignore_re).collect()?;
+                if let Some(mut sub_paths) = sub_path_option {
+                    paths.append(&mut sub_paths);
                 }
-                continue;
             }
-        }
-        handles.push(tokio::task::spawn_blocking(move || {
-            if let Some(parent) = path_target.parent() {
-                fs::create_dir_all(parent)?;
+            Ok(paths) as Result<Vec<PathBuf>>
+        })
+        .await??
+    };
+
+    // let mut handles = Vec::<JoinHandle<Result<()>>>::new();
+    // for path in paths {
+    //     let path_target = PathBuf::from(&target).join(path.strip_prefix(pack.deref())?);
+    //     if path_target.exists() {
+    //         if let Some(false) | None = &config.force {
+    //             if let Ok(false) | Err(_) = same_file::is_same_file(&path, &path_target) {
+    //                 error!("target has exists, target:{:?}", path_target);
+    //             }
+    //             continue;
+    //         }
+    //     }
+    //     handles.push(tokio::task::spawn_blocking(move || {
+    //         if let Some(parent) = path_target.parent() {
+    //             fs::create_dir_all(parent)?;
+    //         }
+    //         let _ = fs::remove_file(&path_target);
+    //         info!("install {:?} -> {:?}", path_target, path);
+    //         symlink(&path, &path_target)?;
+    //         Ok(())
+    //     }));
+    // }
+    // for handle in handles {
+    //     handle.await??;
+    // }
+
+    futures::stream::iter(paths.into_iter().map(Ok))
+        .try_filter_map(|path| async {
+            let path_target = PathBuf::from(target).join(path.strip_prefix(pack.deref())?);
+            if path_target.exists() {
+                if let Some(false) | None = config.force {
+                    if let Ok(false) | Err(_) = same_file::is_same_file(&path, &path_target) {
+                        error!("target has exists, target:{:?}", path_target);
+                        return Ok(None);
+                    }
+                }
             }
-            let _ = fs::remove_file(&path_target);
-            info!("install {:?} -> {:?}", path_target, path);
-            symlink(&path, &path_target)?;
+            Ok(Some((path, path_target))) as Result<Option<(PathBuf, PathBuf)>>
+        })
+        .try_for_each_concurrent(None, |(path, path_target)| async move {
+            tokio::task::spawn_blocking(move || {
+                if let Some(parent) = path_target.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                let _ = fs::remove_file(&path_target);
+                info!("install {:?} -> {:?}", path_target, path);
+                symlink(&path, &path_target)?;
+                Ok(()) as Result<()>
+            })
+            .await??;
             Ok(())
-        }));
-    }
-    for handle in handles {
-        handle.await??;
-    }
+        })
+        .await?;
 
     // TODO: execute the init script
     if let Some(command) = &config.init {
-        command.exec_async(&pack).await?;
+        command.exec_async(pack.deref()).await?;
     }
 
     Ok(())
 }
 
 /// remove packages
-async fn remove<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
-    let pack = fs::canonicalize(pack.as_ref())?;
+async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
+    let pack = Arc::new(fs::canonicalize(pack.as_ref())?);
     info!("remove pack: {:?}", pack);
     let target = config
         .target
@@ -203,17 +253,33 @@ async fn remove<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
         None => None,
     };
 
-    let mut paths = Vec::new();
-    for entry in fs::read_dir(&pack)? {
-        let (_, sub_path_option) = CollectBot::new(&entry?.path(), &ignore_re).collect()?;
-        if let Some(mut sub_paths) = sub_path_option {
-            paths.append(&mut sub_paths);
-        }
-    }
+    // let mut paths = Vec::new();
+    // for entry in fs::read_dir(&pack)? {
+    //     let (_, sub_path_option) = CollectBot::new(&entry?.path(), &ignore_re).collect()?;
+    //     if let Some(mut sub_paths) = sub_path_option {
+    //         paths.append(&mut sub_paths);
+    //     }
+    // }
+
+    let paths = {
+        let pack = pack.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut paths = Vec::new();
+            for entry in fs::read_dir(pack.deref())? {
+                let (_, sub_path_option) = CollectBot::new(entry?.path(), &ignore_re).collect()?;
+                if let Some(mut sub_paths) = sub_path_option {
+                    paths.append(&mut sub_paths);
+                }
+            }
+            Ok(paths) as Result<Vec<PathBuf>>
+        })
+        .await??
+    };
 
     let mut handles = Vec::<JoinHandle<Result<()>>>::new();
     for path in paths {
-        let path_target = PathBuf::from(&target).join(PathBuf::from(&path).strip_prefix(&pack)?);
+        let path_target =
+            PathBuf::from(&target).join(PathBuf::from(&path).strip_prefix(pack.deref())?);
         if !path_target.exists() {
             continue;
         }
@@ -237,7 +303,7 @@ async fn remove<P: AsRef<Path>>(config: &Config, pack: P) -> Result<()> {
 
     // TODO: execute the clear script
     if let Some(command) = &config.clear {
-        command.exec_async(&pack).await?;
+        command.exec_async(pack.deref()).await?;
     }
 
     Ok(())
