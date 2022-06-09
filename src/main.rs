@@ -133,7 +133,10 @@ async fn install<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
             if path_target.exists() {
                 if let Some(false) | None = config.force {
                     if let Ok(false) | Err(_) = same_file::is_same_file(&path, &path_target) {
-                        error!("target has exists, target:{:?}", path_target);
+                        error!(
+                            "target has exists and not same file, target:{:?}",
+                            path_target
+                        );
                         return Ok(None);
                     }
                 }
@@ -196,7 +199,7 @@ async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
     futures::stream::iter(paths.into_iter().map(Ok))
         .try_filter_map(|path| async {
             let path_target = PathBuf::from(target).join(path.strip_prefix(pack.deref())?);
-            if path_target.exists() {
+            if !path_target.exists() {
                 return Ok(None);
             }
             if !same_file::is_same_file(&path, &path_target)? {
