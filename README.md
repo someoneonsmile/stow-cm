@@ -67,3 +67,6 @@ content = "file path on the pack"
 
 - [x] start script
 - [ ] tracing log
+
+- [ ] valid conflict before install
+- [ ] remove refact

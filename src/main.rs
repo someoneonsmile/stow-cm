@@ -3,7 +3,6 @@ use log::{debug, error, info, warn};
 use merge::MergeLazy;
 use regex::RegexSet;
 use std::ops::Deref;
-use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -69,6 +68,7 @@ where
     futures::stream::iter(packs.into_iter().map(Ok))
         .try_filter_map(|pack| async {
             let pack_config = Config::from_path(pack.as_ref().join(CONFIG_FILE_NAME))?;
+            // TODO: maybe the pack_config can be optional
             if pack_config.is_none() {
                 warn!(
                     "{:?} is not the pack_home (witch contains .stowrc config file)",
@@ -133,6 +133,7 @@ async fn install<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
             if path_target.exists() {
                 if let Some(false) | None = config.force {
                     if let Ok(false) | Err(_) = same_file::is_same_file(&path, &path_target) {
+                        // TODO: return error
                         error!(
                             "target has exists and not same file, target:{:?}",
                             path_target
@@ -149,7 +150,8 @@ async fn install<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
                     fs::create_dir_all(parent).await?;
                 }
                 info!("install {:?} -> {:?}", path_target, path);
-                symlink(&path, &path_target)?;
+                fs::symlink(&path, &path_target).await?;
+
                 Ok(()) as Result<()>
             };
             Ok(Some(fut)) as Result<_>

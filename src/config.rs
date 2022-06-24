@@ -122,8 +122,8 @@ impl Command {
 
             Self::ShellStr(content) => {
                 let mut c = tokio::process::Command::new("sh");
-                c.stdin(Stdio::piped())
-                    .spawn()?
+                c.stdin(Stdio::piped());
+                c.spawn()?
                     .stdin
                     .take()
                     .unwrap()
@@ -132,7 +132,7 @@ impl Command {
                 c
             }
         };
-        command.current_dir(wd).spawn()?.wait().await?;
+        command.current_dir(wd).status().await?;
         Ok(())
     }
 }

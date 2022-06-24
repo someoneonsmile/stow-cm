@@ -17,6 +17,7 @@ anyhow = "1"
 log = { version = "0" }
 env_logger = "0"
 futures = "0"
+xattr = "0"
 # ignore = "0"
 # walkdir = "2"
 
