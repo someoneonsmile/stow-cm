@@ -1,6 +1,6 @@
 use futures::prelude::*;
 use log::{debug, info, warn};
-use merge::MergeLazy;
+use merge::MergeWith;
 use regex::RegexSet;
 use std::ops::Deref;
 use std::path::Path;
@@ -77,7 +77,7 @@ where
                 );
                 return Ok(None);
             };
-            let config = match pack_config.merge_lazy(|| common_config.deref().clone()) {
+            let config = match pack_config.merge_with(|| common_config.deref().clone()) {
                 Some(v) => Arc::new(v),
                 None => unreachable!(),
             };
