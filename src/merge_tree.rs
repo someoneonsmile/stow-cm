@@ -5,19 +5,20 @@ use std::path::{Path, PathBuf};
 
 use crate::error::Result;
 use crate::merge::Merge;
+use crate::symlink::Symlink;
 use crate::util;
 
-pub struct MergeTree<'a> {
+pub(crate) struct MergeTree<'a> {
     target: PathBuf,
     source: PathBuf,
     ignore: &'a Option<RegexSet>,
 }
 
-pub struct MergeResult {
+pub(crate) struct MergeResult {
     /// conflict file or dir
     pub conflicts: Option<Vec<PathBuf>>,
     /// install paths
-    pub install_paths: Option<Vec<(PathBuf, PathBuf)>>,
+    pub to_create_symlinks: Option<Vec<Symlink>>,
     /// expand the symlink dir
     pub expand_symlinks: Option<Vec<PathBuf>>,
     /// is there has ignore file under the dir
@@ -25,7 +26,7 @@ pub struct MergeResult {
 }
 
 impl<'a> MergeTree<'a> {
-    pub fn new(
+    pub(crate) fn new(
         target: impl AsRef<Path>,
         source: impl AsRef<Path>,
         ignore: &'a Option<RegexSet>,
@@ -40,12 +41,12 @@ impl<'a> MergeTree<'a> {
     /// 从树的叶子节点回溯
     /// 没有 Ignore 的时候, 折叠目录
     /// 返回当前根节点
-    pub fn merge_add(self) -> Result<MergeResult> {
+    pub(crate) fn merge_add(self) -> Result<MergeResult> {
         // source not exists
         if !self.source.exists() {
             return Ok(MergeResult {
                 conflicts: None,
-                install_paths: None,
+                to_create_symlinks: None,
                 expand_symlinks: None,
                 has_ignore: false,
             });
@@ -57,7 +58,7 @@ impl<'a> MergeTree<'a> {
                 return Ok(MergeResult {
                     conflicts: None,
                     expand_symlinks: None,
-                    install_paths: None,
+                    to_create_symlinks: None,
                     has_ignore: true,
                 });
             }
@@ -68,7 +69,7 @@ impl<'a> MergeTree<'a> {
             return Ok(MergeResult {
                 conflicts: None,
                 expand_symlinks: None,
-                install_paths: None,
+                to_create_symlinks: None,
                 has_ignore: false,
             });
         }
@@ -78,7 +79,7 @@ impl<'a> MergeTree<'a> {
             return Ok(MergeResult {
                 conflicts: Some(vec![self.source]),
                 expand_symlinks: None,
-                install_paths: None,
+                to_create_symlinks: None,
                 has_ignore: false,
             });
         }
@@ -88,7 +89,10 @@ impl<'a> MergeTree<'a> {
             return Ok(MergeResult {
                 conflicts: None,
                 expand_symlinks: None,
-                install_paths: Some(vec![(self.source, self.target)]),
+                to_create_symlinks: Some(vec![Symlink {
+                    src: self.source,
+                    dst: self.target,
+                }]),
                 has_ignore: false,
             });
         }
@@ -115,7 +119,7 @@ impl<'a> MergeTree<'a> {
             has_ignore |= sub_result.has_ignore;
             conflicts = conflicts.merge(sub_result.conflicts);
             expand_symlinks = expand_symlinks.merge(sub_result.expand_symlinks);
-            install_paths = install_paths.merge(sub_result.install_paths);
+            install_paths = install_paths.merge(sub_result.to_create_symlinks);
         }
 
         // fold dir
@@ -123,7 +127,10 @@ impl<'a> MergeTree<'a> {
             return Ok(MergeResult {
                 conflicts: None,
                 expand_symlinks: None,
-                install_paths: Some(vec![(self.source, self.target)]),
+                to_create_symlinks: Some(vec![Symlink {
+                    src: self.source,
+                    dst: self.target,
+                }]),
                 has_ignore: false,
             });
         }
@@ -131,7 +138,7 @@ impl<'a> MergeTree<'a> {
         Ok(MergeResult {
             conflicts,
             expand_symlinks,
-            install_paths,
+            to_create_symlinks: install_paths,
             has_ignore,
         })
     }

@@ -5,7 +5,7 @@ use structopt::StructOpt;
 /// config manager (simple impl of gnu-stow)
 #[derive(StructOpt, Debug)]
 #[structopt(name = "stow")]
-pub struct Opt {
+pub(crate) struct Opt {
     /// packages to install
     #[structopt(short = "i", long = "install")]
     pub to_install: Option<Vec<PathBuf>>,

@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 use crate::error::{anyhow, Result};
+use crate::symlink::Symlink;
 
 pub(crate) fn shell_expend_full<P: AsRef<Path>>(path: P) -> Result<PathBuf> {
     let origin = path
@@ -13,6 +14,7 @@ pub(crate) fn shell_expend_full<P: AsRef<Path>>(path: P) -> Result<PathBuf> {
     ));
 }
 
+/// expand the dir and symlink the subpath under the dir
 pub(crate) fn expand_symlink_dir(expand_symlink: impl AsRef<Path>) -> Result<()> {
     let sub_paths = std::fs::read_dir(&expand_symlink)?;
     let point_to = std::fs::read_link(&expand_symlink)?;
@@ -28,6 +30,7 @@ pub(crate) fn expand_symlink_dir(expand_symlink: impl AsRef<Path>) -> Result<()>
     Ok(())
 }
 
+/// just contains the dir don't has file
 pub(crate) fn is_empty_dir(path: impl AsRef<Path>) -> bool {
     !path.as_ref().exists()
         || (path.as_ref().is_dir()
@@ -39,10 +42,11 @@ pub(crate) fn is_empty_dir(path: impl AsRef<Path>) -> bool {
                 .is_none())
 }
 
-pub(crate) fn find_symlink_at(
+/// find the symlink that point to the path start with link_prefix
+pub(crate) fn find_prefix_symlink(
     dir_path: impl AsRef<Path>,
     link_prefix: impl AsRef<Path>,
-) -> Result<Vec<(PathBuf, PathBuf)>> {
+) -> Result<Vec<Symlink>> {
     let mut paths = Vec::new();
     if dir_path.as_ref().exists() {
         for entry in WalkDir::new(dir_path).follow_links(false) {
@@ -51,7 +55,10 @@ pub(crate) fn find_symlink_at(
             if path.is_symlink() {
                 let point_to = std::fs::read_link(&path)?;
                 if point_to.starts_with(&link_prefix) {
-                    paths.push((path, point_to));
+                    paths.push(Symlink {
+                        src: point_to,
+                        dst: path,
+                    });
                 }
             }
         }

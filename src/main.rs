@@ -1,11 +1,9 @@
-use anyhow::Context;
 use futures::prelude::*;
 use log::{debug, info, warn};
 use merge::MergeLazy;
 use regex::RegexSet;
 use std::ops::Deref;
 use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::vec::Vec;
 use tokio::fs;
@@ -14,6 +12,7 @@ use tokio::task::JoinHandle;
 use crate::cli::Opt;
 use crate::config::{Config, CONFIG_FILE_NAME};
 use crate::error::{anyhow, Result};
+use crate::symlink::Symlink;
 
 mod cli;
 mod config;
@@ -21,6 +20,7 @@ mod custom_type;
 mod error;
 mod merge;
 mod merge_tree;
+mod symlink;
 mod util;
 
 #[tokio::main]
@@ -40,7 +40,7 @@ async fn main() -> Result<()> {
     let common_config = Config::from_path("${XDG_CONFIG_HOME:-~/.config}/stow/config")?;
     let common_config = Arc::new(common_config);
 
-    debug!("common_config: {:?}", common_config);
+    debug!("common_config: {common_config:?}");
 
     if let Some(to_remove) = opt.to_remove {
         let common_config = common_config.clone();
@@ -71,8 +71,9 @@ where
             // TODO: maybe the pack_config can be optional
             if pack_config.is_none() {
                 warn!(
-                    "{:?} is not the pack_home (which contains .stowrc config file)",
-                    pack.as_ref()
+                    "{:?} is not the pack_home (which contains {} config file)",
+                    pack.as_ref(),
+                    CONFIG_FILE_NAME
                 );
                 return Ok(None);
             };
@@ -130,7 +131,7 @@ async fn install<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
                 }
             }
 
-            Ok(merge_result.install_paths.unwrap_or_default()) as Result<Vec<(PathBuf, PathBuf)>>
+            Ok(merge_result.to_create_symlinks.unwrap_or_default()) as Result<Vec<Symlink>>
         })
         .await??
     };
@@ -138,23 +139,19 @@ async fn install<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
     debug!("{pack:?} install paths: {paths:?}");
 
     futures::stream::iter(paths.into_iter().map(Ok))
-        .try_filter_map(|(path_source, path_target)| async {
-            if path_target.exists() {
+        .try_filter_map(|symlink| async {
+            if symlink.dst.exists() {
                 // remove the empty dir
-                if util::is_empty_dir(&path_target) {
-                    fs::remove_dir_all(&path_target).await?;
+                if util::is_empty_dir(&symlink.dst) {
+                    fs::remove_dir_all(&symlink.dst).await?;
                 } else {
-                    anyhow::bail!("install conflict: {path_target:?}");
+                    // TODO: maybe just log the error
+                    anyhow::bail!("install conflict: {symlink:?}");
                 }
             }
             let fut = async move {
-                if let Some(parent) = path_target.parent() {
-                    fs::create_dir_all(parent).await?;
-                }
-                info!("install {:?} -> {:?}", path_target, path_source);
-                fs::symlink(&path_source, &path_target).await?;
-
-                Ok(()) as Result<()>
+                info!("install {symlink:?}");
+                symlink.create().await
             };
             Ok(Some(fut)) as Result<_>
         })
@@ -177,7 +174,7 @@ async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
     let pack = Arc::new(fs::canonicalize(pack.as_ref()).await?);
     info!("remove pack: {:?}", pack);
 
-    let paths = {
+    let symlinks = {
         let pack = pack.clone();
         let config = config.clone();
         tokio::task::spawn_blocking(move || {
@@ -185,21 +182,18 @@ async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
                 .target
                 .as_ref()
                 .ok_or_else(|| anyhow!("config target is None"))?;
-            util::find_symlink_at(target, pack.deref())
+            util::find_prefix_symlink(target, pack.deref())
         })
         .await??
     };
 
-    debug!("{pack:?} remove paths: {paths:?}");
+    debug!("{pack:?} remove paths: {symlinks:?}");
 
-    futures::stream::iter(paths.into_iter().map(Ok))
-        .try_filter_map(|(path_link, path_source)| async {
+    futures::stream::iter(symlinks.into_iter().map(Ok))
+        .try_filter_map(|symlink| async {
             let fut = async move {
-                info!("remove {:?} -> {:?}", path_link, path_source);
-                fs::remove_file(&path_link)
-                    .await
-                    .with_context(|| format!("path: {path_link:?}"))?;
-                Ok(()) as Result<()>
+                info!("remove {symlink:?}");
+                symlink.remove().await
             };
             Ok(Some(fut)) as Result<_>
         })

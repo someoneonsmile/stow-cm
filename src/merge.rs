@@ -1,11 +1,11 @@
 use crate::config::Config;
 use crate::custom_type::Flag;
 
-pub trait Merge<T> {
+pub(crate) trait Merge<T> {
     fn merge(self, other: T) -> T;
 }
 
-pub trait MergeLazy<T, F: Fn() -> T> {
+pub(crate) trait MergeLazy<T, F: Fn() -> T> {
     fn merge_lazy(self, other: F) -> T;
 }
 
