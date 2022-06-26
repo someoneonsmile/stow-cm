@@ -1,5 +1,6 @@
+use anyhow::Context;
 use futures::prelude::*;
-use log::{debug, error, info, warn};
+use log::{debug, info, warn};
 use merge::MergeLazy;
 use regex::RegexSet;
 use std::ops::Deref;
@@ -11,16 +12,15 @@ use tokio::fs;
 use tokio::task::JoinHandle;
 
 use crate::cli::Opt;
-use crate::collect_bot::CollectBot;
 use crate::config::{Config, CONFIG_FILE_NAME};
 use crate::error::{anyhow, Result};
 
 mod cli;
-mod collect_bot;
 mod config;
 mod custom_type;
 mod error;
 mod merge;
+mod merge_tree;
 mod util;
 
 #[tokio::main]
@@ -71,7 +71,7 @@ where
             // TODO: maybe the pack_config can be optional
             if pack_config.is_none() {
                 warn!(
-                    "{:?} is not the pack_home (witch contains .stowrc config file)",
+                    "{:?} is not the pack_home (which contains .stowrc config file)",
                     pack.as_ref()
                 );
                 return Ok(None);
@@ -103,54 +103,56 @@ async fn reload<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
 async fn install<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
     let pack = Arc::new(fs::canonicalize(pack.as_ref()).await?);
     info!("install pack: {:?}", pack);
-    let target = config
-        .target
-        .as_ref()
-        .ok_or_else(|| anyhow!("target is None"))?;
-    let ignore_re = match &config.ignore {
+    let ignore_re = match config.ignore.as_ref() {
         Some(ignore_regexs) => RegexSet::new(ignore_regexs).ok(),
         None => None,
     };
 
     let paths = {
         let pack = pack.clone();
+        let config = config.clone();
         tokio::task::spawn_blocking(move || {
-            let mut paths = Vec::new();
-            for entry in std::fs::read_dir(pack.deref())? {
-                let (_, sub_path_option) = CollectBot::new(entry?.path(), &ignore_re).collect()?;
-                if let Some(mut sub_paths) = sub_path_option {
-                    paths.append(&mut sub_paths);
+            let target = config
+                .target
+                .as_ref()
+                .ok_or_else(|| anyhow!("target is None"))?;
+            let merge_result =
+                merge_tree::MergeTree::new(target, pack.deref(), &ignore_re).merge_add()?;
+
+            if let Some(conflicts) = merge_result.conflicts {
+                anyhow::bail!("check conflict: {:?}", conflicts);
+            }
+
+            if let Some(expand_symlinks) = merge_result.expand_symlinks {
+                // convert symlink dir to dir
+                for expand_symlink in expand_symlinks {
+                    util::expand_symlink_dir(expand_symlink)?;
                 }
             }
-            Ok(paths) as Result<Vec<PathBuf>>
+
+            Ok(merge_result.install_paths.unwrap_or_default()) as Result<Vec<(PathBuf, PathBuf)>>
         })
         .await??
     };
 
+    debug!("{pack:?} install paths: {paths:?}");
+
     futures::stream::iter(paths.into_iter().map(Ok))
-        .try_filter_map(|path| async {
-            let path_target = PathBuf::from(target).join(path.strip_prefix(pack.deref())?);
+        .try_filter_map(|(path_source, path_target)| async {
             if path_target.exists() {
-                if let Some(false) | None = config.force {
-                    if let Ok(false) | Err(_) = same_file::is_same_file(&path, &path_target) {
-                        // TODO: return error
-                        error!(
-                            "target has exists and not same file, target:{:?}",
-                            path_target
-                        );
-                        return Ok(None);
-                    }
+                // remove the empty dir
+                if util::is_empty_dir(&path_target) {
+                    fs::remove_dir_all(&path_target).await?;
+                } else {
+                    anyhow::bail!("install conflict: {path_target:?}");
                 }
             }
             let fut = async move {
-                if path_target.exists() {
-                    fs::remove_file(&path_target).await?;
-                }
                 if let Some(parent) = path_target.parent() {
                     fs::create_dir_all(parent).await?;
                 }
-                info!("install {:?} -> {:?}", path_target, path);
-                fs::symlink(&path, &path_target).await?;
+                info!("install {:?} -> {:?}", path_target, path_source);
+                fs::symlink(&path_source, &path_target).await?;
 
                 Ok(()) as Result<()>
             };
@@ -174,43 +176,29 @@ async fn install<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
 async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
     let pack = Arc::new(fs::canonicalize(pack.as_ref()).await?);
     info!("remove pack: {:?}", pack);
-    let target = config
-        .target
-        .as_ref()
-        .ok_or_else(|| anyhow!("config target is None"))?;
-    let ignore_re = match &config.ignore {
-        Some(ignore_regexs) => RegexSet::new(ignore_regexs).ok(),
-        None => None,
-    };
 
     let paths = {
         let pack = pack.clone();
+        let config = config.clone();
         tokio::task::spawn_blocking(move || {
-            let mut paths = Vec::new();
-            for entry in std::fs::read_dir(pack.deref())? {
-                let (_, sub_path_option) = CollectBot::new(entry?.path(), &ignore_re).collect()?;
-                if let Some(mut sub_paths) = sub_path_option {
-                    paths.append(&mut sub_paths);
-                }
-            }
-            Ok(paths) as Result<Vec<PathBuf>>
+            let target = config
+                .target
+                .as_ref()
+                .ok_or_else(|| anyhow!("config target is None"))?;
+            util::find_symlink_at(target, pack.deref())
         })
         .await??
     };
 
+    debug!("{pack:?} remove paths: {paths:?}");
+
     futures::stream::iter(paths.into_iter().map(Ok))
-        .try_filter_map(|path| async {
-            let path_target = PathBuf::from(target).join(path.strip_prefix(pack.deref())?);
-            if !path_target.exists() {
-                return Ok(None);
-            }
-            if !same_file::is_same_file(&path, &path_target)? {
-                error!("remove symlink, not same_file, target:{:?}", path_target);
-                return Ok(None);
-            }
+        .try_filter_map(|(path_link, path_source)| async {
             let fut = async move {
-                info!("remove {:?} -> {:?}", path_target, path);
-                fs::remove_file(&path_target).await?;
+                info!("remove {:?} -> {:?}", path_link, path_source);
+                fs::remove_file(&path_link)
+                    .await
+                    .with_context(|| format!("path: {path_link:?}"))?;
                 Ok(()) as Result<()>
             };
             Ok(Some(fut)) as Result<_>
