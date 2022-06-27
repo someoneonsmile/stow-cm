@@ -38,7 +38,7 @@ async fn main() -> Result<()> {
     let opt = Opt::parse();
     debug!("opt: {:?}", opt);
 
-    let common_config = Config::from_path("${XDG_CONFIG_HOME:-~/.config}/stow/config")?;
+    let common_config = Config::from_path("${XDG_CONFIG_HOME:-~/.config}/stow-cm/config.toml")?;
     let common_config = Arc::new(common_config);
 
     debug!("common_config: {common_config:?}");

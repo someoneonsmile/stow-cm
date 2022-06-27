@@ -2,9 +2,9 @@ use std::path::PathBuf;
 use std::vec::Vec;
 use structopt::StructOpt;
 
-/// config manager (simple impl of gnu-stow)
+/// config manager (gnu-stow like)
 #[derive(StructOpt, Debug)]
-#[structopt(name = "stow")]
+#[structopt(name = "stow-cm")]
 pub(crate) struct Opt {
     /// packages to install
     #[structopt(short = "i", long = "install")]

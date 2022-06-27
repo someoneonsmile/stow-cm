@@ -8,7 +8,7 @@ use crate::error::Result;
 use crate::merge::{Merge, MergeDefault};
 use crate::util;
 
-pub(crate) static CONFIG_FILE_NAME: &str = ".stowrc";
+pub(crate) static CONFIG_FILE_NAME: &str = "stow-cm.toml";
 
 /// pack config
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,4 +1,4 @@
-# config manager (simple impl of gnu-stow)
+# config manager (gnu-stow like)
 
 ## USEAGE
 
@@ -6,30 +6,31 @@
 # -i install pack
 # -d remove pack
 # -r reload pack
-stow -i ./nvim /foo/bar
-stow -i ./nvim /foo/bar
-stow -d ./nvim /foo/bar
-stow -r ./nvim /foo/bar
-stow -r ./nvim /foo/bar -d /bar
-stow -r ./*
+stow-cm -i ./nvim /foo/bar
+stow-cm -i ./nvim /foo/bar
+stow-cm -d ./nvim /foo/bar
+stow-cm -r ./nvim /foo/bar
+stow-cm -r ./nvim /foo/bar -d /bar
+stow-cm -r ./*
 ```
 
 ## CONFIG
 
 ### Location
 
-- `$XDG_CONFIG_HOME/stow/config`: common config
-- `{stow pack dir}/.stowrc`: pack config
+- `$XDG_CONFIG_HOME/stow-cm/config.toml`: common config
+- `{stow pack dir}/stow-cm.toml`: pack config
 
-> note: it not use the pack/pack_sub_path/.stowrc
+> note: it not use the pack/pack_sub_path/stow-cm.toml
 
 ### Format
 
 ```toml
 # toml format
 
-# target = "$XDG_CONFIG_HOME/stow/"
-target = "~"
+# env var support the default value: ${env:-default}
+# target = '${XDG_CONFIG_HOME:-~/.config}/stow-cm/'
+target = '~'
 
 # override
 override = [
@@ -47,16 +48,21 @@ ignore = [
 fold = true,
 
 [init]
-type = "[Bin/Python/Make/Lua/Shell/ShellStr]"
-# Bin/Shell/Python/Make/Lua: file path on the pack
+type = '[Bin/Python/Make/Lua/Shell/ShellStr]'
+# Bin/Shell/Python/Make/Lua: file path relate on the pack
 # ShellStr: string
-content = "file path on the pack"
+content = 'pack_sub_path/to'
 
 [clear]
-type = "[Bin/Python/Make/Lua/Shell/ShellStr]"
-# Bin/Shell/Python/Make: file path on the pack
+type = '[Bin/Python/Make/Lua/Shell/ShellStr]'
+# Bin/Shell/Python/Make: file path relate on the pack
 # Script: string
-content = "file path on the pack"
+# content = 'pack_sub_path/to'
+content = '''
+if [ -d /path/to ]; then
+  rm -rf /path/to
+fi
+'''
 ```
 
 ## TODO
@@ -75,7 +81,7 @@ content = "file path on the pack"
 - [ ] protect mode (don't excute in non stow dir)
 - [ ] github action (auto archive)
 
-- [x] start script
+- [x] init/clear script
 - [ ] tracing log
 
 - [ ] valid conflict before install

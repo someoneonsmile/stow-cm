@@ -1,5 +1,5 @@
 [package]
-name = "stow"
+name = "stow-cm"
 version = "0.6.0"
 authors = ["someone"]
 edition = "2021"
