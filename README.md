@@ -30,11 +30,20 @@ stow -r ./*
 
 # target = "$XDG_CONFIG_HOME/stow/"
 target = "~"
-force = true
+
+# override
+over = [
+    ".*\\.lua",
+]
+
+# ignore
 ignore = [
     ".*\\.md",
     ".*\\.lock",
 ]
+
+# default, create a tree-folding symlink
+fold = true,
 
 [init]
 type = "[Bin/Python/Make/Lua/Shell/ShellStr]"
