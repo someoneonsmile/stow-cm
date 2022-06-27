@@ -85,3 +85,4 @@ content = "file path on the pack"
 - [ ] override
 
 - [ ] rename project and config file
+- [ ] command stderr output
