@@ -45,7 +45,7 @@ ignore = [
 ]
 
 # default, create a tree-folding symlink
-fold = true,
+fold = true
 
 [init]
 type = '[Bin/Python/Make/Lua/Shell/ShellStr]'
