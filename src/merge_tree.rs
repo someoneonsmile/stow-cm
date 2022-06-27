@@ -63,7 +63,7 @@ impl MergeTree {
         }
 
         // source ignore
-        if let Some(Some(ignore_re)) = self.option.as_ref().map(|it| it.ignore.as_ref()) {
+        if let Some(ignore_re) = self.option.as_ref().and_then(|it| it.ignore.as_deref()) {
             if ignore_re.is_match(self.source.to_string_lossy().deref()) {
                 return Ok(MergeResult {
                     conflicts: None,
@@ -85,7 +85,11 @@ impl MergeTree {
         }
 
         // conflict check
-        if self.target.exists() && (self.target.is_file() || self.source.is_file()) {
+        if check_conflict(
+            &self.source,
+            &self.target,
+            self.option.as_ref().and_then(|it| it.over.as_deref()),
+        ) {
             return Ok(MergeResult {
                 conflicts: Some(vec![self.source]),
                 expand_symlinks: None,
@@ -123,7 +127,7 @@ impl MergeTree {
             let sub_result = MergeTree::new(
                 self.target.join(path.strip_prefix(&self.source)?),
                 path,
-                self.option.as_ref().map(|it| it.clone()),
+                self.option.clone(),
             )
             .merge_add()?;
             has_ignore |= sub_result.has_ignore;
@@ -154,6 +158,25 @@ impl MergeTree {
             has_ignore,
         })
     }
+}
+
+fn check_conflict(
+    source: impl AsRef<Path>,
+    target: impl AsRef<Path>,
+    over: Option<&RegexSet>,
+) -> bool {
+    let source = source.as_ref();
+    let target = target.as_ref();
+    if !target.exists() {
+        return false;
+    }
+    if let Some(over_re) = over {
+        // over
+        if over_re.is_match(source.to_string_lossy().deref()) {
+            return true;
+        }
+    }
+    target.is_file() || source.is_file()
 }
 
 // #[cfg(test)]

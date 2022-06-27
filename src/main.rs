@@ -153,13 +153,8 @@ async fn install<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
     futures::stream::iter(paths.into_iter().map(Ok))
         .try_filter_map(|symlink| async {
             if symlink.dst.exists() {
-                // remove the empty dir
-                if util::is_empty_dir(&symlink.dst) {
-                    fs::remove_dir_all(&symlink.dst).await?;
-                } else {
-                    // TODO: maybe just log the error
-                    anyhow::bail!("install conflict: {symlink:?}");
-                }
+                // the dir is empty or override regex matched
+                fs::remove_dir_all(&symlink.dst).await?;
             }
             let fut = async move {
                 info!("install {symlink:?}");
