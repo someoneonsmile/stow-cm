@@ -32,7 +32,7 @@ stow -r ./*
 target = "~"
 
 # override
-over = [
+override = [
     # single quotes not excaping
     '.*\.lua',
 ]
