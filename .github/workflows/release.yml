@@ -17,7 +17,7 @@ env:
   CARGO_TERM_COLOR: always
   USE_CROSS: true
   FETCH_DEPTH: 0
-  RELEASE_NAME: "stow"
+  RELEASE_NAME: "stow-cm"
 
 defaults:
   run:
