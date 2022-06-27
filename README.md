@@ -33,12 +33,13 @@ target = "~"
 
 # override
 over = [
-    ".*\\.lua",
+    # single quotes not excaping
+    '.*\.lua',
 ]
 
 # ignore
 ignore = [
-    ".*\\.md",
+    '.*\.md',
     ".*\\.lock",
 ]
 
@@ -82,3 +83,5 @@ content = "file path on the pack"
 
 - [ ] attr macro Merge
 - [ ] override
+
+- [ ] rename project and config file
