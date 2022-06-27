@@ -2,18 +2,28 @@ use regex::RegexSet;
 use std::fs;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crate::error::Result;
 use crate::merge::Merge;
 use crate::symlink::Symlink;
 use crate::util;
 
-pub(crate) struct MergeTree<'a> {
+#[derive(Debug)]
+pub(crate) struct MergeTree {
     target: PathBuf,
     source: PathBuf,
-    ignore: &'a Option<RegexSet>,
+    option: Option<Arc<MergeOption>>,
 }
 
+#[derive(Debug)]
+pub(crate) struct MergeOption {
+    pub ignore: Option<Arc<RegexSet>>,
+    pub over: Option<Arc<RegexSet>>,
+    pub fold: Option<bool>,
+}
+
+#[derive(Debug)]
 pub(crate) struct MergeResult {
     /// conflict file or dir
     pub conflicts: Option<Vec<PathBuf>>,
@@ -25,16 +35,16 @@ pub(crate) struct MergeResult {
     pub has_ignore: bool,
 }
 
-impl<'a> MergeTree<'a> {
+impl MergeTree {
     pub(crate) fn new(
         target: impl AsRef<Path>,
         source: impl AsRef<Path>,
-        ignore: &'a Option<RegexSet>,
+        option: Option<Arc<MergeOption>>,
     ) -> Self {
         MergeTree {
             target: target.as_ref().to_path_buf(),
             source: source.as_ref().to_path_buf(),
-            ignore,
+            option,
         }
     }
 
@@ -53,7 +63,7 @@ impl<'a> MergeTree<'a> {
         }
 
         // source ignore
-        if let Some(ignore_re) = &self.ignore {
+        if let Some(Some(ignore_re)) = self.option.as_ref().map(|it| it.ignore.as_ref()) {
             if ignore_re.is_match(self.source.to_string_lossy().deref()) {
                 return Ok(MergeResult {
                     conflicts: None,
@@ -113,7 +123,7 @@ impl<'a> MergeTree<'a> {
             let sub_result = MergeTree::new(
                 self.target.join(path.strip_prefix(&self.source)?),
                 path,
-                self.ignore,
+                self.option.as_ref().map(|it| it.clone()),
             )
             .merge_add()?;
             has_ignore |= sub_result.has_ignore;
@@ -123,16 +133,18 @@ impl<'a> MergeTree<'a> {
         }
 
         // fold dir
-        if !has_ignore && util::is_empty_dir(&self.target) {
-            return Ok(MergeResult {
-                conflicts: None,
-                expand_symlinks: None,
-                to_create_symlinks: Some(vec![Symlink {
-                    src: self.source,
-                    dst: self.target,
-                }]),
-                has_ignore: false,
-            });
+        if let Some(true) = self.option.as_ref().and_then(|it| it.fold) {
+            if !has_ignore && util::is_empty_dir(&self.target) {
+                return Ok(MergeResult {
+                    conflicts: None,
+                    expand_symlinks: None,
+                    to_create_symlinks: Some(vec![Symlink {
+                        src: self.source,
+                        dst: self.target,
+                    }]),
+                    has_ignore: false,
+                });
+            }
         }
 
         Ok(MergeResult {

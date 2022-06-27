@@ -12,6 +12,7 @@ use tokio::task::JoinHandle;
 use crate::cli::Opt;
 use crate::config::{Config, CONFIG_FILE_NAME};
 use crate::error::{anyhow, Result};
+use crate::merge_tree::MergeOption;
 use crate::symlink::Symlink;
 
 mod cli;
@@ -105,10 +106,13 @@ async fn install<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
     let pack = Arc::new(fs::canonicalize(pack.as_ref()).await?);
     info!("install pack: {:?}", pack);
     let ignore_re = match config.ignore.as_ref() {
-        Some(ignore_regexs) => RegexSet::new(ignore_regexs).ok(),
+        Some(ignore_regexs) => RegexSet::new(ignore_regexs).ok().map(Arc::new),
         None => None,
     };
-
+    let over_re = match config.over.as_ref() {
+        Some(over_regexs) => RegexSet::new(over_regexs).ok().map(Arc::new),
+        None => None,
+    };
     let paths = {
         let pack = pack.clone();
         let config = config.clone();
@@ -117,8 +121,16 @@ async fn install<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
                 .target
                 .as_ref()
                 .ok_or_else(|| anyhow!("target is None"))?;
-            let merge_result =
-                merge_tree::MergeTree::new(target, pack.deref(), &ignore_re).merge_add()?;
+            let merge_result = merge_tree::MergeTree::new(
+                target,
+                pack.deref(),
+                Some(Arc::new(MergeOption {
+                    ignore: ignore_re,
+                    over: over_re,
+                    fold: config.fold,
+                })),
+            )
+            .merge_add()?;
 
             if let Some(conflicts) = merge_result.conflicts {
                 anyhow::bail!("check conflict: {:?}", conflicts);

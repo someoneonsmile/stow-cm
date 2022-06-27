@@ -70,3 +70,6 @@ content = "file path on the pack"
 
 - [ ] valid conflict before install
 - [ ] remove refact
+
+- [ ] attr macro Merge
+- [ ] override

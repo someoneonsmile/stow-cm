@@ -5,10 +5,10 @@ use std::process::Stdio;
 use tokio::io::AsyncWriteExt;
 
 use crate::error::Result;
-use crate::merge::Merge;
+use crate::merge::{Merge, MergeDefault};
 use crate::util;
 
-pub static CONFIG_FILE_NAME: &str = ".stowrc";
+pub(crate) static CONFIG_FILE_NAME: &str = ".stowrc";
 
 /// pack config
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -19,8 +19,11 @@ pub(crate) struct Config {
     /// ignore file regx
     pub ignore: Option<Vec<String>>,
 
+    /// ignore file regx
+    pub over: Option<Vec<String>>,
+
     /// force override
-    pub force: Option<bool>,
+    pub fold: Option<bool>,
 
     /// init script (option)
     pub init: Option<Command>,
@@ -63,7 +66,7 @@ impl Config {
         if let Some(target) = config.target {
             config.target = Some(util::shell_expend_full(target)?);
         }
-        Ok(Some(config.merge(Default::default())))
+        Ok(Some(config.merge_default()))
     }
 
     // parse config from cli args
@@ -78,12 +81,25 @@ impl Config {
 impl Default for Config {
     fn default() -> Config {
         Config {
-            ignore: Some(vec![CONFIG_FILE_NAME.to_string()]),
             target: None,
-            force: None,
+            ignore: Some(vec![CONFIG_FILE_NAME.to_string()]),
+            over: None,
+            fold: Some(true),
             init: None,
             clear: None,
         }
+    }
+}
+
+impl Merge<Self> for Config {
+    fn merge(mut self, other: Config) -> Config {
+        self.target = self.target.merge(other.target);
+        self.ignore = self.ignore.merge(other.ignore);
+        self.over = self.over.merge(other.over);
+        self.fold = self.fold.merge(other.fold);
+        self.init = self.init.merge(other.init);
+        self.clear = self.clear.merge(other.clear);
+        self
     }
 }
 
@@ -134,5 +150,11 @@ impl Command {
         };
         command.current_dir(wd).status().await?;
         Ok(())
+    }
+}
+
+impl Merge<Self> for Command {
+    fn merge(self, _other: Self) -> Self {
+        self
     }
 }
