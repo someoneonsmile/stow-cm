@@ -28,6 +28,7 @@ stow-cm -r ./*
 ```toml
 # toml format
 
+# when targe is none both in pack_config and common_config, it will skip link the dir_tree
 # env var support the default value: ${env:-default}
 # target = '${XDG_CONFIG_HOME:-~/.config}/stow-cm/'
 target = '~'
