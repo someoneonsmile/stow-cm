@@ -128,11 +128,11 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     };
 
     let ignore_re = match config.ignore.as_ref() {
-        Some(ignore_regexs) => RegexSet::new(ignore_regexs).ok().map(Arc::new),
+        Some(ignore_regexs) => RegexSet::new(ignore_regexs).ok(),
         None => None,
     };
     let over_re = match config.over.as_ref() {
-        Some(over_regexs) => RegexSet::new(over_regexs).ok().map(Arc::new),
+        Some(over_regexs) => RegexSet::new(over_regexs).ok(),
         None => None,
     };
     let paths = {

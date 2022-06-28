@@ -18,8 +18,8 @@ pub(crate) struct MergeTree {
 
 #[derive(Debug)]
 pub(crate) struct MergeOption {
-    pub ignore: Option<Arc<RegexSet>>,
-    pub over: Option<Arc<RegexSet>>,
+    pub ignore: Option<RegexSet>,
+    pub over: Option<RegexSet>,
     pub fold: Option<bool>,
 }
 
@@ -63,7 +63,7 @@ impl MergeTree {
         }
 
         // source ignore
-        if let Some(ignore_re) = self.option.as_ref().and_then(|it| it.ignore.as_deref()) {
+        if let Some(ignore_re) = self.option.as_ref().and_then(|it| it.ignore.as_ref()) {
             if ignore_re.is_match(self.source.to_string_lossy().deref()) {
                 return Ok(MergeResult {
                     conflicts: None,
@@ -88,7 +88,7 @@ impl MergeTree {
         if check_conflict(
             &self.source,
             &self.target,
-            self.option.as_ref().and_then(|it| it.over.as_deref()),
+            self.option.as_ref().and_then(|it| it.over.as_ref()),
         ) {
             return Ok(MergeResult {
                 conflicts: Some(vec![self.source]),
