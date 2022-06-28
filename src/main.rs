@@ -4,6 +4,7 @@ use merge::MergeWith;
 use regex::RegexSet;
 use std::ops::Deref;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::vec::Vec;
 use tokio::fs;
@@ -11,7 +12,7 @@ use tokio::task::JoinHandle;
 
 use crate::cli::Opt;
 use crate::config::{Config, CONFIG_FILE_NAME};
-use crate::error::{anyhow, Result};
+use crate::error::Result;
 use crate::merge_tree::MergeOption;
 use crate::symlink::Symlink;
 
@@ -95,16 +96,37 @@ where
 }
 
 /// reload packages
-async fn reload<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
+async fn reload(config: Arc<Config>, pack: impl AsRef<Path>) -> Result<()> {
     remove(config.clone(), &pack).await?;
     install(config, &pack).await?;
     Ok(())
 }
 
 /// install packages
-async fn install<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
+async fn install(config: Arc<Config>, pack: impl AsRef<Path>) -> Result<()> {
     let pack = Arc::new(fs::canonicalize(pack.as_ref()).await?);
-    info!("install pack: {:?}", pack);
+    info!("install pack: {pack:?}");
+
+    install_link(&config, &pack).await?;
+
+    // execute the init script
+    if let Some(command) = &config.init {
+        command.exec_async(pack.deref()).await?;
+    }
+
+    Ok(())
+}
+
+/// remove packages
+async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
+    let target = match config.target.as_ref() {
+        None => {
+            info!("{pack:?} target is none, skip install link");
+            return Ok(());
+        }
+        Some(target) => target.clone(),
+    };
+
     let ignore_re = match config.ignore.as_ref() {
         Some(ignore_regexs) => RegexSet::new(ignore_regexs).ok().map(Arc::new),
         None => None,
@@ -117,10 +139,6 @@ async fn install<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
         let pack = pack.clone();
         let config = config.clone();
         tokio::task::spawn_blocking(move || {
-            let target = config
-                .target
-                .as_ref()
-                .ok_or_else(|| anyhow!("target is None"))?;
             let merge_result = merge_tree::MergeTree::new(
                 target,
                 pack.deref(),
@@ -167,12 +185,6 @@ async fn install<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
             Ok(())
         })
         .await?;
-
-    // execute the init script
-    if let Some(command) = &config.init {
-        command.exec_async(pack.deref()).await?;
-    }
-
     Ok(())
 }
 
@@ -181,17 +193,29 @@ async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
     let pack = Arc::new(fs::canonicalize(pack.as_ref()).await?);
     info!("remove pack: {:?}", pack);
 
+    remove_link(&config, &pack).await?;
+
+    // execute the clear script
+    if let Some(command) = &config.clear {
+        command.exec_async(pack.deref()).await?;
+    }
+
+    Ok(())
+}
+
+/// remove packages
+async fn remove_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
+    let target = match config.target.as_ref() {
+        None => {
+            info!("{pack:?} target is none, skip remove link");
+            return Ok(());
+        }
+        Some(target) => target.clone(),
+    };
     let symlinks = {
         let pack = pack.clone();
-        let config = config.clone();
-        tokio::task::spawn_blocking(move || {
-            let target = config
-                .target
-                .as_ref()
-                .ok_or_else(|| anyhow!("config target is None"))?;
-            util::find_prefix_symlink(target, pack.deref())
-        })
-        .await??
+        tokio::task::spawn_blocking(move || util::find_prefix_symlink(target, pack.deref()))
+            .await??
     };
 
     debug!("{pack:?} remove paths: {symlinks:?}");
@@ -209,11 +233,6 @@ async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
             Ok(())
         })
         .await?;
-
-    // execute the clear script
-    if let Some(command) = &config.clear {
-        command.exec_async(pack.deref()).await?;
-    }
 
     Ok(())
 }

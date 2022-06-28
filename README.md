@@ -92,3 +92,5 @@ fi
 
 - [ ] rename project and config file
 - [ ] command stderr output
+
+- [ ] if target is none just skip stow dir
