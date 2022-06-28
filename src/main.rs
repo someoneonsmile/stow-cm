@@ -1,5 +1,5 @@
 use futures::prelude::*;
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use merge::MergeWith;
 use regex::RegexSet;
 use std::ops::Deref;
@@ -72,7 +72,7 @@ where
             let pack_config = Config::from_path(pack.as_ref().join(CONFIG_FILE_NAME))?;
             // TODO: maybe the pack_config can be optional
             if pack_config.is_none() {
-                warn!(
+                error!(
                     "{:?} is not the pack_home (which contains {} config file)",
                     pack.as_ref(),
                     CONFIG_FILE_NAME
@@ -121,7 +121,7 @@ async fn install(config: Arc<Config>, pack: impl AsRef<Path>) -> Result<()> {
 async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     let target = match config.target.as_ref() {
         None => {
-            info!("{pack:?} target is none, skip install link");
+            warn!("{pack:?} target is none, skip install link");
             return Ok(());
         }
         Some(target) => target.clone(),
@@ -207,7 +207,7 @@ async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
 async fn remove_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     let target = match config.target.as_ref() {
         None => {
-            info!("{pack:?} target is none, skip remove link");
+            warn!("{pack:?} target is none, skip remove link");
             return Ok(());
         }
         Some(target) => target.clone(),
