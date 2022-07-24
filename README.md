@@ -68,30 +68,14 @@ fi
 
 ## TODO
 
-- [ ] 模块
-- [ ] 错误处理
-- [ ] 异步协程
-- [ ] 日志
-- [ ] 配置文件
-- [ ] ignore 正则
-- [ ] 控制台颜色
-- [ ] unused 处理
-- [ ] git ignore
-- [ ] backup replace file
-- [ ] 加密
-- [ ] protect mode (don't excute in non stow dir)
-- [ ] github action (auto archive)
-
+- [x] ignore
+- [x] override
 - [x] init/clear script
-- [ ] tracing log
+- [x] valid conflict before install
+- [x] protect mode (don't excute in non stow dir)
+- [x] if target is none just skip stow dir
+- [x] remove refact
+- [x] github action (auto archive)
 
-- [ ] valid conflict before install
-- [ ] remove refact
-
+- [ ] encrypt
 - [ ] attr macro Merge
-- [ ] override
-
-- [ ] rename project and config file
-- [ ] command stderr output
-
-- [ ] if target is none just skip stow dir
