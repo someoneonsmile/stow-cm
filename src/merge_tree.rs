@@ -138,6 +138,7 @@ impl MergeTree {
 
         // fold dir
         if let Some(true) = self.option.as_ref().and_then(|it| it.fold) {
+            // TODO: is there has other tree file?
             if !has_ignore && util::is_empty_dir(&self.target) {
                 return Ok(MergeResult {
                     conflicts: None,
@@ -173,31 +174,45 @@ fn check_conflict(
     if let Some(over_re) = over {
         // over
         if over_re.is_match(source.to_string_lossy().deref()) {
-            return true;
+            return false;
         }
     }
     target.is_file() || source.is_file()
 }
 
-// #[cfg(test)]
-// mod test {
-//     use anyhow::Result;
-//     use std::env::temp_dir;
+#[cfg(test)]
+mod test {
+    use anyhow::Result;
+    use std::env::temp_dir;
 
-//     #[test]
-//     fn is_symlink() -> Result<()> {
-//         std::fs::create_dir_all(temp_dir().join("path"))?;
-//         std::os::unix::fs::symlink(temp_dir().join("path"), temp_dir().join("link"))?;
-//         std::os::unix::fs::symlink(
-//             temp_dir().join("not_exsit"),
-//             temp_dir().join("path").join("sublink"),
-//         )?;
-//         std::fs::create_dir(temp_dir().join("path").join("subpath"))?;
-//         std::fs::File::create(temp_dir().join("path").join("subfile"))?;
-//         assert!(temp_dir().join("link").is_symlink());
-//         assert!(temp_dir().join("link").join("sublink").is_symlink());
-//         assert!(temp_dir().join("link").join("subpath").is_symlink());
-//         assert!(temp_dir().join("link").join("subfile").is_symlink());
-//         Ok(())
-//     }
-// }
+    #[test]
+    fn is_symlink() -> Result<()> {
+        std::fs::create_dir_all(temp_dir().join("path"))?;
+        std::os::unix::fs::symlink(temp_dir().join("path"), temp_dir().join("link"))?;
+        std::os::unix::fs::symlink(
+            temp_dir().join("subfile"),
+            temp_dir().join("path").join("sublink"),
+        )?;
+        std::fs::create_dir_all(temp_dir().join("path").join("subpath"))?;
+        std::fs::File::create(temp_dir().join("path").join("subfile"))?;
+
+        assert!(temp_dir().join("link").is_symlink());
+        assert!(temp_dir().join("link").join("sublink").is_symlink());
+        assert!(!temp_dir().join("link").join("subpath").is_symlink());
+        assert!(!temp_dir().join("link").join("subfile").is_symlink());
+        // is file
+        assert!(temp_dir().join("link").join("subfile").is_file());
+        assert!(!temp_dir().join("link").join("sublink").is_file());
+
+        // clean up
+        std::fs::remove_dir_all(temp_dir().join("path"))?;
+        std::fs::remove_file(temp_dir().join("link"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn re_match() -> Result<()> {
+        assert!(regex::RegexSet::new(&vec![".*"])?.is_match("/path/somepath/somefile.suffix"));
+        Ok(())
+    }
+}

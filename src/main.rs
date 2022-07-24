@@ -172,7 +172,11 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         .try_filter_map(|symlink| async {
             if symlink.dst.exists() {
                 // the dir is empty or override regex matched
-                fs::remove_dir_all(&symlink.dst).await?;
+                if symlink.dst.is_file() || symlink.dst.is_symlink() {
+                    fs::remove_file(&symlink.dst).await?;
+                } else {
+                    fs::remove_dir_all(&symlink.dst).await?;
+                }
             }
             let fut = async move {
                 info!("install {symlink:?}");
