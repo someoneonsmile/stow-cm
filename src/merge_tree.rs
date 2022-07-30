@@ -33,6 +33,8 @@ pub(crate) struct MergeResult {
     pub expand_symlinks: Option<Vec<PathBuf>>,
     /// is there has ignore file under the dir
     pub has_ignore: bool,
+    /// can fold
+    pub foldable: bool,
 }
 
 impl MergeTree {
@@ -59,6 +61,7 @@ impl MergeTree {
                 to_create_symlinks: None,
                 expand_symlinks: None,
                 has_ignore: false,
+                foldable: true,
             });
         }
 
@@ -70,6 +73,7 @@ impl MergeTree {
                     expand_symlinks: None,
                     to_create_symlinks: None,
                     has_ignore: true,
+                    foldable: false,
                 });
             }
         }
@@ -81,6 +85,7 @@ impl MergeTree {
                 expand_symlinks: None,
                 to_create_symlinks: None,
                 has_ignore: false,
+                foldable: true,
             });
         }
 
@@ -95,6 +100,7 @@ impl MergeTree {
                 expand_symlinks: None,
                 to_create_symlinks: None,
                 has_ignore: false,
+                foldable: false,
             });
         }
 
@@ -108,6 +114,7 @@ impl MergeTree {
                     dst: self.target,
                 }]),
                 has_ignore: false,
+                foldable: true,
             });
         }
 
@@ -116,6 +123,7 @@ impl MergeTree {
         let mut conflicts = None;
         let mut install_paths = None;
         let mut expand_symlinks = None;
+        let mut foldable = true;
 
         // expand symlink (/symlink/subpath is symlink too?)
         if self.target.is_symlink() {
@@ -134,12 +142,15 @@ impl MergeTree {
             conflicts = conflicts.merge(sub_result.conflicts);
             expand_symlinks = expand_symlinks.merge(sub_result.expand_symlinks);
             install_paths = install_paths.merge(sub_result.to_create_symlinks);
+            foldable &= sub_result.foldable;
         }
+        foldable &= !util::has_new_sub(&self.target, &self.source)?;
 
         // fold dir
         if let Some(true) = self.option.as_ref().and_then(|it| it.fold) {
             // TODO: is there has other tree file?
-            if !has_ignore && util::is_empty_dir(&self.target) {
+            // if !has_ignore && util::is_empty_dir(&self.target) {
+            if foldable {
                 return Ok(MergeResult {
                     conflicts: None,
                     expand_symlinks: None,
@@ -148,6 +159,7 @@ impl MergeTree {
                         dst: self.target,
                     }]),
                     has_ignore: false,
+                    foldable: true,
                 });
             }
         }
@@ -157,6 +169,7 @@ impl MergeTree {
             expand_symlinks,
             to_create_symlinks: install_paths,
             has_ignore,
+            foldable,
         })
     }
 }

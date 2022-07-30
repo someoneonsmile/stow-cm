@@ -65,3 +65,37 @@ pub(crate) fn find_prefix_symlink(
     }
     Ok(paths)
 }
+
+/// return true if three has different sub node (empty dir exclude)
+pub(crate) fn has_new_sub(a: impl AsRef<Path>, b: impl AsRef<Path>) -> Result<bool> {
+    let a = a.as_ref();
+    let b = b.as_ref();
+
+    if !a.exists() {
+        return Ok(false);
+    }
+
+    for a_sub in a.read_dir()? {
+        let a_sub_path = a_sub?.path();
+        let b_sub = change_base_path(&a_sub_path, a, b)?;
+        if !b_sub.exists() {
+            if a_sub_path.is_file() {
+                return Ok(true);
+            }
+
+            if a_sub_path.is_dir() && !is_empty_dir(a_sub_path) {
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
+}
+
+/// Change the path base to new_base
+pub(crate) fn change_base_path(
+    path: impl AsRef<Path>,
+    base: impl AsRef<Path>,
+    new_base: impl AsRef<Path>,
+) -> Result<PathBuf> {
+    Ok(new_base.as_ref().join(path.as_ref().strip_prefix(base)?))
+}
