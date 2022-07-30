@@ -79,3 +79,5 @@ fi
 
 - [ ] encrypt
 - [ ] attr macro Merge
+
+- [ ] more test and testable
