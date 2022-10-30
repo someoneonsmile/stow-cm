@@ -139,6 +139,7 @@ impl Command {
 
             Self::ShellStr(content) => {
                 let mut c = tokio::process::Command::new("sh");
+                c.current_dir(&wd);
                 c.stdin(Stdio::piped());
                 c.spawn()?
                     .stdin
