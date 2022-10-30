@@ -49,8 +49,11 @@ pub(crate) fn find_prefix_symlink(
 ) -> Result<Vec<Symlink>> {
     let mut paths = Vec::new();
     if dir_path.as_ref().exists() {
-        for entry in WalkDir::new(dir_path).follow_links(false) {
-            let entry = entry?;
+        for entry in WalkDir::new(dir_path)
+            .follow_links(false)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
             let path = entry.into_path();
             if path.is_symlink() {
                 let point_to = std::fs::read_link(&path)?;
