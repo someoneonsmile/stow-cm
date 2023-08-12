@@ -19,7 +19,7 @@ pub(crate) struct Config {
     /// ignore file regx
     pub ignore: Option<Vec<String>>,
 
-    /// ignore file regx
+    /// override file regx
     #[serde(rename = "override")]
     pub over: Option<Vec<String>>,
 
