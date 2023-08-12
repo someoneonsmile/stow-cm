@@ -2,6 +2,8 @@ use futures::prelude::*;
 use log::{debug, error, info, warn};
 use merge::MergeWith;
 use regex::RegexSet;
+use std::collections::hash_map::RandomState;
+use std::collections::HashMap;
 use std::ops::Deref;
 use std::path::Path;
 use std::path::PathBuf;
@@ -11,13 +13,16 @@ use tokio::fs;
 use tokio::task::JoinHandle;
 
 use crate::cli::Opt;
-use crate::config::{Config, CONFIG_FILE_NAME};
+use crate::config::Config;
+use crate::constants::*;
 use crate::error::Result;
+use crate::merge::MergeDefault;
 use crate::merge_tree::MergeOption;
 use crate::symlink::Symlink;
 
 mod cli;
 mod config;
+mod constants;
 mod custom_type;
 mod error;
 mod merge;
@@ -40,6 +45,7 @@ async fn main() -> Result<()> {
     debug!("opt: {:?}", opt);
 
     let common_config = Config::from_path("${XDG_CONFIG_HOME:-~/.config}/stow-cm/config.toml")?;
+    let common_config = common_config.merge_default();
     let common_config = Arc::new(common_config);
 
     debug!("common_config: {common_config:?}");
@@ -79,11 +85,25 @@ where
                 );
                 return Ok(None);
             };
-            let config = match pack_config.merge_with(|| common_config.deref().clone()) {
-                Some(v) => Arc::new(v),
-                None => unreachable!(),
+            let pack_name = pack
+                .as_ref()
+                .file_name()
+                .and_then(|it| it.to_str().map(|it| it.to_owned()))
+                .ok_or_else(|| anyhow::anyhow!("path error"))?;
+            let mut config = match pack_config.merge_with(|| common_config.deref().clone()) {
+                Some(config) => config,
+                None => unreachable!("no config"),
             };
-            let fut = tokio::spawn((f)(config, pack));
+
+            let context_map: HashMap<&str, String, RandomState> =
+                HashMap::from_iter(vec![(PACK_NAME_ENV, pack_name)]);
+            config.target = match config.target.as_mut() {
+                Some(target) => Some(util::shell_expend_full_with_context(target, |key| {
+                    context_map.get(key)
+                })?),
+                None => None,
+            };
+            let fut = tokio::spawn((f)(Arc::new(config), pack));
             Ok(Some(fut)) as Result<Option<JoinHandle<Result<()>>>>
         })
         .try_for_each_concurrent(None, |future| async move {
@@ -105,13 +125,19 @@ async fn reload(config: Arc<Config>, pack: impl AsRef<Path>) -> Result<()> {
 /// install packages
 async fn install(config: Arc<Config>, pack: impl AsRef<Path>) -> Result<()> {
     let pack = Arc::new(fs::canonicalize(pack.as_ref()).await?);
-    info!("install pack: {pack:?}");
+    let pack_name = match pack.file_name() {
+        Some(pack_name) => pack_name,
+        None => unreachable!(),
+    };
+    info!("install pack: {pack_name:?}");
 
     install_link(&config, &pack).await?;
 
     // execute the init script
     if let Some(command) = &config.init {
-        command.exec_async(pack.deref()).await?;
+        command
+            .exec_async(pack.deref(), [(PACK_NAME_ENV, pack_name)])
+            .await?;
     }
 
     Ok(())
@@ -127,14 +153,16 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         Some(target) => target.clone(),
     };
 
-    let ignore_re = match config.ignore.as_ref() {
-        Some(ignore_regexs) => RegexSet::new(ignore_regexs).ok(),
-        None => None,
-    };
-    let over_re = match config.over.as_ref() {
-        Some(over_regexs) => RegexSet::new(over_regexs).ok(),
-        None => None,
-    };
+    let ignore_re = config
+        .ignore
+        .as_ref()
+        .and_then(|ignore_regexs| RegexSet::new(ignore_regexs).ok());
+
+    let over_re = config
+        .over
+        .as_ref()
+        .and_then(|over_regexs| RegexSet::new(over_regexs).ok());
+
     let paths = {
         let pack = pack.clone();
         let config = config.clone();
@@ -195,13 +223,19 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 /// remove packages
 async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
     let pack = Arc::new(fs::canonicalize(pack.as_ref()).await?);
-    info!("remove pack: {:?}", pack);
+    let pack_name = match pack.file_name() {
+        Some(pack_name) => pack_name,
+        None => unreachable!(),
+    };
+    info!("remove pack: {pack_name:?}");
 
     remove_link(&config, &pack).await?;
 
     // execute the clear script
     if let Some(command) = &config.clear {
-        command.exec_async(pack.deref()).await?;
+        command
+            .exec_async(pack.deref(), [(PACK_NAME_ENV, pack_name)])
+            .await?;
     }
 
     Ok(())

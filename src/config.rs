@@ -1,14 +1,14 @@
 use serde::{Deserialize, Serialize};
+use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::io::AsyncWriteExt;
 
+use crate::constants::*;
 use crate::error::Result;
-use crate::merge::{Merge, MergeDefault};
+use crate::merge::Merge;
 use crate::util;
-
-pub(crate) static CONFIG_FILE_NAME: &str = "stow-cm.toml";
 
 /// pack config
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -63,11 +63,8 @@ impl Config {
             return Ok(None);
         }
         let config_str = fs::read_to_string(config_path)?;
-        let mut config: Config = toml::from_str(&config_str)?;
-        if let Some(target) = config.target {
-            config.target = Some(util::shell_expend_full(target)?);
-        }
-        Ok(Some(config.merge_default()))
+        let config: Config = toml::from_str(&config_str)?;
+        Ok(Some(config))
     }
 
     // parse config from cli args
@@ -105,7 +102,12 @@ impl Merge<Self> for Config {
 }
 
 impl Command {
-    pub(crate) async fn exec_async(&self, wd: impl AsRef<Path>) -> Result<()> {
+    pub(crate) async fn exec_async<I, K, V>(&self, wd: impl AsRef<Path>, envs: I) -> Result<()>
+    where
+        I: IntoIterator<Item = (K, V)> + Clone,
+        K: AsRef<OsStr>,
+        V: AsRef<OsStr>,
+    {
         let mut command = match self {
             Self::Bin(path) => {
                 let path = fs::canonicalize(PathBuf::from(".").join(path))?;
@@ -140,6 +142,7 @@ impl Command {
             Self::ShellStr(content) => {
                 let mut c = tokio::process::Command::new("sh");
                 c.current_dir(&wd);
+                c.envs(envs.clone());
                 c.stdin(Stdio::piped());
                 c.spawn()?
                     .stdin
@@ -150,7 +153,7 @@ impl Command {
                 c
             }
         };
-        command.current_dir(wd).status().await?;
+        command.current_dir(wd).envs(envs).status().await?;
         Ok(())
     }
 }

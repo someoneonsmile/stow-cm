@@ -1,3 +1,5 @@
+use shellexpand::LookupError;
+use std::env::VarError;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -5,12 +7,37 @@ use crate::error::{anyhow, Result};
 use crate::symlink::Symlink;
 
 pub(crate) fn shell_expend_full<P: AsRef<Path>>(path: P) -> Result<PathBuf> {
-    let origin = path
+    let path = path
         .as_ref()
         .to_str()
         .ok_or_else(|| anyhow!("path error"))?;
     return Ok(PathBuf::from(
-        shellexpand::tilde(shellexpand::full(origin)?.as_ref()).as_ref(),
+        shellexpand::tilde(shellexpand::full(path)?.as_ref()).as_ref(),
+    ));
+}
+
+pub(crate) fn shell_expend_full_with_context<P, C, S>(path: P, context: C) -> Result<PathBuf>
+where
+    P: AsRef<Path>,
+    C: Fn(&str) -> Option<S>,
+    S: Into<String>,
+{
+    let path = path
+        .as_ref()
+        .to_str()
+        .ok_or_else(|| anyhow!("path error"))?;
+    return Ok(PathBuf::from(
+        shellexpand::tilde(
+            shellexpand::env_with_context(path, |key| {
+                std::result::Result::<Option<String>, LookupError<VarError>>::Ok(
+                    context(key)
+                        .map(|it| it.into())
+                        .or_else(|| std::env::var(key).ok()),
+                )
+            })?
+            .as_ref(),
+        )
+        .as_ref(),
     ));
 }
 
