@@ -168,7 +168,7 @@ jobs:
           override: true
           profile: minimal
           toolchain: ${{ matrix.build.rust }}
-      - uses: Swatinem/rust-cache@v1
+      - uses: Swatinem/rust-cache@v2
       - name: build release binary
         uses: actions-rs/cargo@v1
         with:
