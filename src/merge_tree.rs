@@ -224,7 +224,7 @@ mod test {
 
     #[test]
     fn re_match() -> Result<()> {
-        assert!(regex::RegexSet::new(&vec![".*"])?.is_match("/path/somepath/somefile.suffix"));
+        assert!(regex::RegexSet::new(vec![".*"])?.is_match("/path/somepath/somefile.suffix"));
         Ok(())
     }
 }
