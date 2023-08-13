@@ -28,10 +28,14 @@ stow-cm -r ./*
 ```toml
 # toml format
 
+# The ${PACK_NAME} environment variable will be injected
+# where PACK_NAME represents the last level of the package path.
+
 # when targe is none both in pack_config and common_config, it will skip link the dir_tree
 # env var support the default value: ${env:-default}
-# target = '${XDG_CONFIG_HOME:-~/.config}/stow-cm/'
-target = '~'
+
+# target = '~'
+target = '${XDG_CONFIG_HOME:-~/.config}/${PACK_NAME}/'
 
 # override
 override = [
@@ -60,6 +64,7 @@ type = '[Bin/Python/Make/Lua/Shell/ShellStr]'
 # Script: string
 # content = 'pack_sub_path/to'
 content = '''
+echo ${PACK_NAME}
 if [ -d /path/to ]; then
   rm -rf /path/to
 fi
