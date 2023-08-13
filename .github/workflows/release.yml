@@ -116,7 +116,7 @@ jobs:
             #   target: i686-pc-windows-msvc
             # },
           ]
-        tag_name: ${{ needs.create-tag.outputs.tag_name }}
+        tag_name: ["${{ needs.create-tag.outputs.tag_name }}"]
 
     steps:
       - uses: actions/checkout@v3
