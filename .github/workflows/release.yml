@@ -27,6 +27,8 @@ jobs:
   create-tag:
     name: create-tag
     runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ env.tag_name }}
     steps:
       - if: github.event_name == 'workflow_dispatch'
         run: echo "tag_name=${{ inputs.tag_name }}" >> $GITHUB_ENV
@@ -67,7 +69,7 @@ jobs:
               console.error(e)
             }
 
-  update-release:
+  create-release:
     name: create-release
     needs: [create-tag]
     runs-on: ${{ matrix.build.os }}
@@ -114,6 +116,7 @@ jobs:
             #   target: i686-pc-windows-msvc
             # },
           ]
+        tag_name: ${{ needs.create-tag.outputs.tag_name }}
 
     steps:
       - uses: actions/checkout@v3
@@ -170,10 +173,10 @@ jobs:
 
       - name: create nightly release
         uses: softprops/action-gh-release@v1
-        if: env.tag_name == 'nightly'
+        if: matrix.tag_name == 'nightly'
         with:
           generate_release_notes: true
-          tag_name: "${{ env.tag_name }}"
+          tag_name: "${{ matrix.tag_name }}"
           # target_commitish: "${{ github.sha }}"
           prerelease: true
           draft: false
@@ -184,10 +187,10 @@ jobs:
 
       - name: create stable release
         uses: softprops/action-gh-release@v1
-        if: env.tag_name != 'nightly'
+        if: matrix.tag_name != 'nightly'
         with:
           generate_release_notes: true
-          tag_name: ${{ env.tag_name }}
+          tag_name: "${{ matrix.tag_name }}"
           prerelease: false
           draft: false
           fail_on_unmatched_files: false
