@@ -2,7 +2,7 @@ name: release
 
 on:
   # schedule:
-    # - cron: "5 5 * * *"
+  # - cron: "5 5 * * *"
   workflow_dispatch:
     inputs:
       tag_name:
@@ -24,36 +24,30 @@ defaults:
     shell: bash
 
 jobs:
-  create-release:
-    name: create-release
+  create-tag:
+    name: create-tag
     runs-on: ubuntu-latest
-    outputs:
-      release_version: ${{ env.release_version }}
-      upload_url: ${{ steps.release.outputs.upload_url }}
     steps:
       - if: github.event_name == 'workflow_dispatch'
-        run: echo "release_version=${{ inputs.tag_name }}" >> $GITHUB_ENV
+        run: echo "tag_name=${{ inputs.tag_name }}" >> $GITHUB_ENV
       - if: github.event_name == 'schedule'
-        run: echo "release_version=nightly" >> $GITHUB_ENV
+        run: echo "tag_name=nightly" >> $GITHUB_ENV
       - if: github.event_name == 'push'
         run:
-          echo "release_version=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-          # echo "::set-output name=release_version::${{ env.release_version }}"
-      - id: release
+          echo "tag_name=${{ github.ref_name }}" >> $GITHUB_ENV
+          # echo "tag_name=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+          # echo "::set-output name=tag_name::${{ env.tag_name }}"
+      - name: delete exist release
         uses: actions/github-script@v6
         with:
           script: |
-            let release_label
-            if ("nightly" === "${{ env.release_version }}") {
-              release_label = "nightly";
-            } else {
-              release_label = "stable";
-            }
+            let tagName = "${{ env.tag_name }}"
+            let is_nightly = "nightly" === tagName
             try {
               const { data: { id:release_id } } = await github.rest.repos.getReleaseByTag({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                tag: release_label,
+                tag: tagName,
               });
               if ( release_id ) {
                 await github.rest.repos.deleteRelease({
@@ -62,58 +56,20 @@ jobs:
                   release_id,
                 });
               }
-              await github.rest.git.deleteRef({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                ref: `tags/${release_label}`,
-              });
+              if (is_nightly) {
+                await github.rest.git.deleteRef({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref: `tags/${tagName}`,
+                });
+              }
             } catch (e) {
               console.error(e)
             }
-            let is_nightly = "nightly" === release_label
-            let upload_url = [];
-            // create tag release
-            let target_commitish;
-            if (!is_nightly) {
-              const { data: { upload_url: tag_update_url } } = await github.rest.repos.createRelease({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                tag_name: "${{ env.release_version }}",
-                name: "Release ${{ env.release_version }}",
-              });
-              upload_url.push(tag_update_url);
-              const { data: { object: { sha: tag_sha } } } = await github.rest.git.getRef({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                ref: "tags/${{ env.release_version }}",
-              });
-              const { data: { object: { sha: commit_sha } } } = await github.rest.git.getTag({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                tag_sha: tag_sha,
-              });
-              target_commitish = commit_sha;
-            }
-            // create label release
-            let opts = {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              tag_name: release_label,
-              name: `Release ${ release_label }`,
-              prerelease: is_nightly,
-              draft: false,
-            }
-            if (target_commitish) {
-              opts.target_commitish = target_commitish
-            }
-            console.log("opts:", JSON.stringify(opts))
-            const { data: { upload_url: label_update_url } } = await github.rest.repos.createRelease(opts);
-            upload_url.push(label_update_url);
-            core.setOutput("upload_url", JSON.stringify(upload_url));
 
   update-release:
-    name: update-release
-    needs: [create-release]
+    name: create-release
+    needs: [create-tag]
     runs-on: ${{ matrix.build.os }}
     continue-on-error: true
     strategy:
@@ -158,26 +114,31 @@ jobs:
             #   target: i686-pc-windows-msvc
             # },
           ]
-        upload_url: ${{ fromJSON(needs.create-release.outputs.upload_url) }}
+
     steps:
       - uses: actions/checkout@v3
         with:
           fetch-depth: ${{ env.FETCH_DEPTH }}
+
       - uses: actions-rs/toolchain@v1
         with:
           override: true
           profile: minimal
           toolchain: ${{ matrix.build.rust }}
+
       - uses: Swatinem/rust-cache@v2
+
       - name: build release binary
         uses: actions-rs/cargo@v1
         with:
           command: build
           args: --release --target=${{ matrix.build.target }}
           use-cross: ${{ env.USE_CROSS }}
+
       - name: Strip release binary (linux and macos)
         if: matrix.build.plat == 'linux' || matrix.build.plat == 'macos'
         run: strip "target/${{ matrix.build.target }}/release/${{ env.RELEASE_NAME }}"
+
       - name: Strip release binary (arm)
         if: matrix.build.plat == 'linux-arm'
         run: |
@@ -186,6 +147,7 @@ jobs:
             rustembedded/cross:arm-unknown-linux-gnueabihf \
             arm-linux-gnueabihf-strip \
             /target/arm-unknown-linux-gnueabihf/release/${{ env.RELEASE_NAME }}
+
       - name: Build archive
         shell: bash
         run: |
@@ -205,22 +167,31 @@ jobs:
             shasum -a 256 "$staging.tar.gz" > "$staging.tar.gz.sha256sum"
             echo "ASSET_SHA256SUM=$staging.tar.gz.sha256sum" >> $GITHUB_ENV
           fi
-      - name: Upload release archive
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: create nightly release
+        uses: softprops/action-gh-release@v1
+        if: env.tag_name == 'nightly'
         with:
-          upload_url: ${{ matrix.upload_url }}
-          asset_path: ${{ env.ASSET }}
-          asset_name: ${{ env.ASSET }}
-          asset_content_type: application/octet-stream
-      - name: Upload release archive sha256sum
-        if: env.ASSET_SHA256SUM != null
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          generate_release_notes: true
+          tag_name: "${{ env.tag_name }}"
+          # target_commitish: "${{ github.sha }}"
+          prerelease: true
+          draft: false
+          fail_on_unmatched_files: false
+          files: |
+            ${{ env.ASSET }}
+            ${{ env.ASSET }}.sha256sum
+
+      - name: create stable release
+        uses: softprops/action-gh-release@v1
+        if: env.tag_name != 'nightly'
         with:
-          upload_url: ${{ matrix.upload_url }}
-          asset_path: ${{ env.ASSET }}.sha256sum
-          asset_name: ${{ env.ASSET }}.sha256sum
-          asset_content_type: application/octet-stream
+          generate_release_notes: true
+          tag_name: ${{ env.tag_name }}
+          prerelease: false
+          draft: false
+          fail_on_unmatched_files: false
+          # make_latest: true
+          files: |
+            ${{ env.ASSET }}
+            ${{ env.ASSET }}.sha256sum
