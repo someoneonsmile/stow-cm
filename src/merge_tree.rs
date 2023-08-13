@@ -144,12 +144,11 @@ impl MergeTree {
             install_paths = install_paths.merge(sub_result.to_create_symlinks);
             foldable &= sub_result.foldable;
         }
+        // is there has other tree file?
         foldable &= !util::has_new_sub(&self.target, &self.source)?;
 
         // fold dir
         if let Some(true) = self.option.as_ref().and_then(|it| it.fold) {
-            // TODO: is there has other tree file?
-            // if !has_ignore && util::is_empty_dir(&self.target) {
             if foldable {
                 return Ok(MergeResult {
                     conflicts: None,
