@@ -73,6 +73,8 @@ jobs:
     name: create-release
     needs: [create-tag]
     runs-on: ${{ matrix.build.os }}
+    env:
+      tag_name: ${{ needs.create-tag.outputs.tag_name }}
     continue-on-error: true
     strategy:
       fail-fast: false
@@ -116,7 +118,6 @@ jobs:
             #   target: i686-pc-windows-msvc
             # },
           ]
-        tag_name: ["${{ needs.create-tag.outputs.tag_name }}"]
 
     steps:
       - uses: actions/checkout@v3
@@ -173,10 +174,10 @@ jobs:
 
       - name: create nightly release
         uses: softprops/action-gh-release@v1
-        if: matrix.tag_name == 'nightly'
+        if: env.tag_name == 'nightly'
         with:
           generate_release_notes: true
-          tag_name: "${{ matrix.tag_name }}"
+          tag_name: "${{ env.tag_name }}"
           # target_commitish: "${{ github.sha }}"
           prerelease: true
           draft: false
@@ -187,10 +188,10 @@ jobs:
 
       - name: create stable release
         uses: softprops/action-gh-release@v1
-        if: matrix.tag_name != 'nightly'
+        if: env.tag_name != 'nightly'
         with:
           generate_release_notes: true
-          tag_name: "${{ matrix.tag_name }}"
+          tag_name: "${{ env.tag_name }}"
           prerelease: false
           draft: false
           fail_on_unmatched_files: false
