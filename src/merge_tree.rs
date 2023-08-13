@@ -145,7 +145,7 @@ impl MergeTree {
             foldable &= sub_result.foldable;
         }
         // is there has other tree file?
-        foldable &= !util::has_new_sub(&self.target, &self.source)?;
+        foldable = foldable && !util::has_new_sub(&self.target, &self.source)?;
 
         // fold dir
         if let Some(true) = self.option.as_ref().and_then(|it| it.fold) {
