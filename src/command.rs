@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use futures::prelude::*;
 use log::{debug, info, warn};
 use regex::RegexSet;
@@ -16,17 +17,6 @@ use crate::merge_tree::MergeOption;
 use crate::symlink::Symlink;
 use crate::util;
 
-// use async_trait::async_trait;
-
-// #[async_trait]
-// pub(crate) trait Executable {
-//     async fn exec(config: Arc<Config>, pack: impl AsRef<Path>) -> Result<()>;
-// }
-
-// pub(crate) struct Install;
-// pub(crate) struct Remove;
-// pub(crate) struct Reload;
-
 /// reload packages
 pub(crate) async fn reload(config: Arc<Config>, pack: impl AsRef<Path>) -> Result<()> {
     remove(config.clone(), &pack).await?;
@@ -37,10 +27,9 @@ pub(crate) async fn reload(config: Arc<Config>, pack: impl AsRef<Path>) -> Resul
 /// install packages
 pub(crate) async fn install(config: Arc<Config>, pack: impl AsRef<Path>) -> Result<()> {
     let pack = Arc::new(fs::canonicalize(pack.as_ref()).await?);
-    let pack_name = match pack.file_name() {
-        Some(pack_name) => pack_name,
-        None => unreachable!(),
-    };
+    let pack_name = pack
+        .file_name()
+        .ok_or_else(|| anyhow!("path error: {pack:?}"))?;
     info!("install pack: {pack_name:?}");
 
     install_link(&config, &pack).await?;
@@ -135,10 +124,9 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 /// remove packages
 pub(crate) async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
     let pack = Arc::new(fs::canonicalize(pack.as_ref()).await?);
-    let pack_name = match pack.file_name() {
-        Some(pack_name) => pack_name,
-        None => unreachable!(),
-    };
+    let pack_name = pack
+        .file_name()
+        .ok_or_else(|| anyhow!("path error: {pack:?}"))?;
     info!("remove pack: {pack_name:?}");
 
     remove_link(&config, &pack).await?;
