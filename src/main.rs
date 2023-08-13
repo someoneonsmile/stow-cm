@@ -76,7 +76,6 @@ where
     futures::stream::iter(packs.into_iter().map(Ok))
         .try_filter_map(|pack| async {
             let pack_config = Config::from_path(pack.as_ref().join(CONFIG_FILE_NAME))?;
-            // TODO: maybe the pack_config can be optional
             if pack_config.is_none() {
                 error!(
                     "{:?} is not the pack_home (which contains {} config file)",
