@@ -19,6 +19,7 @@ env_logger = "0"
 futures = "0"
 walkdir = "2"
 async-trait = "0.1.73"
+const_format = {version = "0.2.31"}
 
 # ignore = "0"
 # xattr = "0"
