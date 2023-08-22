@@ -1,7 +1,6 @@
 use crate::merge::MergeWith;
 use futures::prelude::*;
 use log::error;
-use std::collections::hash_map::RandomState;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::path::Path;
@@ -40,18 +39,18 @@ where
             let pack_name = pack
                 .as_ref()
                 .file_name()
-                .and_then(|it| it.to_str().map(|it| it.to_owned()))
-                .ok_or_else(|| anyhow::anyhow!("path error"))?;
+                .and_then(|it| it.to_str())
+                .ok_or_else(|| anyhow::anyhow!("path error: {:?}", pack.as_ref()))?;
             let mut config = match pack_config.merge_with(|| common_config.deref().clone()) {
                 Some(config) => config,
                 None => unreachable!("no config"),
             };
 
-            let context_map: HashMap<&str, String, RandomState> =
-                HashMap::from_iter(vec![(PACK_NAME_ENV, pack_name)]);
+            let context_map: HashMap<_, _> = vec![(PACK_NAME_ENV, pack_name)].into_iter().collect();
             config.target = match config.target.as_mut() {
                 Some(target) => Some(util::shell_expend_full_with_context(target, |key| {
-                    context_map.get(key)
+                    // context_map.get(key).map(ToOwned::to_owned)
+                    context_map.get(key).copied()
                 })?),
                 None => None,
             };
@@ -59,7 +58,7 @@ where
             Ok(Some(fut)) as Result<Option<JoinHandle<Result<()>>>>
         })
         .try_for_each_concurrent(None, |future| async move {
-            future.await??;
+            let _ = future.await;
             Ok(())
         })
         .await?;

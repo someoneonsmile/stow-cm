@@ -1,12 +1,15 @@
 use anyhow::Context;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tokio::fs;
 
 use crate::error::Result;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct Symlink {
+    /// the path will link to
     pub src: PathBuf,
+    /// the path of the link file
     pub dst: PathBuf,
 }
 

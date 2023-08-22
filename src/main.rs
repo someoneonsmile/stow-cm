@@ -6,6 +6,7 @@ use crate::cli::Opt;
 use crate::command::install;
 use crate::command::reload;
 use crate::command::remove;
+use crate::command::unlink;
 use crate::config::Config;
 use crate::constants::*;
 use crate::error::Result;
@@ -21,6 +22,7 @@ mod executor;
 mod merge;
 mod merge_tree;
 mod symlink;
+mod track_file;
 mod util;
 
 #[tokio::main]
@@ -43,6 +45,10 @@ async fn main() -> Result<()> {
 
     debug!("common_config: {common_config:?}");
 
+    if let Some(to_unlink) = opt.to_unlink {
+        let common_config = common_config.clone();
+        executor::exec_all(common_config, to_unlink, unlink).await?;
+    }
     if let Some(to_remove) = opt.to_remove {
         let common_config = common_config.clone();
         executor::exec_all(common_config, to_remove, remove).await?;

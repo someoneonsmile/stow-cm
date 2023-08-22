@@ -50,10 +50,12 @@ pub(crate) fn expand_symlink_dir(expand_symlink: impl AsRef<Path>) -> Result<()>
     for sub_path in sub_paths {
         let sub_path = sub_path?;
         std::os::unix::fs::symlink(
+            // TODO: change_base_path
             point_to.join(sub_path.path().strip_prefix(&expand_symlink)?),
             sub_path.path(),
         )?;
     }
+    // TODO: return all create link
     Ok(())
 }
 

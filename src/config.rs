@@ -1,3 +1,4 @@
+use log::info;
 use serde::{Deserialize, Serialize};
 use std::ffi::OsStr;
 use std::fs;
@@ -31,6 +32,12 @@ pub(crate) struct Config {
 
     /// clear script (option)
     pub clear: Option<Command>,
+
+    /// is it the decrypted link
+    pub decrypted: bool,
+
+    /// decrypted file path
+    pub decrypted_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,12 +86,15 @@ impl Config {
 impl Default for Config {
     fn default() -> Config {
         Config {
-            target: None,
+            target: Some(DEFAULT_PACK_TARGET.into()),
             ignore: Some(vec![CONFIG_FILE_NAME.to_string()]),
             over: None,
             fold: Some(true),
             init: None,
             clear: None,
+            // TODO:
+            decrypted: false,
+            decrypted_path: Some(DEFAULT_PACK_DECRYPT.into()),
         }
     }
 }
