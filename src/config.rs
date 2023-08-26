@@ -1,4 +1,3 @@
-use log::info;
 use serde::{Deserialize, Serialize};
 use std::ffi::OsStr;
 use std::fs;
@@ -33,11 +32,25 @@ pub(crate) struct Config {
     /// clear script (option)
     pub clear: Option<Command>,
 
-    /// is it the decrypted link
-    pub decrypted: bool,
+    /// decrypted config
+    pub decrypted: Option<DecryptedConfig>,
+}
 
-    /// decrypted file path
-    pub decrypted_path: Option<PathBuf>,
+/// decrypted config
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct DecryptedConfig {
+    /// enable default to false
+    pub(crate) enable: Option<bool>,
+    /// decrypted file path, default path is ${XDG_STATE_HOME:-~/.local/state}/stow-cm/${pack_name}
+    pub(crate) decrypted_path: Option<PathBuf>,
+    /// left boundary of content to be decrypted
+    pub(crate) left_boundry: Option<String>,
+    /// right boundary of content to be decrypted
+    pub(crate) right_boundry: Option<String>,
+    /// the algorithm of crypted content, default to chacha20poly1305
+    pub(crate) crypted_alg: Option<String>,
+    /// the algorithm of crypted content, default to chacha20poly1305
+    pub(crate) key_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -104,9 +117,7 @@ impl Default for Config {
             fold: Some(true),
             init: None,
             clear: None,
-            // TODO:
-            decrypted: false,
-            decrypted_path: Some(DEFAULT_PACK_DECRYPT.into()),
+            decrypted: Some(Default::default()),
         }
     }
 }
@@ -119,6 +130,7 @@ impl Merge<Self> for Config {
         self.fold = self.fold.merge(other.fold);
         self.init = self.init.merge(other.init);
         self.clear = self.clear.merge(other.clear);
+        self.decrypted = self.decrypted.merge(other.decrypted);
         self
     }
 }
@@ -183,5 +195,34 @@ impl Command {
 impl Merge<Self> for Command {
     fn merge(self, _other: Self) -> Self {
         self
+    }
+}
+
+impl Default for DecryptedConfig {
+    fn default() -> Self {
+        DecryptedConfig {
+            enable: Some(false),
+            decrypted_path: Some(DEFAULT_PACK_DECRYPT.into()),
+            left_boundry: Some(DEFAULT_DECRYPT_LEFT_BOUNDARY.into()),
+            right_boundry: Some(DEFAULT_DECRYPT_RIGHT_BOUNDARY.into()),
+            crypted_alg: Some(DEFAULT_CRYPT_ALG.into()),
+            key_path: None,
+        }
+    }
+}
+
+impl Merge<Self> for DecryptedConfig {
+    fn merge(self, other: Self) -> Self {
+        DecryptedConfig {
+            enable: self.enable.merge(other.enable),
+            decrypted_path: self.decrypted_path.merge(other.decrypted_path),
+            right_boundry: match self.left_boundry {
+                Some(_) => self.right_boundry.merge(other.right_boundry),
+                None => other.right_boundry,
+            },
+            left_boundry: self.left_boundry.merge(other.left_boundry),
+            crypted_alg: self.crypted_alg.merge(other.crypted_alg),
+            key_path: self.key_path.merge(other.key_path),
+        }
     }
 }

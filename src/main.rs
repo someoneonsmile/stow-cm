@@ -12,10 +12,12 @@ use crate::constants::*;
 use crate::error::Result;
 use crate::merge::Merge;
 
+mod base64;
 mod cli;
 mod command;
 mod config;
 mod constants;
+mod crypto;
 mod custom_type;
 mod error;
 mod executor;

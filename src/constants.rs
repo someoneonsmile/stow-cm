@@ -1,6 +1,5 @@
 use const_format::formatcp;
 
-
 // ----------------------------------------------------------------------
 //    - inner -
 // ----------------------------------------------------------------------
@@ -20,11 +19,20 @@ pub(crate) const UNSET_VALUE: &str = "!";
 
 pub(crate) const GLOBAL_CONFIG_FILE: &str = "${XDG_CONFIG_HOME:-~/.config}/stow-cm/config.toml";
 
-
 // ----------------------------------------------------------------------
 //    - default -
 // ----------------------------------------------------------------------
 
-pub(crate) const DEFAULT_PACK_DECRYPT: &str = formatcp!("${{XDG_STATE_HOME:-~/.local/state}}/stow-cm/${{{}}}/", PACK_NAME_ENV);
+pub(crate) const DEFAULT_PACK_DECRYPT: &str = formatcp!(
+    "${{XDG_STATE_HOME:-~/.local/state}}/stow-cm/${{{}}}/",
+    PACK_NAME_ENV
+);
 
-pub(crate) const DEFAULT_PACK_TARGET: &str = formatcp!("${{XDG_CONFIG_HOME:-~/.config}}/${{{}}}/", PACK_NAME_ENV);
+pub(crate) const DEFAULT_PACK_TARGET: &str =
+    formatcp!("${{XDG_CONFIG_HOME:-~/.config}}/${{{}}}/", PACK_NAME_ENV);
+
+pub(crate) const DEFAULT_DECRYPT_LEFT_BOUNDARY: &str = "&{";
+
+pub(crate) const DEFAULT_DECRYPT_RIGHT_BOUNDARY: &str = "}";
+
+pub(crate) const DEFAULT_CRYPT_ALG: &str = "chacha20poly1305";
