@@ -4,6 +4,7 @@ use futures::prelude::*;
 use log::{debug, info, warn};
 use regex::RegexSet;
 use std::collections::HashMap;
+use std::convert::identity;
 use std::ops::Deref;
 use std::path::Path;
 use std::path::PathBuf;
@@ -13,6 +14,7 @@ use tokio::fs;
 
 use crate::config::Config;
 use crate::constants::*;
+use crate::crypto;
 use crate::error::Result;
 use crate::merge_tree;
 use crate::merge_tree::MergeOption;
@@ -113,13 +115,65 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     };
 
     // if config decrypted, decrypted the file
-    let decrypted_path = config
-        .decrypted_path
+    let decrypted_path = {
+        let path = config
+            .decrypted
+            .as_ref()
+            .and_then(|it| it.decrypted_path.as_ref());
+        match path {
+            Some(path) => Some(util::shell_expend_full_with_context(path, |key| {
+                context_map.get(key).copied()
+            })?),
+            None => None,
+        }
+    };
+    let decrypted = config
+        .decrypted
         .as_ref()
-        .ok_or_else(|| anyhow!("decrypted_path is none"))?;
-    let decrypted_path =
-        util::shell_expend_full_with_context(decrypted_path, |key| context_map.get(key).copied())?;
-    if config.decrypted {
+        .is_some_and(|it| it.enable.is_some_and(identity));
+
+    if decrypted {
+        let decrypted_path = decrypted_path
+            .as_ref()
+            .ok_or_else(|| anyhow!("{pack_name}: decrypted path has not been configed"))?;
+
+        let key = {
+            let path = config
+                .decrypted
+                .as_ref()
+                .and_then(|it| it.key_path.as_ref())
+                .ok_or_else(|| anyhow!("{pack_name}: key_path has not been configed"))?;
+            fs::read_to_string(path).await?
+        };
+        let key = key.as_bytes();
+
+        let left_boundary = {
+            let s = config
+                .decrypted
+                .as_ref()
+                .and_then(|it| it.left_boundry.as_ref())
+                .ok_or_else(|| anyhow!("{pack_name}: left_boundry has not been configed"))?;
+            s.as_str()
+        };
+
+        let right_boundary = {
+            let s = config
+                .decrypted
+                .as_ref()
+                .and_then(|it| it.right_boundry.as_ref())
+                .ok_or_else(|| anyhow!("{pack_name}: right_boundry has not been configed"))?;
+            s.as_str()
+        };
+
+        let crypted_alg = {
+            let s = config
+                .decrypted
+                .as_ref()
+                .and_then(|it| it.crypted_alg.as_ref())
+                .ok_or_else(|| anyhow!("{pack_name}: crypted_alg has not been configed"))?;
+            s.as_str()
+        };
+
         let mut decrypted_file_map = vec![];
         for symlink in symlinks.iter_mut() {
             let decrypted_file_path =
@@ -128,13 +182,36 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
             symlink.src = decrypted_file_path;
         }
 
-        // TODO: decrypted the file
+        // decrypted the file
+        debug!("{pack_name}: decrypted paths {decrypted_file_map:?}");
+        futures::stream::iter(decrypted_file_map.into_iter().map(Ok))
+            .try_for_each_concurrent(None, |(origin_path, decrypt_path)| async move {
+                if decrypt_path.try_exists()? {
+                    if decrypt_path.is_file() || decrypt_path.is_symlink() {
+                        fs::remove_file(&decrypt_path).await?;
+                    } else {
+                        fs::remove_dir_all(&decrypt_path).await?;
+                    }
+                }
+                info!("decrypt {:?} to {:?}", origin_path, decrypted_path);
+                let content = fs::read_to_string(origin_path).await?;
+                let origin = crypto::decrypt_inline(
+                    &content,
+                    crypted_alg,
+                    key,
+                    left_boundary,
+                    right_boundary,
+                )?;
+                fs::write(&decrypted_path, origin).await?;
+                Result::<(), anyhow::Error>::Ok(())
+            })
+            .await?;
     }
 
-    debug!("{pack:?} install paths: {symlinks:?}");
+    debug!("{pack_name}: install paths {symlinks:?}");
     futures::stream::iter(symlinks.clone().into_iter().map(Ok))
         .try_for_each_concurrent(None, |symlink| async move {
-            if symlink.dst.exists() {
+            if symlink.dst.try_exists()? {
                 // the dir is empty or override regex matched
                 if symlink.dst.is_file() || symlink.dst.is_symlink() {
                     fs::remove_file(&symlink.dst).await?;
@@ -151,11 +228,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     fs::write(
         track_file,
         toml::to_string_pretty(&Track {
-            decrypted_path: if config.decrypted {
-                Some(decrypted_path)
-            } else {
-                None
-            },
+            decrypted_path: if decrypted { decrypted_path } else { None },
             links: symlinks,
         })?,
     )
@@ -211,8 +284,18 @@ async fn remove_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 
     // obtain the decryption path from the configuration file
     // if decrypted remove the decrypted dir
-    if config.decrypted {
-        let decrypted_path = config.decrypted_path.as_ref().ok_or_else(|| anyhow!(""))?;
+    if config
+        .decrypted
+        .as_ref()
+        .is_some_and(|it| it.enable.is_some_and(identity))
+    {
+        let decrypted_path = config
+            .decrypted
+            .as_ref()
+            .unwrap()
+            .decrypted_path
+            .as_ref()
+            .unwrap();
         let context_map: HashMap<_, _> = vec![(PACK_NAME_ENV, pack_name)].into_iter().collect();
         let decrypted_path = util::shell_expend_full_with_context(decrypted_path, |key| {
             context_map.get(key).copied()

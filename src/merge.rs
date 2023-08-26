@@ -56,3 +56,9 @@ impl Merge<Self> for bool {
         self
     }
 }
+
+impl Merge<Self> for String {
+    fn merge(self, _other: Self) -> Self {
+        self
+    }
+}

@@ -20,6 +20,9 @@ futures = "0"
 walkdir = "2"
 async-trait = "0.1.73"
 const_format = {version = "0.2.31"}
+crypto = { version = "0.5.1", features = ["aead", "cipher", "digest", "elliptic-curve"] }
+ring = { version = "0.16.20", features = ["std"] }
+base64 = "0.21.3"
 
 # ignore = "0"
 # xattr = "0"
