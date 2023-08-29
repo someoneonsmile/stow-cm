@@ -33,8 +33,11 @@ stow-cm -r ./*
 
 # when targe is none both in pack_config and common_config, it will skip link the dir_tree
 # env var support the default value: ${env:-default}
-
 # target = '~'
+
+# ! represents unset the value
+# target = '!'
+
 target = '${XDG_CONFIG_HOME:-~/.config}/${PACK_NAME}/'
 
 # override
@@ -90,4 +93,4 @@ fi
 - [ ] doc update
 - [ ] split override, bak file
 
-- [ ] pack cacel global or default target value
+- [x] pack unset global or default target value

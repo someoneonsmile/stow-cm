@@ -55,7 +55,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         .ok_or_else(|| anyhow!("path error: {:?}", pack.as_ref()))?;
     let target = match config.target.as_ref() {
         None => {
-            warn!("{pack:?} target is none, skip install link");
+            warn!("{pack_name}: target is none, skip install link");
             return Ok(());
         }
         Some(target) => target.clone(),
@@ -68,7 +68,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
             context_map.get(key).copied()
         })?;
     if track_file.try_exists()? {
-        bail!("{pack:?} has been install")
+        bail!("{pack_name}: has been install")
     }
 
     let ignore_re = config
@@ -147,7 +147,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         })
         .await?;
 
-    debug!("{pack:?}: installed link record to track file");
+    debug!("{pack_name}: installed link record to track file");
     fs::write(
         track_file,
         toml::to_string_pretty(&Track {
@@ -254,7 +254,7 @@ async fn unlink_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         .ok_or_else(|| anyhow!("path error: {:?}", pack.as_ref()))?;
     let target = match config.target.as_ref() {
         None => {
-            warn!("{pack:?}: target is none, skip unlink pack");
+            warn!("{pack_name}: target is none, skip unlink pack");
             return Ok(());
         }
         Some(target) => target.clone(),
