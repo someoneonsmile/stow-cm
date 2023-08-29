@@ -11,6 +11,8 @@ pub(crate) const CONFIG_FILE_NAME: &str = "stow-cm.toml";
 
 pub(crate) const PACK_TRACK_FILE: &str = formatcp!(".stow-cm-track/${{{}}}.toml", PACK_NAME_ENV);
 
+/// if the value of Some(value) is !, it is equivalent to None.
+pub(crate) const UNSET_VALUE: &str = "!";
 
 // ----------------------------------------------------------------------
 //    - global -

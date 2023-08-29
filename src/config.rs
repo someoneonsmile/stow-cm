@@ -70,8 +70,20 @@ impl Config {
             return Ok(None);
         }
         let config_str = fs::read_to_string(config_path)?;
-        let config: Config = toml::from_str(&config_str)?;
+        let mut config: Config = toml::from_str(&config_str)?;
+        config.init_deal();
         Ok(Some(config))
+    }
+
+    /// deal some specical case
+    fn init_deal(&mut self) {
+        if self
+            .target
+            .as_ref()
+            .is_some_and(|path| matches!(path.to_str().map(str::trim), None | Some(UNSET_VALUE)))
+        {
+            self.target = None;
+        }
     }
 
     // parse config from cli args
