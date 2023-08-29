@@ -10,7 +10,7 @@ use crate::command::unlink;
 use crate::config::Config;
 use crate::constants::*;
 use crate::error::Result;
-use crate::merge::MergeDefault;
+use crate::merge::Merge;
 
 mod cli;
 mod command;
@@ -40,7 +40,7 @@ async fn main() -> Result<()> {
     debug!("opt: {:?}", opt);
 
     let common_config = Config::from_path(GLOBAL_CONFIG_FILE)?;
-    let common_config = common_config.merge_default();
+    let common_config = common_config.merge(Some(Default::default()));
     let common_config = Arc::new(common_config);
 
     debug!("common_config: {common_config:?}");
