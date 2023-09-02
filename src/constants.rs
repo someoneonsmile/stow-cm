@@ -24,7 +24,7 @@ pub(crate) const GLOBAL_CONFIG_FILE: &str = "${XDG_CONFIG_HOME:-~/.config}/stow-
 // ----------------------------------------------------------------------
 
 pub(crate) const DEFAULT_PACK_DECRYPT: &str = formatcp!(
-    "${{XDG_STATE_HOME:-~/.local/state}}/stow-cm/${{{}}}/",
+    "${{XDG_STATE_HOME:-~/.local/state}}/stow-cm/${{{}}}/decrypted/",
     PACK_NAME_ENV
 );
 
@@ -35,4 +35,4 @@ pub(crate) const DEFAULT_DECRYPT_LEFT_BOUNDARY: &str = "&{";
 
 pub(crate) const DEFAULT_DECRYPT_RIGHT_BOUNDARY: &str = "}";
 
-pub(crate) const DEFAULT_CRYPT_ALG: &str = "chacha20poly1305";
+pub(crate) const DEFAULT_CRYPT_ALG: &str = "ChaCha20-Poly1305";

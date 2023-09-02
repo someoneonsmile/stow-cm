@@ -23,14 +23,15 @@ const_format = {version = "0.2.31"}
 crypto = { version = "0.5.1", features = ["aead", "cipher", "digest", "elliptic-curve"] }
 ring = { version = "0.16.20", features = ["std"] }
 base64 = "0.21.3"
+lazy_static = "1.4.0"
 
 # ignore = "0"
 # xattr = "0"
 
 [dependencies.regex]
 version = "1"
-default-features = false
-features = ["std"]
+default-features = true
+# features = ["std"]
 
 [profile.release]
 opt-level = "s"

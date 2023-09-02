@@ -1,5 +1,6 @@
 use anyhow::anyhow;
 use anyhow::bail;
+use anyhow::Context;
 use futures::prelude::*;
 use log::{debug, info, warn};
 use regex::RegexSet;
@@ -12,6 +13,7 @@ use std::sync::Arc;
 use std::vec::Vec;
 use tokio::fs;
 
+use crate::base64;
 use crate::config::Config;
 use crate::constants::*;
 use crate::crypto;
@@ -70,8 +72,21 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
             context_map.get(key).copied()
         })?;
     if track_file.try_exists()? {
-        bail!("{pack_name}: has been install")
+        bail!("{pack_name}: pack has been install")
     }
+    fs::create_dir_all(track_file.parent().with_context(|| {
+        format!(
+            "{pack_name}: failed to find track file parent, {:?}",
+            track_file
+        )
+    })?)
+    .await
+    .with_context(|| {
+        format!(
+            "{pack_name}: failed to create track file dir, {:?}",
+            track_file.parent()
+        )
+    })?;
 
     let ignore_re = config
         .ignore
@@ -138,14 +153,23 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
             .ok_or_else(|| anyhow!("{pack_name}: decrypted path has not been configed"))?;
 
         let key = {
-            let path = config
+            let key_path = config
                 .decrypted
                 .as_ref()
                 .and_then(|it| it.key_path.as_ref())
                 .ok_or_else(|| anyhow!("{pack_name}: key_path has not been configed"))?;
-            fs::read_to_string(path).await?
+            let key_path = &util::shell_expend_full_with_context(key_path, |key| {
+                context_map.get(key).copied()
+            })?;
+            if !fs::try_exists(key_path).await? {
+                bail!("{pack_name}: key_path not exist");
+            }
+            let key_base64 = fs::read_to_string(key_path).await.with_context(|| {
+                format!("{pack_name}: failed to read from key_path={:?}", key_path)
+            })?;
+            base64::decode(&key_base64)?
         };
-        let key = key.as_bytes();
+        let key = key.as_slice();
 
         let left_boundary = {
             let s = config
@@ -174,10 +198,26 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
             s.as_str()
         };
 
+        if !fs::try_exists(decrypted_path).await? {
+            fs::create_dir_all(decrypted_path).await.with_context(|| {
+                format!(
+                    "{pack_name}: failed to create track file dir, {:?}",
+                    decrypted_path
+                )
+            })?;
+        }
+
         let mut decrypted_file_map = vec![];
         for symlink in symlinks.iter_mut() {
             let decrypted_file_path =
                 util::change_base_path(&symlink.src, pack.as_path(), decrypted_path.as_path())?;
+            debug!(
+                "{pack_name}: change_base_path, src={:?}, base={:?}, new_base={:?}, result={:?}",
+                symlink.src,
+                pack.as_path(),
+                decrypted_path.as_path(),
+                decrypted_file_path,
+            );
             decrypted_file_map.push((symlink.src.clone(), decrypted_file_path.clone()));
             symlink.src = decrypted_file_path;
         }
@@ -185,24 +225,35 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         // decrypted the file
         debug!("{pack_name}: decrypted paths {decrypted_file_map:?}");
         futures::stream::iter(decrypted_file_map.into_iter().map(Ok))
-            .try_for_each_concurrent(None, |(origin_path, decrypt_path)| async move {
-                if decrypt_path.try_exists()? {
-                    if decrypt_path.is_file() || decrypt_path.is_symlink() {
-                        fs::remove_file(&decrypt_path).await?;
+            .try_for_each_concurrent(None, |(origin_file_path, decrypted_file_path)| async move {
+                if decrypted_file_path.try_exists()? {
+                    if decrypted_file_path.is_file() || decrypted_file_path.is_symlink() {
+                        fs::remove_file(&decrypted_file_path).await?;
                     } else {
-                        fs::remove_dir_all(&decrypt_path).await?;
+                        fs::remove_dir_all(&decrypted_file_path).await?;
                     }
                 }
-                info!("decrypt {:?} to {:?}", origin_path, decrypted_path);
-                let content = fs::read_to_string(origin_path).await?;
-                let origin = crypto::decrypt_inline(
+                info!(
+                    "{pack_name}: decrypt {:?} to {:?}",
+                    origin_file_path, decrypted_file_path
+                );
+                let content = fs::read_to_string(origin_file_path).await?;
+                let origin_content = crypto::decrypt_inline(
                     &content,
                     crypted_alg,
                     key,
                     left_boundary,
                     right_boundary,
+                    true,
                 )?;
-                fs::write(&decrypted_path, origin).await?;
+                fs::write(&decrypted_file_path, origin_content)
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "{pack_name}: failed to write decrypted_content to path={:?}",
+                            &decrypted_file_path
+                        )
+                    })?;
                 Result::<(), anyhow::Error>::Ok(())
             })
             .await?;
@@ -224,7 +275,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         })
         .await?;
 
-    debug!("{pack_name}: installed link record to track file");
+    debug!("{pack_name}: installed links record to track file, track_file = {track_file:?}, links = {symlinks:?}");
     fs::write(
         track_file,
         toml::to_string_pretty(&Track {
@@ -373,6 +424,7 @@ async fn unlink_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
             fs::remove_dir_all(path).await?;
         }
     }
+    fs::remove_file(track_file).await?;
 
     Ok(())
 }

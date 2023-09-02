@@ -1,21 +1,69 @@
 #![allow(dead_code)]
 
-use std::io::{Cursor, Read, Write};
+use anyhow::anyhow;
 
-use base64::engine::general_purpose;
+use base64::{engine::general_purpose, Engine};
+use log::debug;
+use regex::Regex;
+use structopt::lazy_static::lazy_static;
 
 use crate::error::Result;
 
+lazy_static! {
+    static ref BLANK_REPLACER: Regex = Regex::new(r"[\s|\n]*").unwrap();
+}
+
 pub(crate) fn decode(data: &str) -> Result<Vec<u8>> {
-    let mut reader =
-        base64::read::DecoderReader::new(Cursor::new(data.as_bytes()), &general_purpose::STANDARD);
-    let mut buf = Vec::<u8>::new();
-    let _ = reader.read_to_end(&mut buf)?;
-    Ok(buf)
+    // debug!("decode: {:?}", data);
+    let data_replace = BLANK_REPLACER.replace_all(data, "");
+    debug!("decode: data={:?}, replace={:?}", data, data_replace);
+    general_purpose::STANDARD
+        .decode(data_replace.as_bytes())
+        .map_err(|e| anyhow!(e))
 }
 
 pub(crate) fn encode(data: &[u8]) -> Result<String> {
-    let mut enc = base64::write::EncoderStringWriter::new(&general_purpose::STANDARD);
-    enc.write_all(data)?;
-    Ok(enc.into_inner())
+    debug!("encode: {:?}", data);
+    Ok(general_purpose::STANDARD.encode(data))
+}
+
+#[cfg(test)]
+mod test {
+
+    use super::*;
+
+    /// encode
+    #[test]
+    fn encode_test() {
+        let b = vec![
+            0xa0, 0xff, 0xf5, 0x5d, 0x29, 0xc3, 0xb2, 0xc9, 0x02, 0x2b, 0xa3, 0x74,
+        ];
+        let e = super::encode(&b);
+        println!("{:?}", e);
+        assert!(e.is_ok());
+    }
+
+    /// decode
+    #[test]
+    fn decode_test() {
+        let s = "sPO5zRwO+ompOcW9hew=";
+        let d = decode(s);
+        println!("{:?}", d);
+        assert!(d.is_ok());
+
+        let s = "U5mgpHMN5h9EYvH2";
+        let d = decode(s);
+        println!("{:?}", d);
+        assert!(d.is_ok());
+
+        let s = "oP/1XSnDsskCK6N0";
+        let d = decode(s);
+        println!("{:?}", d);
+        assert!(d.is_ok());
+
+        let s = "0wUHEBS3RtDjTK+L";
+        let d = decode(s);
+        println!("{:?}", d);
+        assert!(d.is_ok());
+    }
 }

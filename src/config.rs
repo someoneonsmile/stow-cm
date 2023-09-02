@@ -56,22 +56,22 @@ pub(crate) struct DecryptedConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "content")]
 pub(crate) enum Command {
-    /// 可执行文件/脚本
+    /// executable bin / script
     Bin(PathBuf),
 
-    /// shell 脚本
+    /// shell script
     Shell(PathBuf),
 
-    /// 脚本字符串
+    /// string script
     ShellStr(String),
 
     /// Makefile
     Make(PathBuf),
 
-    /// python 脚本
+    /// python script
     Python(PathBuf),
 
-    /// lua 脚本
+    /// lua script
     Lua(PathBuf),
 }
 
