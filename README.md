@@ -108,3 +108,7 @@ key_path = '/path/to/key'
 - [ ] split override, bak file
 
 - [x] pack unset global or default target value
+
+- [ ] refact: clear cli command
+
+- [ ] feat: add encrypted support
