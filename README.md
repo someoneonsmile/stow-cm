@@ -72,6 +72,20 @@ if [ -d /path/to ]; then
   rm -rf /path/to
 fi
 '''
+
+[decrypted]
+# default
+enable = false
+# default
+decrypted_path = '${XDG_STATE_HOME:-~/.local/state}/stow-cm/${pack_name}/decrypted/'
+# default
+left_boundry = '&{'
+# default
+right_boundry = '}'
+# support ChaCha20-Poly1305 | AES-128-GCM | AES-256-GCM
+# default ChaCha20-Poly1305
+crypted_alg = 'ChaCha20-Poly1305'
+key_path = '/path/to/key'
 ```
 
 ## TODO

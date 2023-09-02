@@ -41,15 +41,15 @@ where
                 .file_name()
                 .and_then(|it| it.to_str())
                 .ok_or_else(|| anyhow::anyhow!("path error: {:?}", pack.as_ref()))?;
+            // TODO:
             let mut config = match pack_config.merge_with(|| common_config.deref().clone()) {
                 Some(config) => config,
                 None => unreachable!("no config"),
             };
 
             let context_map: HashMap<_, _> = vec![(PACK_NAME_ENV, pack_name)].into_iter().collect();
-            config.target = match config.target.as_mut() {
+            config.target = match config.target.as_ref() {
                 Some(target) => Some(util::shell_expend_full_with_context(target, |key| {
-                    // context_map.get(key).map(ToOwned::to_owned)
                     context_map.get(key).copied()
                 })?),
                 None => None,
@@ -58,7 +58,17 @@ where
             Ok(Some(fut)) as Result<Option<JoinHandle<Result<()>>>>
         })
         .try_for_each_concurrent(None, |future| async move {
-            let _ = future.await;
+            let rr = future.await;
+            match rr {
+                Ok(Err(err)) => {
+                    error!("{:?}", err);
+                }
+                Err(err) => {
+                    error!("{:?}", err);
+                }
+                _ => {}
+            };
+
             Ok(())
         })
         .await?;
