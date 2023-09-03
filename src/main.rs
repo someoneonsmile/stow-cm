@@ -26,6 +26,7 @@ mod merge_tree;
 mod symlink;
 mod track_file;
 mod util;
+mod dev;
 
 #[tokio::main]
 async fn main() -> Result<()> {
