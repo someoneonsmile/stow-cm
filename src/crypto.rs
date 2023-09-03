@@ -77,8 +77,11 @@ pub(crate) fn encrypt(content: &str, alg_name: &str, key: &[u8]) -> Result<Strin
 
     let mut content = content.as_bytes().to_vec();
 
-    let unbound_key = UnboundKey::new(algorithm(alg_name)?, key)?;
-    LessSafeKey::new(unbound_key).seal_in_place_append_tag(nonce, Aad::empty(), &mut content)?;
+    let key = {
+        let unbound_key = UnboundKey::new(algorithm(alg_name)?, key)?;
+        LessSafeKey::new(unbound_key)
+    };
+    key.seal_in_place_append_tag(nonce, Aad::empty(), &mut content)?;
 
     let enc_content_base64 = base64::encode(&content)?;
     let nonce_base64 = base64::encode(&nonce_value)?;
@@ -106,8 +109,11 @@ pub(crate) fn decrypt(content: &str, alg_name: &str, key: &[u8]) -> Result<Strin
     let mut encrypted_content = base64::decode(encrypted_content_base64)?;
     let nonce = base64::decode(nonce_base64)?;
 
-    let unbound_key = UnboundKey::new(algorithm(alg_name)?, key)?;
-    let origin_data = LessSafeKey::new(unbound_key).open_in_place(
+    let key = {
+        let unbound_key = UnboundKey::new(algorithm(alg_name)?, key)?;
+        LessSafeKey::new(unbound_key)
+    };
+    let origin_data = key.open_in_place(
         Nonce::try_assume_unique_for_key(&nonce)?,
         Aad::empty(),
         &mut encrypted_content,
