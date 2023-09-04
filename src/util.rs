@@ -131,3 +131,36 @@ pub(crate) fn change_base_path(
 ) -> Result<PathBuf> {
     Ok(new_base.as_ref().join(path.as_ref().strip_prefix(base)?))
 }
+
+/// find var and inplace
+pub(crate) fn var_inplace<F>(
+    content: &str,
+    left_boundary: &str,
+    right_boundary: &str,
+    unwrap: bool,
+    convert: F,
+) -> Result<String>
+where
+    F: Fn(&str) -> Result<String>,
+{
+    let mut r = String::new();
+    let mut last_index = 0;
+    while let Some(li) = content[last_index..].find(left_boundary) {
+        let content = &content[last_index..];
+        r.push_str(&content[..li]);
+        let content = &content[li..];
+        if let Some(ei) = content.find(right_boundary) {
+            let dec_content = convert(&content[left_boundary.len()..ei])?;
+            if !unwrap {
+                r.push_str(left_boundary);
+            }
+            r.push_str(&dec_content);
+            if !unwrap {
+                r.push_str(right_boundary);
+            }
+            last_index = last_index + li + ei + right_boundary.len();
+        }
+    }
+    r.push_str(&content[last_index..]);
+    Ok(r)
+}
