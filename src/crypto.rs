@@ -11,6 +11,7 @@ use ring::rand::SystemRandom;
 
 use crate::base64;
 use crate::error::Result;
+use crate::util;
 
 /// decrypt content
 pub(crate) fn encrypt_inline(
@@ -19,22 +20,11 @@ pub(crate) fn encrypt_inline(
     key: &[u8],
     left_boundary: &str,
     right_boundary: &str,
+    unwrap: bool,
 ) -> Result<String> {
-    let mut r = String::new();
-    let mut last_index = 0;
-    while let Some(li) = content.find(left_boundary) {
-        r.push_str(&content[last_index..li]);
-        last_index = li;
-        if let Some(ei) = content[li..].find(right_boundary) {
-            let enc_content = encrypt(&content[(li + left_boundary.len())..ei], alg_name, key)?;
-            r.push_str(left_boundary);
-            r.push_str(&enc_content);
-            r.push_str(right_boundary);
-            last_index = ei + right_boundary.len();
-        }
-    }
-    r.push_str(&content[last_index..]);
-    Ok(r)
+    util::var_inplace(content, left_boundary, right_boundary, unwrap, |content| {
+        encrypt(content, alg_name, key)
+    })
 }
 
 /// decrypt content
@@ -46,26 +36,9 @@ pub(crate) fn decrypt_inline(
     right_boundary: &str,
     unwrap: bool,
 ) -> Result<String> {
-    let mut r = String::new();
-    let mut last_index = 0;
-    while let Some(li) = content[last_index..].find(left_boundary) {
-        let content = &content[last_index..];
-        r.push_str(&content[..li]);
-        let content = &content[li..];
-        if let Some(ei) = content.find(right_boundary) {
-            let dec_content = decrypt(&content[left_boundary.len()..ei], alg_name, key)?;
-            if !unwrap {
-                r.push_str(left_boundary);
-            }
-            r.push_str(&dec_content);
-            if !unwrap {
-                r.push_str(right_boundary);
-            }
-            last_index = last_index + li + ei + right_boundary.len();
-        }
-    }
-    r.push_str(&content[last_index..]);
-    Ok(r)
+    util::var_inplace(content, left_boundary, right_boundary, unwrap, |content| {
+        decrypt(content, alg_name, key)
+    })
 }
 
 /// decrypt content
