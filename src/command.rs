@@ -59,7 +59,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         .ok_or_else(|| anyhow!("path error: {:?}", pack.as_ref()))?;
     let target = match config.target.as_ref() {
         None => {
-            warn!("{pack_name}: target is none, skip install link");
+            warn!("{pack_name}: target is none, skip install links");
             return Ok(());
         }
         Some(target) => target.clone(),
@@ -288,14 +288,14 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 }
 
 /// remove packages
-pub(crate) async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
+pub(crate) async fn clean<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
     let pack = Arc::new(fs::canonicalize(pack.as_ref()).await?);
     let pack_name = pack
         .file_name()
         .ok_or_else(|| anyhow!("path error: {pack:?}"))?;
-    info!("remove pack: {pack_name:?}");
+    info!("clean pack: {pack_name:?}");
 
-    remove_link(&config, &pack).await?;
+    clean_link(&config, &pack).await?;
 
     // execute the clear script
     let envs = [(PACK_NAME_ENV, pack_name)];
@@ -307,14 +307,14 @@ pub(crate) async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Resu
 }
 
 /// remove links
-async fn remove_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
+async fn clean_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     let pack_name = pack
         .file_name()
         .and_then(|it| it.to_str())
         .ok_or_else(|| anyhow!("path error: {:?}", pack.as_ref()))?;
     let target = match config.target.as_ref() {
         None => {
-            warn!("{pack_name}: target is none, skip remove link");
+            warn!("{pack_name}: target is none, skip clean links");
             return Ok(());
         }
         Some(target) => target.clone(),
@@ -325,10 +325,10 @@ async fn remove_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
             .await??
     };
 
-    debug!("{pack_name}: remove paths: {symlinks:?}");
+    debug!("{pack_name}: clean paths: {symlinks:?}");
     futures::stream::iter(symlinks.into_iter().map(Ok))
         .try_for_each_concurrent(None, |symlink| async move {
-            info!("remove {symlink:?}");
+            info!("clean {symlink:?}");
             symlink.remove().await
         })
         .await?;
@@ -352,7 +352,7 @@ async fn remove_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
             context_map.get(key).copied()
         })?;
         if fs::try_exists(decrypted_path.as_path()).await? {
-            debug!("{pack_name}: remove decrypted dir, {decrypted_path:?}");
+            debug!("{pack_name}: clean decrypted dir, {decrypted_path:?}");
             fs::remove_dir_all(decrypted_path).await?;
         }
     }
@@ -360,16 +360,16 @@ async fn remove_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     Ok(())
 }
 
-/// unlink packages
-pub(crate) async fn unlink<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
+/// remove packages
+pub(crate) async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
     let pack = Arc::new(fs::canonicalize(pack.as_ref()).await?);
     let pack_name = pack
         .file_name()
         .and_then(|it| it.to_str())
         .ok_or_else(|| anyhow!("path error: {:?}", pack.as_ref()))?;
-    info!("unlink pack: {pack_name:?}");
+    info!("remove pack: {pack_name:?}");
 
-    unlink_link(&config, &pack).await?;
+    remove_link(&config, &pack).await?;
 
     // execute the clear script
     let envs = [(PACK_NAME_ENV, pack_name)];
@@ -380,15 +380,15 @@ pub(crate) async fn unlink<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Resu
     Ok(())
 }
 
-/// unlink links
-async fn unlink_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
+/// remove links
+async fn remove_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     let pack_name = pack
         .file_name()
         .and_then(|it| it.to_str())
         .ok_or_else(|| anyhow!("path error: {:?}", pack.as_ref()))?;
     let target = match config.target.as_ref() {
         None => {
-            warn!("{pack_name}: target is none, skip unlink pack");
+            warn!("{pack_name}: target is none, skip remove links");
             return Ok(());
         }
         Some(target) => target.clone(),
@@ -408,7 +408,7 @@ async fn unlink_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 
     let symlinks = track.links;
 
-    debug!("{pack_name}: unlink {symlinks:?}");
+    debug!("{pack_name}: remove {symlinks:?}");
     futures::stream::iter(symlinks.into_iter().map(Ok))
         .try_for_each_concurrent(None, |symlink| async move {
             info!("remove {symlink:?}");

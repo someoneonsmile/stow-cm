@@ -1,12 +1,14 @@
+use clap::Parser;
 use log::debug;
 
 use std::sync::Arc;
 
-use crate::cli::Opt;
+use crate::cli::Cli;
+use crate::cli::Commands;
 use crate::command::install;
 use crate::command::reload;
+use crate::command::clean;
 use crate::command::remove;
-use crate::command::unlink;
 use crate::config::Config;
 use crate::constants::*;
 use crate::error::Result;
@@ -19,6 +21,7 @@ mod config;
 mod constants;
 mod crypto;
 mod custom_type;
+mod dev;
 mod error;
 mod executor;
 mod merge;
@@ -26,7 +29,6 @@ mod merge_tree;
 mod symlink;
 mod track_file;
 mod util;
-mod dev;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -39,7 +41,7 @@ async fn main() -> Result<()> {
         .format_timestamp(None)
         .init();
 
-    let opt = Opt::parse();
+    let opt = Cli::parse();
     debug!("opt: {:?}", opt);
 
     let common_config = Config::from_path(GLOBAL_CONFIG_FILE)?;
@@ -48,22 +50,21 @@ async fn main() -> Result<()> {
 
     debug!("common_config: {common_config:?}");
 
-    if let Some(to_unlink) = opt.to_unlink {
-        let common_config = common_config.clone();
-        executor::exec_all(common_config, to_unlink, unlink).await?;
-    }
-    if let Some(to_remove) = opt.to_remove {
-        let common_config = common_config.clone();
-        executor::exec_all(common_config, to_remove, remove).await?;
-    }
-    if let Some(to_install) = opt.to_install {
-        let common_config = common_config.clone();
-        executor::exec_all(common_config, to_install, install).await?;
-    }
-    if let Some(to_reload) = opt.to_reload {
-        let common_config = common_config.clone();
-        executor::exec_all(common_config, to_reload, reload).await?;
-    }
+    match opt.command {
+        Commands::Install { paths } => {
+            // let common_config = common_config.clone();
+            executor::exec_all(common_config, paths, install).await?;
+        }
+        Commands::Remove { paths } => {
+            executor::exec_all(common_config, paths, remove).await?;
+        }
+        Commands::Reload { paths } => {
+            executor::exec_all(common_config, paths, reload).await?;
+        }
+        Commands::Clean { paths } => {
+            executor::exec_all(common_config, paths, clean).await?;
+        }
+    };
 
     Ok(())
 }
