@@ -5,7 +5,7 @@ use anyhow::anyhow;
 use base64::{engine::general_purpose, Engine};
 use log::debug;
 use regex::Regex;
-use structopt::lazy_static::lazy_static;
+use lazy_static::lazy_static;
 
 use crate::error::Result;
 
