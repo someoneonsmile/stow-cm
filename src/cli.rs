@@ -1,33 +1,41 @@
+use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::vec::Vec;
-use structopt::StructOpt;
 
 /// config manager (gnu-stow like)
-#[derive(StructOpt, Debug)]
-#[structopt(name = "stow-cm")]
-pub(crate) struct Opt {
-    /// packages to install
-    #[structopt(short = "i", long = "install")]
-    pub to_install: Option<Vec<PathBuf>>,
-
-    /// packages to remove
-    #[structopt(short = "d", long = "remove")]
-    pub to_remove: Option<Vec<PathBuf>>,
-
-    /// packages to unlink
-    #[structopt(short = "u", long = "unlink")]
-    pub to_unlink: Option<Vec<PathBuf>>,
-
-    /// packages to reload
-    #[structopt(short = "r", long = "reload")]
-    pub to_reload: Option<Vec<PathBuf>>,
-    // force replace
-    // #[structopt(short = "f", long = "force", parse(from_flag))]
-    // pub force: bool,
+#[derive(Parser, Debug)]
+#[command(version, about, name = "stow-cm")]
+#[command(arg_required_else_help = true)]
+// #[command(propagate_version = true)]
+pub(crate) struct Cli {
+    #[command(subcommand)]
+    pub(crate) command: Commands,
 }
 
-impl Opt {
-    pub fn parse() -> Opt {
-        Opt::from_args()
-    }
+#[derive(Subcommand, Debug)]
+pub(crate) enum Commands {
+    /// Install packs
+    #[command(arg_required_else_help = true)]
+    Install {
+        #[arg(name = "PACK_PATH")]
+        paths: Vec<PathBuf>,
+    },
+    /// Remove packs
+    #[command(arg_required_else_help = true)]
+    Remove {
+        #[arg(name = "PACK_PATH")]
+        paths: Vec<PathBuf>,
+    },
+    /// Reload packs (remove and install)
+    #[command(arg_required_else_help = true)]
+    Reload {
+        #[arg(name = "PACK_PATH")]
+        paths: Vec<PathBuf>,
+    },
+    /// Scan and clean all symbol that link to pack from pack target
+    #[command(arg_required_else_help = true)]
+    Clean {
+        #[arg(name = "PACK_PATH")]
+        paths: Vec<PathBuf>,
+    },
 }
