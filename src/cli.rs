@@ -38,4 +38,18 @@ pub(crate) enum Commands {
         #[arg(name = "PACK_PATH")]
         paths: Vec<PathBuf>,
     },
+    /// Scan files in the given pack for replacement variables, encrypt them,
+    /// and replace them back to the original files
+    #[command(arg_required_else_help = true)]
+    Encrypt {
+        #[arg(name = "PACK_PATH")]
+        paths: Vec<PathBuf>,
+    },
+    /// Scan files in the given pack for replacement variables, decrypt them,
+    /// and replace them back to the original files
+    #[command(arg_required_else_help = true)]
+    Decrypt {
+        #[arg(name = "PACK_PATH")]
+        paths: Vec<PathBuf>,
+    },
 }

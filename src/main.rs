@@ -5,9 +5,11 @@ use std::sync::Arc;
 
 use crate::cli::Cli;
 use crate::cli::Commands;
+use crate::command::clean;
+use crate::command::decrypt;
+use crate::command::encrypt;
 use crate::command::install;
 use crate::command::reload;
-use crate::command::clean;
 use crate::command::remove;
 use crate::config::Config;
 use crate::constants::*;
@@ -33,7 +35,7 @@ mod util;
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::Builder::from_default_env()
-        .parse_filters("info")
+        .parse_filters("debug")
         .default_format()
         .format_level(true)
         .format_target(false)
@@ -63,6 +65,12 @@ async fn main() -> Result<()> {
         }
         Commands::Clean { paths } => {
             executor::exec_all(common_config, paths, clean).await?;
+        }
+        Commands::Encrypt { paths } => {
+            executor::exec_all(common_config, paths, encrypt).await?;
+        }
+        Commands::Decrypt { paths } => {
+            executor::exec_all(common_config, paths, decrypt).await?;
         }
     };
 

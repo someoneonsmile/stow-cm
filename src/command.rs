@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::vec::Vec;
 use tokio::fs;
+use walkdir::WalkDir;
 
 use crate::base64;
 use crate::config::Config;
@@ -150,14 +151,14 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     if decrypted {
         let decrypted_path = decrypted_path
             .as_ref()
-            .ok_or_else(|| anyhow!("{pack_name}: decrypted path has not been configed"))?;
+            .ok_or_else(|| anyhow!("{pack_name}: decrypted path is not configed"))?;
 
         let key = {
             let key_path = config
                 .decrypted
                 .as_ref()
                 .and_then(|it| it.key_path.as_ref())
-                .ok_or_else(|| anyhow!("{pack_name}: key_path has not been configed"))?;
+                .ok_or_else(|| anyhow!("{pack_name}: key_path is not configed"))?;
             let key_path = &util::shell_expend_full_with_context(key_path, |key| {
                 context_map.get(key).copied()
             })?;
@@ -176,7 +177,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
                 .decrypted
                 .as_ref()
                 .and_then(|it| it.left_boundry.as_ref())
-                .ok_or_else(|| anyhow!("{pack_name}: left_boundry has not been configed"))?;
+                .ok_or_else(|| anyhow!("{pack_name}: left_boundry is not configed"))?;
             s.as_str()
         };
 
@@ -185,7 +186,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
                 .decrypted
                 .as_ref()
                 .and_then(|it| it.right_boundry.as_ref())
-                .ok_or_else(|| anyhow!("{pack_name}: right_boundry has not been configed"))?;
+                .ok_or_else(|| anyhow!("{pack_name}: right_boundry is not configed"))?;
             s.as_str()
         };
 
@@ -194,7 +195,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
                 .decrypted
                 .as_ref()
                 .and_then(|it| it.crypted_alg.as_ref())
-                .ok_or_else(|| anyhow!("{pack_name}: crypted_alg has not been configed"))?;
+                .ok_or_else(|| anyhow!("{pack_name}: crypted_alg is not configed"))?;
             s.as_str()
         };
 
@@ -401,7 +402,7 @@ async fn remove_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         })?;
 
     if !track_file.try_exists()? {
-        bail!("{pack_name} has not been installed")
+        bail!("{pack_name} is not installed")
     }
 
     let track: Track = toml::from_str(fs::read_to_string(track_file.as_path()).await?.as_str())?;
@@ -425,6 +426,272 @@ async fn remove_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         }
     }
     fs::remove_file(track_file).await?;
+
+    Ok(())
+}
+
+/// encrypt packages
+pub(crate) async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
+    let pack = Arc::new(fs::canonicalize(pack.as_ref()).await?);
+    let pack_name = pack
+        .file_name()
+        .and_then(|it| it.to_str())
+        .ok_or_else(|| anyhow!("path error: {:?}", pack.as_ref()))?;
+    info!("encrypt pack: {pack_name:?}");
+
+    let decrypted = config
+        .decrypted
+        .as_ref()
+        .is_some_and(|it| it.enable.is_some_and(identity));
+
+    if !decrypted {
+        warn!("{pack_name}: pack is not enable crypted")
+    }
+
+    let context_map: HashMap<_, _> = vec![(PACK_NAME_ENV, pack_name)].into_iter().collect();
+
+    let key = {
+        let key_path = config
+            .decrypted
+            .as_ref()
+            .and_then(|it| it.key_path.as_ref())
+            .ok_or_else(|| anyhow!("{pack_name}: key_path is not configed"))?;
+        let key_path =
+            &util::shell_expend_full_with_context(key_path, |key| context_map.get(key).copied())?;
+        if !fs::try_exists(key_path).await? {
+            bail!("{pack_name}: key_path not exist");
+        }
+        let key_base64 = fs::read_to_string(key_path)
+            .await
+            .with_context(|| format!("{pack_name}: failed to read from key_path={:?}", key_path))?;
+        base64::decode(&key_base64)?
+    };
+    let key = key.as_slice();
+
+    let left_boundary = {
+        let s = config
+            .decrypted
+            .as_ref()
+            .and_then(|it| it.left_boundry.as_ref())
+            .ok_or_else(|| anyhow!("{pack_name}: left_boundry is not configed"))?;
+        s.as_str()
+    };
+
+    let right_boundary = {
+        let s = config
+            .decrypted
+            .as_ref()
+            .and_then(|it| it.right_boundry.as_ref())
+            .ok_or_else(|| anyhow!("{pack_name}: right_boundry is not configed"))?;
+        s.as_str()
+    };
+
+    let crypted_alg = {
+        let s = config
+            .decrypted
+            .as_ref()
+            .and_then(|it| it.crypted_alg.as_ref())
+            .ok_or_else(|| anyhow!("{pack_name}: crypted_alg is not configed"))?;
+        s.as_str()
+    };
+
+    let ignore_re = config
+        .ignore
+        .as_ref()
+        .and_then(|ignore_regexs| RegexSet::new(ignore_regexs).ok());
+
+    let files = {
+        let pack = pack.clone();
+        tokio::task::spawn_blocking(move || {
+            // walk file, expect ignore_re, skip binary file
+            let files: Vec<_> = WalkDir::new(pack.deref())
+                .into_iter()
+                .filter_map(|entry| {
+                    let entry = entry.ok()?;
+                    let path = entry.path();
+                    let ignore = match ignore_re.as_ref() {
+                        Some(ignore_re) => path
+                            .to_str()
+                            .is_some_and(|path_name| ignore_re.is_match(path_name)),
+                        None => true,
+                    };
+                    if ignore {
+                        return None;
+                    }
+                    if path.is_file() {
+                        return Some(entry);
+                    }
+                    None
+                })
+                .collect();
+
+            files
+        })
+        .await?
+    };
+
+    // encrypt the file
+    debug!("{pack_name}: encrypt paths {files:?}");
+    futures::stream::iter(files.into_iter().map(Ok))
+        .try_for_each_concurrent(None, |file| async move {
+            let path = file.path();
+            info!("{pack_name}: encrypt {:?}", path);
+            let content = fs::read_to_string(path).await;
+            if content.is_err() {
+                warn!("{pack_name}: {:?} contains not invalid utf-8", path);
+                return Ok(());
+            }
+            let content = content?;
+            let encrypted_content = crypto::encrypt_inline(
+                &content,
+                crypted_alg,
+                key,
+                left_boundary,
+                right_boundary,
+                false,
+            )?;
+            fs::write(path, encrypted_content).await.with_context(|| {
+                format!(
+                    "{pack_name}: failed to write encrypted_content to path={:?}",
+                    path
+                )
+            })?;
+            Result::<(), anyhow::Error>::Ok(())
+        })
+        .await?;
+
+    Ok(())
+}
+
+/// decrypt packages
+pub(crate) async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
+    let pack = Arc::new(fs::canonicalize(pack.as_ref()).await?);
+    let pack_name = pack
+        .file_name()
+        .and_then(|it| it.to_str())
+        .ok_or_else(|| anyhow!("path error: {:?}", pack.as_ref()))?;
+    info!("decrypt pack: {pack_name:?}");
+
+    let decrypted = config
+        .decrypted
+        .as_ref()
+        .is_some_and(|it| it.enable.is_some_and(identity));
+
+    if !decrypted {
+        warn!("{pack_name}: pack is not enable crypted")
+    }
+
+    let context_map: HashMap<_, _> = vec![(PACK_NAME_ENV, pack_name)].into_iter().collect();
+
+    let key = {
+        let key_path = config
+            .decrypted
+            .as_ref()
+            .and_then(|it| it.key_path.as_ref())
+            .ok_or_else(|| anyhow!("{pack_name}: key_path is not configed"))?;
+        let key_path =
+            &util::shell_expend_full_with_context(key_path, |key| context_map.get(key).copied())?;
+        if !fs::try_exists(key_path).await? {
+            bail!("{pack_name}: key_path not exist");
+        }
+        let key_base64 = fs::read_to_string(key_path)
+            .await
+            .with_context(|| format!("{pack_name}: failed to read from key_path={:?}", key_path))?;
+        base64::decode(&key_base64)?
+    };
+    let key = key.as_slice();
+
+    let left_boundary = {
+        let s = config
+            .decrypted
+            .as_ref()
+            .and_then(|it| it.left_boundry.as_ref())
+            .ok_or_else(|| anyhow!("{pack_name}: left_boundry is not configed"))?;
+        s.as_str()
+    };
+
+    let right_boundary = {
+        let s = config
+            .decrypted
+            .as_ref()
+            .and_then(|it| it.right_boundry.as_ref())
+            .ok_or_else(|| anyhow!("{pack_name}: right_boundry is not configed"))?;
+        s.as_str()
+    };
+
+    let crypted_alg = {
+        let s = config
+            .decrypted
+            .as_ref()
+            .and_then(|it| it.crypted_alg.as_ref())
+            .ok_or_else(|| anyhow!("{pack_name}: crypted_alg is not configed"))?;
+        s.as_str()
+    };
+
+    let ignore_re = config
+        .ignore
+        .as_ref()
+        .and_then(|ignore_regexs| RegexSet::new(ignore_regexs).ok());
+
+    let files = {
+        let pack = pack.clone();
+        tokio::task::spawn_blocking(move || {
+            // walk file, expect ignore_re, skip binary file
+            let files: Vec<_> = WalkDir::new(pack.deref())
+                .into_iter()
+                .filter_map(|entry| {
+                    let entry = entry.ok()?;
+                    let path = entry.path();
+                    let ignore = match ignore_re.as_ref() {
+                        Some(ignore_re) => path
+                            .to_str()
+                            .is_some_and(|path_name| ignore_re.is_match(path_name)),
+                        None => true,
+                    };
+                    if ignore {
+                        return None;
+                    }
+                    if path.is_file() {
+                        return Some(entry);
+                    }
+                    None
+                })
+                .collect();
+
+            files
+        })
+        .await?
+    };
+
+    // decrypt the file
+    debug!("{pack_name}: decrypt paths {files:?}");
+    futures::stream::iter(files.into_iter().map(Ok))
+        .try_for_each_concurrent(None, |file| async move {
+            let path = file.path();
+            info!("{pack_name}: decrypt {:?}", path);
+            let content = fs::read_to_string(path).await;
+            if content.is_err() {
+                warn!("{pack_name}: {:?} contains not invalid utf-8", path);
+                return Ok(());
+            }
+            let content = content?;
+            let decrypted_content = crypto::decrypt_inline(
+                &content,
+                crypted_alg,
+                key,
+                left_boundary,
+                right_boundary,
+                false,
+            )?;
+            fs::write(path, decrypted_content).await.with_context(|| {
+                format!(
+                    "{pack_name}: failed to write decrypted_content to path={:?}",
+                    path
+                )
+            })?;
+            Result::<(), anyhow::Error>::Ok(())
+        })
+        .await?;
 
     Ok(())
 }
