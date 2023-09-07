@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 
 use base64::{engine::general_purpose, Engine};
 use log::debug;
@@ -19,7 +19,7 @@ pub(crate) fn decode(data: &str) -> Result<Vec<u8>> {
     debug!("decode: data={:?}, replace={:?}", data, data_replace);
     general_purpose::STANDARD
         .decode(data_replace.as_bytes())
-        .map_err(|e| anyhow!(e))
+        .with_context(|| anyhow!("base64 decode error, content={data}"))
 }
 
 pub(crate) fn encode(data: &[u8]) -> Result<String> {
