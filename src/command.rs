@@ -63,13 +63,13 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
             warn!("{pack_name}: target is none, skip install links");
             return Ok(());
         }
-        Some(target) => target.clone(),
+        Some(target) => target,
     };
 
     // if trace file has exists, then then pack has been installed
     let context_map: HashMap<_, _> = vec![(PACK_NAME_ENV, pack_name)].into_iter().collect();
     let track_file =
-        util::shell_expand_full_with_context(target.clone().join(PACK_TRACK_FILE), |key| {
+        util::shell_expand_full_with_context(target.join(PACK_TRACK_FILE), |key| {
             context_map.get(key).copied()
         })?;
     if track_file.try_exists()? {
@@ -102,6 +102,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     let mut symlinks = {
         let pack = pack.clone();
         let config = config.clone();
+        let target = target.clone();
         tokio::task::spawn_blocking(move || {
             let merge_result = merge_tree::MergeTree::new(
                 target,
@@ -300,7 +301,7 @@ pub(crate) async fn clean<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Resul
     Ok(())
 }
 
-/// remove links
+/// clean links
 async fn clean_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     let pack_name = pack
         .file_name()
@@ -311,10 +312,11 @@ async fn clean_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
             warn!("{pack_name}: target is none, skip clean links");
             return Ok(());
         }
-        Some(target) => target.clone(),
+        Some(target) => target,
     };
     let symlinks = {
         let pack = pack.clone();
+        let target = target.clone();
         tokio::task::spawn_blocking(move || util::find_prefix_symlink(target, pack.deref()))
             .await??
     };
@@ -380,12 +382,12 @@ async fn remove_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
             warn!("{pack_name}: target is none, skip remove links");
             return Ok(());
         }
-        Some(target) => target.clone(),
+        Some(target) => target,
     };
 
     let context_map: HashMap<_, _> = vec![(PACK_NAME_ENV, pack_name)].into_iter().collect();
     let track_file =
-        util::shell_expand_full_with_context(target.clone().join(PACK_TRACK_FILE), |key| {
+        util::shell_expand_full_with_context(target.join(PACK_TRACK_FILE), |key| {
             context_map.get(key).copied()
         })?;
 
