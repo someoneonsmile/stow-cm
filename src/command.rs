@@ -446,7 +446,8 @@ pub(crate) async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
         .is_some_and(|it| it.enable.is_some_and(identity));
 
     if !decrypted {
-        warn!("{pack_name}: pack is not enable crypted")
+        warn!("{pack_name}: pack is not enable crypted");
+        return Ok(());
     }
 
     let context_map: HashMap<_, _> = vec![(PACK_NAME_ENV, pack_name)].into_iter().collect();
@@ -579,7 +580,8 @@ pub(crate) async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
         .is_some_and(|it| it.enable.is_some_and(identity));
 
     if !decrypted {
-        warn!("{pack_name}: pack is not enable crypted")
+        warn!("{pack_name}: pack is not enable crypted");
+        return Ok(());
     }
 
     let context_map: HashMap<_, _> = vec![(PACK_NAME_ENV, pack_name)].into_iter().collect();
