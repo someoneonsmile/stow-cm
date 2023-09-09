@@ -69,7 +69,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     // if trace file has exists, then then pack has been installed
     let context_map: HashMap<_, _> = vec![(PACK_NAME_ENV, pack_name)].into_iter().collect();
     let track_file =
-        util::shell_expend_full_with_context(target.clone().join(PACK_TRACK_FILE), |key| {
+        util::shell_expand_full_with_context(target.clone().join(PACK_TRACK_FILE), |key| {
             context_map.get(key).copied()
         })?;
     if track_file.try_exists()? {
@@ -385,7 +385,7 @@ async fn remove_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 
     let context_map: HashMap<_, _> = vec![(PACK_NAME_ENV, pack_name)].into_iter().collect();
     let track_file =
-        util::shell_expend_full_with_context(target.clone().join(PACK_TRACK_FILE), |key| {
+        util::shell_expand_full_with_context(target.clone().join(PACK_TRACK_FILE), |key| {
             context_map.get(key).copied()
         })?;
 
