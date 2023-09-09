@@ -37,8 +37,9 @@ pub(crate) async fn install(config: Arc<Config>, pack: impl AsRef<Path>) -> Resu
     let pack = Arc::new(fs::canonicalize(pack.as_ref()).await?);
     let pack_name = pack
         .file_name()
+        .and_then(|it| it.to_str())
         .ok_or_else(|| anyhow!("path error: {pack:?}"))?;
-    info!("install pack: {pack_name:?}");
+    info!("install pack: {pack_name}");
 
     install_link(&config, &pack).await?;
 
@@ -54,7 +55,6 @@ pub(crate) async fn install(config: Arc<Config>, pack: impl AsRef<Path>) -> Resu
 /// remove packages
 async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     let pack_name = pack
-        .as_ref()
         .file_name()
         .and_then(|it| it.to_str())
         .ok_or_else(|| anyhow!("path error: {:?}", pack.as_ref()))?;
@@ -251,7 +251,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
                     .await
                     .with_context(|| {
                         format!(
-                            "{pack_name}: failed to write decrypted_content to path={:?}",
+                            "{pack_name}: failed to write decrypted content to path={:?}",
                             &decrypted_file_path
                         )
                     })?;
@@ -271,7 +271,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
                     fs::remove_dir_all(&symlink.dst).await?;
                 }
             }
-            info!("install {symlink:?}");
+            info!("{pack_name}: install {symlink:?}");
             symlink.create().await
         })
         .await?;
@@ -293,8 +293,9 @@ pub(crate) async fn clean<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Resul
     let pack = Arc::new(fs::canonicalize(pack.as_ref()).await?);
     let pack_name = pack
         .file_name()
+        .and_then(|it| it.to_str())
         .ok_or_else(|| anyhow!("path error: {pack:?}"))?;
-    info!("clean pack: {pack_name:?}");
+    info!("clean pack: {pack_name}");
 
     clean_link(&config, &pack).await?;
 
@@ -329,7 +330,7 @@ async fn clean_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     debug!("{pack_name}: clean paths: {symlinks:?}");
     futures::stream::iter(symlinks.into_iter().map(Ok))
         .try_for_each_concurrent(None, |symlink| async move {
-            info!("clean {symlink:?}");
+            info!("{pack_name}: {symlink:?}");
             symlink.remove().await
         })
         .await?;
@@ -412,7 +413,7 @@ async fn remove_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     debug!("{pack_name}: remove {symlinks:?}");
     futures::stream::iter(symlinks.into_iter().map(Ok))
         .try_for_each_concurrent(None, |symlink| async move {
-            info!("remove {symlink:?}");
+            info!("{pack_name}: {symlink:?}");
             symlink.remove().await
         })
         .await?;
