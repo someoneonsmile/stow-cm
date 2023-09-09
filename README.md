@@ -91,7 +91,7 @@ if [ -d /path/to ]; then
 fi
 '''
 
-[decrypted]
+[crypted]
 # default
 enable = false
 # default
