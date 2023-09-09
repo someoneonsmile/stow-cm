@@ -49,7 +49,7 @@ where
 
             let context_map: HashMap<_, _> = vec![(PACK_NAME_ENV, pack_name)].into_iter().collect();
             config.target = match config.target.as_ref() {
-                Some(target) => Some(util::shell_expend_full_with_context(target, |key| {
+                Some(target) => Some(util::shell_expand_full_with_context(target, |key| {
                     context_map.get(key).copied()
                 })?),
                 None => None,
@@ -59,14 +59,14 @@ where
                     let mut crypted = crypted;
                     crypted.key_path = match crypted.key_path {
                         Some(key_path) => {
-                            Some(util::shell_expend_full_with_context(key_path, |key| {
+                            Some(util::shell_expand_full_with_context(key_path, |key| {
                                 context_map.get(key).copied()
                             })?)
                         }
                         None => None,
                     };
                     crypted.decrypted_path = match crypted.decrypted_path {
-                        Some(decrypted_path) => Some(util::shell_expend_full_with_context(
+                        Some(decrypted_path) => Some(util::shell_expand_full_with_context(
                             decrypted_path,
                             |key| context_map.get(key).copied(),
                         )?),

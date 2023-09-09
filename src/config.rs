@@ -78,7 +78,7 @@ pub(crate) enum Command {
 impl Config {
     /// parse config file
     pub(crate) fn from_path<P: AsRef<Path>>(config_path: P) -> Result<Option<Config>> {
-        let config_path = util::shell_expend_full(config_path)?;
+        let config_path = util::shell_expand_full(config_path)?;
         if !config_path.exists() {
             return Ok(None);
         }

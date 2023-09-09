@@ -6,7 +6,7 @@ use walkdir::WalkDir;
 use crate::error::{anyhow, Result};
 use crate::symlink::Symlink;
 
-pub(crate) fn shell_expend_full<P: AsRef<Path>>(path: P) -> Result<PathBuf> {
+pub(crate) fn shell_expand_full<P: AsRef<Path>>(path: P) -> Result<PathBuf> {
     let path = path
         .as_ref()
         .to_str()
@@ -16,7 +16,7 @@ pub(crate) fn shell_expend_full<P: AsRef<Path>>(path: P) -> Result<PathBuf> {
     ));
 }
 
-pub(crate) fn shell_expend_full_with_context<P, C, S>(path: P, context: C) -> Result<PathBuf>
+pub(crate) fn shell_expand_full_with_context<P, C, S>(path: P, context: C) -> Result<PathBuf>
 where
     P: AsRef<Path>,
     C: Fn(&str) -> Option<S>,
