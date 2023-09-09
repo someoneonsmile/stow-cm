@@ -3,9 +3,9 @@
 use anyhow::{anyhow, Context};
 
 use base64::{engine::general_purpose, Engine};
+use lazy_static::lazy_static;
 use log::debug;
 use regex::Regex;
-use lazy_static::lazy_static;
 
 use crate::error::Result;
 

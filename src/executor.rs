@@ -54,6 +54,28 @@ where
                 })?),
                 None => None,
             };
+            config.crypted = match config.crypted {
+                Some(crypted) => {
+                    let mut crypted = crypted;
+                    crypted.key_path = match crypted.key_path {
+                        Some(key_path) => {
+                            Some(util::shell_expend_full_with_context(key_path, |key| {
+                                context_map.get(key).copied()
+                            })?)
+                        }
+                        None => None,
+                    };
+                    crypted.decrypted_path = match crypted.decrypted_path {
+                        Some(decrypted_path) => Some(util::shell_expend_full_with_context(
+                            decrypted_path,
+                            |key| context_map.get(key).copied(),
+                        )?),
+                        None => None,
+                    };
+                    Some(crypted)
+                }
+                None => None,
+            };
             let fut = tokio::spawn((f)(Arc::new(config), pack));
             Ok(Some(fut)) as Result<Option<JoinHandle<Result<()>>>>
         })
