@@ -131,27 +131,18 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     };
 
     // if config decrypted, decrypted the file
-    let decrypted_path = {
-        let path = config
-            .crypted
-            .as_ref()
-            .and_then(|it| it.decrypted_path.as_ref());
-        match path {
-            Some(path) => Some(util::shell_expend_full_with_context(path, |key| {
-                context_map.get(key).copied()
-            })?),
-            None => None,
-        }
-    };
+    let decrypted_path = config
+        .crypted
+        .as_ref()
+        .and_then(|it| it.decrypted_path.as_ref());
     let decrypted = config
         .crypted
         .as_ref()
         .is_some_and(|it| it.enable.is_some_and(identity));
 
     if decrypted {
-        let decrypted_path = decrypted_path
-            .as_ref()
-            .ok_or_else(|| anyhow!("{pack_name}: decrypted path is not configed"))?;
+        let decrypted_path =
+            decrypted_path.ok_or_else(|| anyhow!("{pack_name}: decrypted path is not configed"))?;
 
         let key = {
             let key_path = config
@@ -159,9 +150,6 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
                 .as_ref()
                 .and_then(|it| it.key_path.as_ref())
                 .ok_or_else(|| anyhow!("{pack_name}: key_path is not configed"))?;
-            let key_path = &util::shell_expend_full_with_context(key_path, |key| {
-                context_map.get(key).copied()
-            })?;
             if !fs::try_exists(key_path).await? {
                 bail!("{pack_name}: key_path not exist");
             }
@@ -280,7 +268,11 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     fs::write(
         track_file,
         toml::to_string_pretty(&Track {
-            decrypted_path: if decrypted { decrypted_path } else { None },
+            decrypted_path: if decrypted {
+                decrypted_path.cloned()
+            } else {
+                None
+            },
             links: symlinks,
         })?,
     )
@@ -337,22 +329,17 @@ async fn clean_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 
     // obtain the decryption path from the configuration file
     // if decrypted remove the decrypted dir
-    if config
+    let decrypted_path = config
         .crypted
         .as_ref()
-        .is_some_and(|it| it.enable.is_some_and(identity))
-    {
-        let decrypted_path = config
-            .crypted
-            .as_ref()
-            .unwrap()
-            .decrypted_path
-            .as_ref()
-            .unwrap();
-        let context_map: HashMap<_, _> = vec![(PACK_NAME_ENV, pack_name)].into_iter().collect();
-        let decrypted_path = util::shell_expend_full_with_context(decrypted_path, |key| {
-            context_map.get(key).copied()
-        })?;
+        .and_then(|it| it.decrypted_path.as_ref());
+    let crypted = config
+        .crypted
+        .as_ref()
+        .is_some_and(|it| it.enable.is_some_and(identity));
+    if crypted {
+        let decrypted_path =
+            decrypted_path.ok_or_else(|| anyhow!("{pack_name}: decrypted path is not configed"))?;
         if fs::try_exists(decrypted_path.as_path()).await? {
             debug!("{pack_name}: clean decrypted dir, {decrypted_path:?}");
             fs::remove_dir_all(decrypted_path).await?;
@@ -450,16 +437,12 @@ pub(crate) async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
         return Ok(());
     }
 
-    let context_map: HashMap<_, _> = vec![(PACK_NAME_ENV, pack_name)].into_iter().collect();
-
     let key = {
         let key_path = config
             .crypted
             .as_ref()
             .and_then(|it| it.key_path.as_ref())
             .ok_or_else(|| anyhow!("{pack_name}: key_path is not configed"))?;
-        let key_path =
-            &util::shell_expend_full_with_context(key_path, |key| context_map.get(key).copied())?;
         if !fs::try_exists(key_path).await? {
             bail!("{pack_name}: key_path not exist");
         }
@@ -584,16 +567,12 @@ pub(crate) async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
         return Ok(());
     }
 
-    let context_map: HashMap<_, _> = vec![(PACK_NAME_ENV, pack_name)].into_iter().collect();
-
     let key = {
         let key_path = config
             .crypted
             .as_ref()
             .and_then(|it| it.key_path.as_ref())
             .ok_or_else(|| anyhow!("{pack_name}: key_path is not configed"))?;
-        let key_path =
-            &util::shell_expend_full_with_context(key_path, |key| context_map.get(key).copied())?;
         if !fs::try_exists(key_path).await? {
             bail!("{pack_name}: key_path not exist");
         }
