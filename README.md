@@ -2,16 +2,34 @@
 
 ## USEAGE
 
+```
+config manager (gnu-stow like)
+
+Usage: stow-cm <COMMAND>
+
+Commands:
+  install  Install packs
+  remove   Remove packs
+  reload   Reload packs (remove and install)
+  clean    Scan and clean all symbol that link to pack from pack target
+  encrypt  Scan files in the given pack for replacement variables, encrypt them, and replace them back to the original files
+  decrypt  Scan files in the given pack for replacement variables, decrypt them, and replace them back to the original files
+  help     Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+```
+
 ```sh
-# -i install pack
-# -d remove pack
-# -r reload pack
-stow-cm -i ./nvim /foo/bar
-stow-cm -i ./nvim /foo/bar
-stow-cm -d ./nvim /foo/bar
-stow-cm -r ./nvim /foo/bar
-stow-cm -r ./nvim /foo/bar -d /bar
-stow-cm -r ./*
+stow-cm install ./nvim /path/to/pack
+stow-cm remove ./nvim /path/to/pack
+stow-cm reload ./nvim /path/to/pack
+stow-cm clean ./nvim /path/to/pack
+stow-cm encrypt ./nvim /path/to/pack
+stow-cm decrypt ./nvim /path/to/pack
+
+stow-cm install ./*
 ```
 
 ## CONFIG
