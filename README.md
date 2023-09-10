@@ -56,6 +56,7 @@ stow-cm install ./*
 # ! represents unset the value
 # target = '!'
 
+# default
 target = '${XDG_CONFIG_HOME:-~/.config}/${PACK_NAME}/'
 
 # override
