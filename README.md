@@ -118,6 +118,7 @@ key_path = '/path/to/key'
 - [x] github action (auto archive)
 
 - [x] crypted support
+- [x] crypted support skip binary file
 - [ ] attr macro Merge
 
 - [ ] more test and testable
