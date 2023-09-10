@@ -117,16 +117,15 @@ key_path = '/path/to/key'
 - [x] remove refact
 - [x] github action (auto archive)
 
-- [ ] encrypt
+- [x] crypted support
 - [ ] attr macro Merge
 
 - [ ] more test and testable
 
-- [ ] doc update
-- [ ] split override, bak file
-
+- [x] doc update
+- [x] refactor: clear cli command
 - [x] pack unset global or default target value
 
-- [ ] refact: clear cli command
+- [ ] log level from cli args
 
-- [ ] feat: add encrypted support
+- [ ] split override, bak file
