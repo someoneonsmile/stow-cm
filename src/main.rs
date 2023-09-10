@@ -35,7 +35,7 @@ mod util;
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::Builder::from_default_env()
-        .parse_filters("debug")
+        .parse_filters("info")
         .default_format()
         .format_level(true)
         .format_target(false)
