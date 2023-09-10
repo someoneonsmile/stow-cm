@@ -1,6 +1,6 @@
 use crate::merge::MergeWith;
 use futures::prelude::*;
-use log::error;
+use log::{error, warn};
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::path::Path;
@@ -29,12 +29,16 @@ where
         .try_filter_map(|pack| async {
             let pack_config = Config::from_path(pack.as_ref().join(CONFIG_FILE_NAME))?;
             if pack_config.is_none() {
-                error!(
-                    "{:?} is not the pack_home (which contains {} config file)",
-                    pack.as_ref(),
-                    CONFIG_FILE_NAME
+                warn!(
+                    "{:?} doesn't have its own config file, will use the common config file",
+                    pack.as_ref()
                 );
-                return Ok(None);
+                // error!(
+                //     "{:?} is not the pack_home (which contains {} config file)",
+                //     pack.as_ref(),
+                //     CONFIG_FILE_NAME
+                // );
+                // return Ok(None);
             };
             let pack_name = pack
                 .as_ref()
