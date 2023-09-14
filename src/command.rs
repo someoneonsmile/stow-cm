@@ -327,7 +327,7 @@ async fn clean_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     debug!("{pack_name}: clean paths: {symlinks:?}");
     futures::stream::iter(symlinks.into_iter().map(Ok))
         .try_for_each_concurrent(None, |symlink| async move {
-            info!("{pack_name}: {symlink:?}");
+            info!("{pack_name}: remove {symlink:?}");
             symlink.remove().await
         })
         .await?;
@@ -404,7 +404,7 @@ async fn remove_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     debug!("{pack_name}: remove {symlinks:?}");
     futures::stream::iter(symlinks.into_iter().map(Ok))
         .try_for_each_concurrent(None, |symlink| async move {
-            info!("{pack_name}: {symlink:?}");
+            info!("{pack_name}: remove {symlink:?}");
             symlink.remove().await
         })
         .await?;
