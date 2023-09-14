@@ -27,7 +27,11 @@ use crate::util;
 
 /// reload packages
 pub(crate) async fn reload(config: Arc<Config>, pack: impl AsRef<Path>) -> Result<()> {
-    remove(config.clone(), &pack).await?;
+    let remove_result = remove(config.clone(), &pack).await;
+    if let Err(e) = remove_result {
+        warn!("{}", e);
+        return Ok(());
+    }
     install(config, &pack).await?;
     Ok(())
 }
