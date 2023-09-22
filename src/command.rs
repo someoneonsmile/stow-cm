@@ -346,7 +346,7 @@ async fn clean_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         let decrypted_path =
             decrypted_path.ok_or_else(|| anyhow!("{pack_name}: decrypted path is not configed"))?;
         if fs::try_exists(decrypted_path.as_path()).await? {
-            debug!("{pack_name}: clean decrypted dir, {decrypted_path:?}");
+            info!("{pack_name}: clean decrypted dir, {decrypted_path:?}");
             fs::remove_dir_all(decrypted_path).await?;
         }
     }
