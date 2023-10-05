@@ -395,7 +395,7 @@ async fn remove_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 
     if !track_file.try_exists()? {
         warn!("{pack_name} is not installed");
-        return Ok(())
+        return Ok(());
     }
 
     let track: Track = toml::from_str(fs::read_to_string(track_file.as_path()).await?.as_str())?;
