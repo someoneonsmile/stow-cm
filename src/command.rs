@@ -56,7 +56,7 @@ pub(crate) async fn install(config: Arc<Config>, pack: impl AsRef<Path>) -> Resu
     Ok(())
 }
 
-/// remove packages
+/// install link
 async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     let pack_name = pack
         .file_name()
@@ -284,7 +284,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     Ok(())
 }
 
-/// remove packages
+/// clean packages
 pub(crate) async fn clean<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
     let pack = Arc::new(fs::canonicalize(pack.as_ref()).await?);
     let pack_name = pack
@@ -394,7 +394,8 @@ async fn remove_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     })?;
 
     if !track_file.try_exists()? {
-        bail!("{pack_name} is not installed")
+        warn!("{pack_name} is not installed");
+        return Ok(())
     }
 
     let track: Track = toml::from_str(fs::read_to_string(track_file.as_path()).await?.as_str())?;
