@@ -24,7 +24,7 @@ pub(crate) const GLOBAL_CONFIG_FILE: &str = "${XDG_CONFIG_HOME:-~/.config}/stow-
 // ----------------------------------------------------------------------
 
 pub(crate) const DEFAULT_PACK_DECRYPT: &str = formatcp!(
-    "${{XDG_STATE_HOME:-~/.local/state}}/stow-cm/${{{}}}/decrypted/",
+    "${{XDG_DATA_HOME:-~/.local/share}}/stow-cm/${{{}}}/decrypted/",
     PACK_NAME_ENV
 );
 

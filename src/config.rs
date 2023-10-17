@@ -41,7 +41,7 @@ pub(crate) struct Config {
 pub(crate) struct CryptedConfig {
     /// enable default to false
     pub(crate) enable: Option<bool>,
-    /// decrypted file path when install, default path is ${XDG_STATE_HOME:-~/.local/state}/stow-cm/${pack_name}
+    /// decrypted file path when install, default path is ${XDG_DATA_HOME:-~/.local/share}/stow-cm/${pack_name}/decrypted/
     pub(crate) decrypted_path: Option<PathBuf>,
     /// left boundary of content to be decrypted
     pub(crate) left_boundry: Option<String>,

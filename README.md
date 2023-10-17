@@ -96,7 +96,7 @@ fi
 # default
 enable = false
 # default
-decrypted_path = '${XDG_STATE_HOME:-~/.local/state}/stow-cm/${pack_name}/decrypted/'
+decrypted_path = '${XDG_DATA_HOME:-~/.local/share}/stow-cm/${pack_name}/decrypted/'
 # default
 left_boundry = '&{'
 # default
