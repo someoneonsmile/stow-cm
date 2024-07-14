@@ -120,15 +120,14 @@ jobs:
           ]
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: ${{ env.FETCH_DEPTH }}
 
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          override: true
-          profile: minimal
           toolchain: ${{ matrix.build.rust }}
+          targets: ${{ matrix.build.target }}
 
       - uses: Swatinem/rust-cache@v2
 

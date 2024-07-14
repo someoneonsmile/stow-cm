@@ -18,14 +18,12 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: ${{ env.FETCH_DEPTH }}
       - uses: Swatinem/rust-cache@v1
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          override: true
-          profile: minimal
           toolchain: stable
       - name: check
         uses: actions-rs/cargo@v1
@@ -41,14 +39,12 @@ jobs:
   rustfmt:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: ${{ env.FETCH_DEPTH }}
-      - uses: Swatinem/rust-cache@v1
-      - uses: actions-rs/toolchain@v1
+      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          override: true
-          profile: minimal
           toolchain: stable
           components: rustfmt
       - name: build
@@ -61,14 +57,12 @@ jobs:
   clippy-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: ${{ env.FETCH_DEPTH }}
       - uses: Swatinem/rust-cache@v1
-      - uses: actions-rs/toolchain@v1
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          override: true
-          profile: minimal
           toolchain: stable
           components: clippy
       - name: clippy-check
