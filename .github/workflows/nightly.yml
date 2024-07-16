@@ -168,7 +168,8 @@ jobs:
         with:
           generate_release_notes: true
           tag_name: "nightly"
-          # target_commitish: "${{ github.sha }}"
+          name: "Release nightly"
+          target_commitish: "${{ github.sha }}"
           prerelease: true
           draft: true
           fail_on_unmatched_files: false
