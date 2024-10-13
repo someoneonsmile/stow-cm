@@ -149,8 +149,8 @@ where
         let content = &content[last_index..];
         r.push_str(&content[..li]);
         let content = &content[li..];
-        if let Some(ei) = content.find(right_boundary) {
-            let dec_content = convert(&content[left_boundary.len()..ei])?;
+        if let Some(ri) = content.find(right_boundary) {
+            let dec_content = convert(&content[left_boundary.len()..ri])?;
             if !unwrap {
                 r.push_str(left_boundary);
             }
@@ -158,7 +158,7 @@ where
             if !unwrap {
                 r.push_str(right_boundary);
             }
-            last_index = last_index + li + ei + right_boundary.len();
+            last_index = last_index + li + ri + right_boundary.len();
         }
     }
     r.push_str(&content[last_index..]);

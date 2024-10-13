@@ -190,6 +190,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         if !fs::try_exists(decrypted_path).await? {
             fs::create_dir_all(decrypted_path).await.with_context(|| {
                 format!(
+                    // FIX: tip track file?
                     "{pack_name}: failed to create track file dir, {:?}",
                     decrypted_path
                 )

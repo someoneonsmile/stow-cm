@@ -131,3 +131,5 @@ key_path = '/path/to/key'
 - [ ] log level from cli args
 
 - [ ] split override, bak file
+
+- [ ] unpack pack from args

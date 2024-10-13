@@ -101,6 +101,7 @@ fn algorithm(alg_name: &str) -> Result<&'static Algorithm> {
         "AES-128-GCM" => Ok(&AES_128_GCM),
         "AES-256-GCM" => Ok(&AES_256_GCM),
         "ChaCha20-Poly1305" => Ok(&CHACHA20_POLY1305),
+        // FIX: tip info
         _ => bail!(""),
     }
 }
