@@ -68,7 +68,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 
     // if trace file has exists, then then pack has been installed
     let context_map: HashMap<_, _> = vec![(PACK_NAME_ENV, pack_name)].into_iter().collect();
-    let track_file = util::shell_expand_full_with_context(target.join(PACK_TRACK_FILE), |key| {
+    let track_file = util::shell_expand_full_with_context(PACK_TRACK_FILE, |key| {
         context_map.get(key).copied()
     })?;
     if track_file.try_exists()? {
@@ -372,26 +372,27 @@ pub(crate) async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Resu
 }
 
 /// remove links
-async fn remove_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
+async fn remove_link(_config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     let pack_name = pack
         .file_name()
         .and_then(|it| it.to_str())
         .ok_or_else(|| anyhow!("path error: {:?}", pack.as_ref()))?;
-    let target = match config.target.as_ref() {
-        None => {
-            warn!("{pack_name}: target is none, skip remove links");
-            return Ok(());
-        }
-        Some(target) => target,
-    };
+    // NOTE: not need because track file move from target dir to $XDG_STATE_HOME
+    // let target = match config.target.as_ref() {
+    //     None => {
+    //         warn!("{pack_name}: target is none, skip remove links");
+    //         return Ok(());
+    //     }
+    //     Some(target) => target,
+    // };
 
     let context_map: HashMap<_, _> = vec![(PACK_NAME_ENV, pack_name)].into_iter().collect();
-    let track_file = util::shell_expand_full_with_context(target.join(PACK_TRACK_FILE), |key| {
+    let track_file = util::shell_expand_full_with_context(PACK_TRACK_FILE, |key| {
         context_map.get(key).copied()
     })?;
 
     if !track_file.try_exists()? {
-        warn!("{pack_name} is not installed");
+        warn!("{pack_name}: there is no link is installed");
         return Ok(());
     }
 
