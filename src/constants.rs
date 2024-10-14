@@ -8,7 +8,10 @@ pub(crate) const PACK_NAME_ENV: &str = "PACK_NAME";
 
 pub(crate) const CONFIG_FILE_NAME: &str = "stow-cm.toml";
 
-pub(crate) const PACK_STATE_HOME: &str = formatcp!("${{XDG_STATE_HOME:-~/.local/state}}/stow-cm/${{{}}}", PACK_NAME_ENV);
+pub(crate) const PACK_STATE_HOME: &str = formatcp!(
+    "${{XDG_STATE_HOME:-~/.local/state}}/stow-cm/${{{}}}",
+    PACK_NAME_ENV
+);
 
 pub(crate) const PACK_TRACK_FILE: &str = formatcp!("${{{}}}/track.toml", PACK_STATE_HOME);
 
