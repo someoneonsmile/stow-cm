@@ -144,8 +144,6 @@ impl Command {
     {
         let mut command = match self {
             Self::Bin(path) => {
-                // FIXME: 是否可以直接使用 path
-                let path = fs::canonicalize(PathBuf::from(".").join(path))?;
                 let c = tokio::process::Command::new(path.as_os_str());
                 c
             }
