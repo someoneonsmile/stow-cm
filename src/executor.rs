@@ -30,7 +30,7 @@ where
             let pack_config = Config::from_path(pack.as_ref().join(CONFIG_FILE_NAME))?;
             if pack_config.is_none() {
                 warn!(
-                    "{:?} doesn't have its own config file, will use the common config file",
+                    "{:?}: doesn't have its own config file, will use the common config file",
                     pack.as_ref()
                 );
                 // error!(

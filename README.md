@@ -132,6 +132,6 @@ key_path = '/path/to/key'
 
 - [ ] split override, bak file
 
-- [ ] unpack pack from args
+- [x] unpack pack from args
 
-- [ ] move .stow-cm-track to $XDG_STATE_HOME
+- [x] move .stow-cm-track to $XDG_STATE_HOME

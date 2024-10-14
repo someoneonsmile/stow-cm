@@ -34,7 +34,7 @@ pub(crate) async fn reload(config: Arc<Config>, pack: impl AsRef<Path>) -> Resul
 
 /// install packages
 pub(crate) async fn install(config: Arc<Config>, pack: impl AsRef<Path>) -> Result<()> {
-    let pack = Arc::new(fs::canonicalize(pack.as_ref()).await?);
+    let pack = Arc::new(pack.as_ref().to_path_buf());
     let pack_name = pack
         .file_name()
         .and_then(|it| it.to_str())
@@ -283,7 +283,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 
 /// clean packages
 pub(crate) async fn clean<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
-    let pack = Arc::new(fs::canonicalize(pack.as_ref()).await?);
+    let pack = Arc::new(pack.as_ref().to_path_buf());
     let pack_name = pack
         .file_name()
         .and_then(|it| it.to_str())
@@ -353,7 +353,7 @@ async fn clean_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 
 /// remove packages
 pub(crate) async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
-    let pack = Arc::new(fs::canonicalize(pack.as_ref()).await?);
+    let pack = Arc::new(pack.as_ref().to_path_buf());
     let pack_name = pack
         .file_name()
         .and_then(|it| it.to_str())
@@ -423,7 +423,7 @@ async fn remove_link(_config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 
 /// encrypt packages
 pub(crate) async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
-    let pack = Arc::new(fs::canonicalize(pack.as_ref()).await?);
+    let pack = Arc::new(pack.as_ref().to_path_buf());
     let pack_name = pack
         .file_name()
         .and_then(|it| it.to_str())
@@ -553,7 +553,7 @@ pub(crate) async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
 
 /// decrypt packages
 pub(crate) async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
-    let pack = Arc::new(fs::canonicalize(pack.as_ref()).await?);
+    let pack = Arc::new(pack.as_ref().to_path_buf());
     let pack_name = pack
         .file_name()
         .and_then(|it| it.to_str())

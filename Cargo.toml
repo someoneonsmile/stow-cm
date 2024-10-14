@@ -1,6 +1,6 @@
 [package]
 name = "stow-cm"
-version = "0.9.5"
+version = "0.10.1"
 authors = ["someone"]
 edition = "2021"
 
@@ -24,6 +24,7 @@ ring = { version = "0", features = ["std"] }
 base64 = "0"
 lazy_static = "1"
 clap = { version = "4", features = ["derive"] }
+num_cpus = "1"
 
 # ignore = "0"
 # xattr = "0"

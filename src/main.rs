@@ -55,24 +55,31 @@ async fn main() -> Result<()> {
     match opt.command {
         Commands::Install { paths } => {
             // let common_config = common_config.clone();
+            let paths = util::canonicalize(paths).await?;
             executor::exec_all(common_config, paths, install).await?;
         }
         Commands::Remove { paths } => {
+            let paths = util::canonicalize(paths).await?;
             executor::exec_all(common_config, paths, remove).await?;
         }
         Commands::Reload { paths } => {
+            let paths = util::canonicalize(paths).await?;
             executor::exec_all(common_config, paths, reload).await?;
         }
         Commands::Clean { paths } => {
+            let paths = util::canonicalize(paths).await?;
             executor::exec_all(common_config, paths, clean).await?;
         }
         Commands::Encrypt { paths } => {
+            let paths = util::canonicalize(paths).await?;
             executor::exec_all(common_config, paths, encrypt).await?;
         }
         Commands::Decrypt { paths } => {
+            let paths = util::canonicalize(paths).await?;
             executor::exec_all(common_config, paths, decrypt).await?;
         }
     };
 
     Ok(())
 }
+

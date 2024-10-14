@@ -1,7 +1,10 @@
 use shellexpand::LookupError;
+use stream::{StreamExt, TryStreamExt};
 use std::env::VarError;
 use std::path::{Path, PathBuf};
+use tokio::fs;
 use walkdir::WalkDir;
+use futures::prelude::*;
 
 use crate::error::{anyhow, Result};
 use crate::symlink::Symlink;
@@ -163,4 +166,11 @@ where
     }
     r.push_str(&content[last_index..]);
     Ok(r)
+}
+
+
+#[inline]
+pub(crate) async fn canonicalize(paths: Vec<PathBuf>) -> Result<Vec<PathBuf>> {
+    let a = futures::stream::iter(paths).map(fs::canonicalize).buffer_unordered(num_cpus::get() * 3).try_collect().await?;
+    Ok(a)
 }
