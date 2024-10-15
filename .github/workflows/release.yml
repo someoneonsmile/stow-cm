@@ -3,12 +3,13 @@ name: release
 on:
   # schedule:
   # - cron: "5 5 * * *"
+
   workflow_dispatch:
-    inputs:
-      tag_name:
-        description: "Tag name for release"
-        required: false
-        default: nightly
+  #   inputs:
+  #     tag_name:
+  #       description: "Tag name for release"
+  #       required: false
+  #       default: nightly
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
@@ -24,57 +25,8 @@ defaults:
     shell: bash
 
 jobs:
-  create-tag:
-    name: create-tag
-    runs-on: ubuntu-latest
-    outputs:
-      tag_name: ${{ env.tag_name }}
-    steps:
-      - if: github.event_name == 'workflow_dispatch'
-        run: echo "tag_name=${{ inputs.tag_name }}" >> $GITHUB_ENV
-      - if: github.event_name == 'schedule'
-        run: echo "tag_name=nightly" >> $GITHUB_ENV
-      - if: github.event_name == 'push'
-        run:
-          echo "tag_name=${{ github.ref_name }}" >> $GITHUB_ENV
-          # echo "tag_name=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-          # echo "::set-output name=tag_name::${{ env.tag_name }}"
-      - name: delete exist release
-        uses: actions/github-script@v6
-        with:
-          script: |
-            let tagName = "${{ env.tag_name }}"
-            let is_nightly = "nightly" === tagName
-            try {
-              const { data: { id:release_id } } = await github.rest.repos.getReleaseByTag({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                tag: tagName,
-              });
-              if ( release_id ) {
-                await github.rest.repos.deleteRelease({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  release_id,
-                });
-              }
-              if (is_nightly) {
-                await github.rest.git.deleteRef({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  ref: `tags/${tagName}`,
-                });
-              }
-            } catch (e) {
-              console.error(e)
-            }
-
-  create-release:
-    name: create-release
-    needs: [create-tag]
+  build:
     runs-on: ${{ matrix.build.os }}
-    env:
-      tag_name: ${{ needs.create-tag.outputs.tag_name }}
     continue-on-error: true
     strategy:
       fail-fast: false
@@ -121,8 +73,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: ${{ env.FETCH_DEPTH }}
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -156,45 +106,56 @@ jobs:
         run: |
           staging="${{ env.RELEASE_NAME }}-${{ matrix.build.target }}"
           mkdir -p "$staging"
+          mkdir -p "artifacts"
           cp {README.md,LICENSE} "$staging/"
           if [ "${{ matrix.build.os }}" = "windows-latest" ]; then
             cp "target/${{ matrix.build.target }}/release/${{ env.RELEASE_NAME }}.exe" "$staging/"
-            7z a "$staging.zip" "$staging"
-            echo "ASSET=$staging.zip" >> $GITHUB_ENV
-            sha256sum "$staging.zip" > "$staging.zip.sha256sum"
-            echo "ASSET_SHA256SUM=$staging.zip.sha256sum" >> $GITHUB_ENV
+            7z a "artifacts/$staging.zip" "$staging"
+            sha256sum "artifacts/$staging.zip" > "artifacts/$staging.zip.sha256sum"
           else
             cp "target/${{ matrix.build.target }}/release/${{ env.RELEASE_NAME }}" "$staging/"
-            tar czf "$staging.tar.gz" "$staging"
-            echo "ASSET=$staging.tar.gz" >> $GITHUB_ENV
-            shasum -a 256 "$staging.tar.gz" > "$staging.tar.gz.sha256sum"
-            echo "ASSET_SHA256SUM=$staging.tar.gz.sha256sum" >> $GITHUB_ENV
+            tar czf "artifacts/$staging.tar.gz" "$staging"
+            shasum -a 256 "artifacts/$staging.tar.gz" > "artifacts/$staging.tar.gz.sha256sum"
           fi
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifact-${{ matrix.build.target }}
+          path: artifacts/*
+          if-no-files-found: error
 
-      - name: create nightly release
-        uses: softprops/action-gh-release@v1
-        if: env.tag_name == 'nightly'
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: download assets
+        uses: actions/download-artifact@v4
+        with:
+          path: artifact
+          merge-multiple: true
+
+      - name: create tag release
+        uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
-          tag_name: "${{ env.tag_name }}"
-          # target_commitish: "${{ github.sha }}"
-          prerelease: true
-          draft: false
-          fail_on_unmatched_files: false
-          files: |
-            ${{ env.ASSET }}
-            ${{ env.ASSET }}.sha256sum
-
-      - name: create stable release
-        uses: softprops/action-gh-release@v1
-        if: env.tag_name != 'nightly'
-        with:
-          generate_release_notes: true
-          tag_name: "${{ env.tag_name }}"
+          tag_name: "${{ github.ref_name }}"
+          name: "Release ${{ github.ref_name }}"
+          target_commitish: "${{ github.sha }}"
           prerelease: false
           draft: false
           fail_on_unmatched_files: false
-          # make_latest: true
           files: |
-            ${{ env.ASSET }}
-            ${{ env.ASSET }}.sha256sum
+            artifact/*
+
+      - name: create stable release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          tag_name: "stable"
+          name: "Release stable"
+          target_commitish: "${{ github.sha }}"
+          prerelease: false
+          draft: false
+          fail_on_unmatched_files: false
+          files: |
+            artifact/*
