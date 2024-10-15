@@ -1,4 +1,5 @@
 use futures::prelude::*;
+use sha3::{Digest, Sha3_256};
 use shellexpand::LookupError;
 use std::env::VarError;
 use std::path::{Path, PathBuf};
@@ -176,4 +177,12 @@ pub(crate) async fn canonicalize(paths: Vec<PathBuf>) -> Result<Vec<PathBuf>> {
         .try_collect()
         .await?;
     Ok(a)
+}
+
+#[inline]
+pub(crate) fn hash(content: &str) -> String {
+    let mut hasher = Sha3_256::new();
+    hasher.update(content);
+    let result = hasher.finalize();
+    format!("{result:x}")
 }

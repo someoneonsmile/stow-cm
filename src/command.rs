@@ -3,8 +3,8 @@ use anyhow::bail;
 use anyhow::Context;
 use futures::prelude::*;
 use log::{debug, info, warn};
+use maplit::hashmap;
 use regex::RegexSet;
-use std::collections::HashMap;
 use std::convert::identity;
 use std::ops::Deref;
 use std::path::Path;
@@ -44,7 +44,7 @@ pub(crate) async fn install(config: Arc<Config>, pack: impl AsRef<Path>) -> Resu
     install_link(&config, &pack).await?;
 
     // execute the init script
-    let envs = [(PACK_NAME_ENV, pack_name)];
+    let envs = [(PACK_NAME_ENV, util::hash(&pack.to_string_lossy()))];
     if let Some(command) = &config.init {
         command.exec_async(pack.deref(), envs).await?;
     }
@@ -67,9 +67,9 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     };
 
     // if trace file has exists, then then pack has been installed
-    let context_map: HashMap<_, _> = vec![(PACK_NAME_ENV, pack_name)].into_iter().collect();
+    let context_map = hashmap! {PACK_NAME_ENV => util::hash(&pack.to_string_lossy())};
     let track_file =
-        util::shell_expand_full_with_context(PACK_TRACK_FILE, |key| context_map.get(key).copied())?;
+        util::shell_expand_full_with_context(PACK_TRACK_FILE, |key| context_map.get(key))?;
     if track_file.try_exists()? {
         bail!("{pack_name}: pack has been install")
     }
@@ -292,7 +292,7 @@ pub(crate) async fn clean<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Resul
     clean_link(&config, &pack).await?;
 
     // execute the clear script
-    let envs = [(PACK_NAME_ENV, pack_name)];
+    let envs = [(PACK_NAME_ENV, util::hash(&pack.to_string_lossy()))];
     if let Some(command) = &config.clear {
         command.exec_async(pack.deref(), envs).await?;
     }
@@ -362,7 +362,7 @@ pub(crate) async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Resu
     remove_link(&config, &pack).await?;
 
     // execute the clear script
-    let envs = [(PACK_NAME_ENV, pack_name)];
+    let envs = [(PACK_NAME_ENV, util::hash(&pack.to_string_lossy()))];
     if let Some(command) = &config.clear {
         command.exec_async(pack.deref(), envs).await?;
     }
@@ -385,9 +385,9 @@ async fn remove_link(_config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     //     Some(target) => target,
     // };
 
-    let context_map: HashMap<_, _> = vec![(PACK_NAME_ENV, pack_name)].into_iter().collect();
+    let context_map = hashmap! {PACK_NAME_ENV => util::hash(&pack.to_string_lossy())};
     let track_file =
-        util::shell_expand_full_with_context(PACK_TRACK_FILE, |key| context_map.get(key).copied())?;
+        util::shell_expand_full_with_context(PACK_TRACK_FILE, |key| context_map.get(key))?;
 
     if !track_file.try_exists()? {
         warn!("{pack_name}: there is no link is installed");
