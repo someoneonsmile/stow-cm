@@ -46,8 +46,9 @@ stow-cm install ./*
 ```toml
 # toml format
 
-# The ${PACK_NAME} environment variable will be injected
-# where PACK_NAME represents the last level of the package path.
+# The follow environment variable will be injected
+# PACK_ID: hash of the package path.
+# PACK_NAME: represents the last level of the package path.
 
 # when targe is none both in pack_config and common_config, it will skip link the dir_tree
 # env var support the default value: ${env:-default}
@@ -86,6 +87,7 @@ type = '[Bin/Python/Make/Lua/Shell/ShellStr]'
 # Script: string
 # content = 'pack_sub_path/to'
 content = '''
+echo ${PACK_ID}
 echo ${PACK_NAME}
 if [ -d /path/to ]; then
   rm -rf /path/to
@@ -96,7 +98,7 @@ fi
 # default
 enable = false
 # default
-decrypted_path = '${XDG_DATA_HOME:-~/.local/share}/stow-cm/${pack_name}/decrypted/'
+decrypted_path = '${XDG_DATA_HOME:-~/.local/share}/stow-cm/${PACK_ID}/decrypted/'
 # default
 left_boundry = '&{'
 # default

@@ -1,7 +1,7 @@
 use crate::merge::MergeWith;
 use futures::prelude::*;
 use log::{error, warn};
-use std::collections::HashMap;
+use maplit::hashmap;
 use std::ops::Deref;
 use std::path::Path;
 use std::sync::Arc;
@@ -51,10 +51,13 @@ where
                 None => unreachable!("no config"),
             };
 
-            let context_map: HashMap<_, _> = vec![(PACK_NAME_ENV, pack_name)].into_iter().collect();
+            let context_map = hashmap! {
+                PACK_ID_ENV => util::hash(&pack.as_ref().to_string_lossy()),
+                PACK_NAME_ENV => pack_name.to_owned(),
+            };
             config.target = match config.target.as_ref() {
                 Some(target) => Some(util::shell_expand_full_with_context(target, |key| {
-                    context_map.get(key).copied()
+                    context_map.get(key)
                 })?),
                 None => None,
             };
@@ -64,7 +67,7 @@ where
                     crypted.key_path = match crypted.key_path {
                         Some(key_path) => {
                             Some(util::shell_expand_full_with_context(key_path, |key| {
-                                context_map.get(key).copied()
+                                context_map.get(key)
                             })?)
                         }
                         None => None,
@@ -72,7 +75,7 @@ where
                     crypted.decrypted_path = match crypted.decrypted_path {
                         Some(decrypted_path) => Some(util::shell_expand_full_with_context(
                             decrypted_path,
-                            |key| context_map.get(key).copied(),
+                            |key| context_map.get(key),
                         )?),
                         None => None,
                     };

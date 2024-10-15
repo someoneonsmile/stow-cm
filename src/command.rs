@@ -67,7 +67,10 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     };
 
     // if trace file has exists, then then pack has been installed
-    let context_map = hashmap! {PACK_NAME_ENV => util::hash(&pack.to_string_lossy())};
+    let context_map = hashmap! {
+        PACK_ID_ENV => util::hash(&pack.as_ref().to_string_lossy()),
+        PACK_NAME_ENV => pack_name.to_owned(),
+    };
     let track_file =
         util::shell_expand_full_with_context(PACK_TRACK_FILE, |key| context_map.get(key))?;
     if track_file.try_exists()? {
@@ -385,7 +388,10 @@ async fn remove_link(_config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     //     Some(target) => target,
     // };
 
-    let context_map = hashmap! {PACK_NAME_ENV => util::hash(&pack.to_string_lossy())};
+    let context_map = hashmap! {
+        PACK_ID_ENV => util::hash(&pack.as_ref().to_string_lossy()),
+        PACK_NAME_ENV => pack_name.to_owned(),
+    };
     let track_file =
         util::shell_expand_full_with_context(PACK_TRACK_FILE, |key| context_map.get(key))?;
 
