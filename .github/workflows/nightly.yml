@@ -171,7 +171,7 @@ jobs:
           name: "Release nightly"
           target_commitish: "${{ github.sha }}"
           prerelease: true
-          draft: true
+          draft: false
           fail_on_unmatched_files: false
           files: |
             ${{ env.ASSET }}
