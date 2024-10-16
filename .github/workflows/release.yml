@@ -129,31 +129,32 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: delete exist release
-        uses: actions/github-script@v7
-        with:
-          script: |
-            let tagName = "stable"
-            try {
-              const { data: { id:release_id } } = await github.rest.repos.getReleaseByTag({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                tag: tagName,
-              });
-              if ( release_id ) {
-                await github.rest.repos.deleteRelease({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  release_id,
-                });
-              }
-              await github.rest.git.deleteRef({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                ref: `tags/${tagName}`,
-              });
-            } catch (e) {
-              console.error(e)
-            }
+        run: gh release delete stable --cleanup-tag
+        # uses: actions/github-script@v7
+        # with:
+        #   script: |
+        #     let tagName = "stable"
+        #     try {
+        #       const { data: { id:release_id } } = await github.rest.repos.getReleaseByTag({
+        #         owner: context.repo.owner,
+        #         repo: context.repo.repo,
+        #         tag: tagName,
+        #       });
+        #       if ( release_id ) {
+        #         await github.rest.repos.deleteRelease({
+        #           owner: context.repo.owner,
+        #           repo: context.repo.repo,
+        #           release_id,
+        #         });
+        #       }
+        #       await github.rest.git.deleteRef({
+        #         owner: context.repo.owner,
+        #         repo: context.repo.repo,
+        #         ref: `tags/${tagName}`,
+        #       });
+        #     } catch (e) {
+        #       console.error(e)
+        #     }
 
       - name: download assets
         uses: actions/download-artifact@v4
@@ -183,6 +184,7 @@ jobs:
           target_commitish: "${{ github.sha }}"
           prerelease: false
           draft: false
+          make_latest: false
           fail_on_unmatched_files: false
           files: |
             artifact/*
