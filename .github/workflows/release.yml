@@ -172,8 +172,7 @@ jobs:
         uses: mikepenz/release-changelog-builder-action@v5
         with:
           token: "${{ github.token }}"
-          # mode: "HYBRID"
-          mode: "COMMIT"
+          # mode: "COMMIT"
 
       - name: create tag release
         uses: softprops/action-gh-release@v2
