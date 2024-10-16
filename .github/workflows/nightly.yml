@@ -126,6 +126,8 @@ jobs:
     steps:
       - name: delete exist release
         run: gh release delete nightly --cleanup-tag
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         # uses: actions/github-script@v7
         # with:
         #   script: |
