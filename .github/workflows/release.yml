@@ -128,8 +128,10 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: delete exist release
         run: gh release delete stable --cleanup-tag
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ github.token }}
         # uses: actions/github-script@v7
@@ -175,7 +177,7 @@ jobs:
           draft: false
           fail_on_unmatched_files: false
           files: |
-            artifact/*
+            artifacts/*
 
       - name: create stable release
         uses: softprops/action-gh-release@v2
@@ -189,4 +191,4 @@ jobs:
           make_latest: false
           fail_on_unmatched_files: false
           files: |
-            artifact/*
+            artifacts/*
