@@ -15,7 +15,7 @@ pub(crate) const PACK_STATE_HOME: &str = formatcp!(
     PACK_ID_ENV
 );
 
-pub(crate) const PACK_TRACK_FILE: &str = formatcp!("${{{}}}/track.toml", PACK_STATE_HOME);
+pub(crate) const PACK_TRACK_FILE: &str = formatcp!("{}/track.toml", PACK_STATE_HOME);
 
 /// if the value of Some(value) is !, it is equivalent to None.
 pub(crate) const UNSET_VALUE: &str = "!";
@@ -30,7 +30,7 @@ pub(crate) const GLOBAL_CONFIG_FILE: &str = "${XDG_CONFIG_HOME:-~/.config}/stow-
 //    - default -
 // ----------------------------------------------------------------------
 
-pub(crate) const DEFAULT_PACK_DECRYPT: &str = formatcp!("${{{}}}/decrypted/", PACK_STATE_HOME);
+pub(crate) const DEFAULT_PACK_DECRYPT: &str = formatcp!("{}/decrypted/", PACK_STATE_HOME);
 
 pub(crate) const DEFAULT_PACK_TARGET: &str =
     formatcp!("${{XDG_CONFIG_HOME:-~/.config}}/${{{}}}/", PACK_NAME_ENV);
