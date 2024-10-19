@@ -254,16 +254,8 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     debug!("{pack_name}: install paths {symlinks:?}");
     futures::stream::iter(symlinks.clone().into_iter().map(Ok))
         .try_for_each_concurrent(None, |symlink| async move {
-            if symlink.dst.try_exists()? {
-                // the dir is empty or override regex matched
-                if symlink.dst.is_file() || symlink.dst.is_symlink() {
-                    fs::remove_file(&symlink.dst).await?;
-                } else {
-                    fs::remove_dir_all(&symlink.dst).await?;
-                }
-            }
-            info!("{pack_name}: install {symlink:?}");
-            symlink.create().await
+            info!("{pack_name}: symlink {symlink}");
+            symlink.create(true).await
         })
         .await?;
 
@@ -326,7 +318,7 @@ async fn clean_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     debug!("{pack_name}: clean paths: {symlinks:?}");
     futures::stream::iter(symlinks.into_iter().map(Ok))
         .try_for_each_concurrent(None, |symlink| async move {
-            info!("{pack_name}: remove {symlink:?}");
+            info!("{pack_name}: remove symlink {symlink}");
             symlink.remove().await
         })
         .await?;
@@ -407,7 +399,7 @@ async fn remove_link(_config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     debug!("{pack_name}: remove {symlinks:?}");
     futures::stream::iter(symlinks.into_iter().map(Ok))
         .try_for_each_concurrent(None, |symlink| async move {
-            info!("{pack_name}: remove {symlink:?}");
+            info!("{pack_name}: remove symlink {symlink}");
             symlink.remove().await
         })
         .await?;
