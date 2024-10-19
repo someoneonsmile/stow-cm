@@ -83,7 +83,10 @@ impl MergeTree {
             return Ok(MergeResult {
                 conflicts: None,
                 expand_symlinks: None,
-                to_create_symlinks: None,
+                to_create_symlinks: Some(vec![Symlink {
+                    src: self.source,
+                    dst: self.target,
+                }]),
                 has_ignore: false,
                 foldable: true,
             });
