@@ -45,7 +45,10 @@ pub(crate) async fn install(config: Arc<Config>, pack: impl AsRef<Path>) -> Resu
 
     // execute the init script
     if let Some(command) = &config.init {
-        let envs = [(PACK_ID_ENV, util::hash(&pack.to_string_lossy())), (PACK_NAME_ENV, pack_name.to_owned())];
+        let envs = [
+            (PACK_ID_ENV, util::hash(&pack.to_string_lossy())),
+            (PACK_NAME_ENV, pack_name.to_owned()),
+        ];
         command.exec_async(pack.deref(), envs).await?;
     }
 
@@ -288,7 +291,10 @@ pub(crate) async fn clean<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Resul
 
     // execute the clear script
     if let Some(command) = &config.clear {
-        let envs = [(PACK_ID_ENV, util::hash(&pack.to_string_lossy())), (PACK_NAME_ENV, pack_name.to_owned())];
+        let envs = [
+            (PACK_ID_ENV, util::hash(&pack.to_string_lossy())),
+            (PACK_NAME_ENV, pack_name.to_owned()),
+        ];
         command.exec_async(pack.deref(), envs).await?;
     }
 
@@ -358,7 +364,10 @@ pub(crate) async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Resu
 
     // execute the clear script
     if let Some(command) = &config.clear {
-        let envs = [(PACK_ID_ENV, util::hash(&pack.to_string_lossy())), (PACK_NAME_ENV, pack_name.to_owned())];
+        let envs = [
+            (PACK_ID_ENV, util::hash(&pack.to_string_lossy())),
+            (PACK_NAME_ENV, pack_name.to_owned()),
+        ];
         command.exec_async(pack.deref(), envs).await?;
     }
 
