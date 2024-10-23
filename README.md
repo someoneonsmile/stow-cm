@@ -137,3 +137,5 @@ key_path = '/path/to/key'
 - [x] unpack pack from args
 
 - [x] move .stow-cm-track to $XDG_STATE_HOME
+
+- [ ] pack related properties combine into struct
