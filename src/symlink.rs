@@ -46,7 +46,11 @@ impl Symlink {
 
     pub(crate) async fn remove(&self) -> Result<()> {
         if !self.dst.is_symlink() {
-            return Err(anyhow!("{} is not symlink", self.dst.to_string_lossy()));
+            if self.dst.exists() {
+                return Err(anyhow!("{} is not symlink", self.dst.to_string_lossy()));
+            } else {
+                return Ok(());
+            }
         }
         fs::remove_file(&self.dst)
             .await
