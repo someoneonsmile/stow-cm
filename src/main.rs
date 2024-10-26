@@ -1,4 +1,5 @@
 use clap::Parser;
+use env_logger::Env;
 use log::debug;
 
 use std::sync::Arc;
@@ -34,8 +35,7 @@ mod util;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    env_logger::Builder::from_default_env()
-        .parse_filters("info")
+    env_logger::Builder::from_env(Env::default().default_filter_or("info"))
         .default_format()
         .format_level(true)
         .format_target(false)
