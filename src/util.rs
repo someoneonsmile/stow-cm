@@ -1,3 +1,4 @@
+use anyhow::Context;
 use futures::prelude::*;
 use sha3::{Digest, Sha3_256};
 use shellexpand::LookupError;
@@ -171,12 +172,15 @@ where
 
 #[inline]
 pub(crate) async fn canonicalize(paths: Vec<PathBuf>) -> Result<Vec<PathBuf>> {
-    let a = futures::stream::iter(paths)
-        .map(fs::canonicalize)
-        .buffer_unordered(num_cpus::get() * 3)
+    futures::stream::iter(paths)
+        .map(|path| async move {
+            fs::canonicalize(&path)
+                .await
+                .with_context(|| format!("path: {path:?}"))
+        })
+        .buffer_unordered(num_cpus::get())
         .try_collect()
-        .await?;
-    Ok(a)
+        .await
 }
 
 #[inline]
