@@ -88,6 +88,13 @@ impl Config {
         Ok(Some(config))
     }
 
+    /// get global config
+    pub(crate) fn global() -> Result<Config> {
+        let global_config = Config::from_path(GLOBAL_CONFIG_FILE)?;
+        let global_xdg_config = Config::from_path(GLOBAL_XDG_CONFIG_FILE)?;
+        global_config.merge(global_xdg_config).merge(Some(Default::default())).ok_or_else(|| unreachable!("the global config should always return"))
+    }
+
     /// deal some specical case
     fn init_deal(&mut self) {
         if self

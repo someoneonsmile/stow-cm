@@ -24,7 +24,8 @@ pub(crate) const UNSET_VALUE: &str = "!";
 //    - global -
 // ----------------------------------------------------------------------
 
-pub(crate) const GLOBAL_CONFIG_FILE: &str = "${XDG_CONFIG_HOME:-~/.config}/stow-cm/config.toml";
+pub(crate) const GLOBAL_XDG_CONFIG_FILE: &str = "${XDG_CONFIG_HOME:-~/.config}/stow-cm/config.toml";
+pub(crate) const GLOBAL_CONFIG_FILE: &str = "/etc/stow-cm/config.toml";
 
 // ----------------------------------------------------------------------
 //    - default -

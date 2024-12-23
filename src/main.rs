@@ -13,9 +13,7 @@ use crate::command::install;
 use crate::command::reload;
 use crate::command::remove;
 use crate::config::Config;
-use crate::constants::*;
 use crate::error::Result;
-use crate::merge::Merge;
 
 mod base64;
 mod cli;
@@ -46,10 +44,7 @@ async fn main() -> Result<()> {
     let opt = Cli::parse();
     debug!("opt: {:?}", opt);
 
-    let common_config = Config::from_path(GLOBAL_CONFIG_FILE)?;
-    let common_config = common_config.merge(Some(Default::default()));
-    let common_config = Arc::new(common_config);
-
+    let common_config = Arc::new(Some(Config::global()?));
     debug!("common_config: {common_config:?}");
 
     match opt.command {
