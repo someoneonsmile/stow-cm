@@ -1,6 +1,9 @@
 use anyhow::{anyhow, Context};
 use serde::{Deserialize, Serialize};
-use std::{fmt::Display, path::PathBuf};
+use std::{
+    fmt::{Debug, Display},
+    path::PathBuf,
+};
 use tokio::fs;
 
 use crate::error::Result;
@@ -11,15 +14,26 @@ pub(crate) struct Symlink {
     pub src: PathBuf,
     /// the path of the link file
     pub dst: PathBuf,
+    /// mode
+    #[serde(default)]
+    pub mode: SymlinkMode,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub(crate) enum SymlinkMode {
+    #[default]
+    Symlink,
+    Copy,
 }
 
 impl Display for Symlink {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{} -> {}",
+            "{} -> {} [{:?}]",
             self.dst.to_string_lossy(),
-            self.src.to_string_lossy()
+            self.src.to_string_lossy(),
+            self.mode
         )
     }
 }
@@ -38,23 +52,55 @@ impl Symlink {
                 fs::remove_dir_all(&self.dst).await?;
             }
         }
-        fs::symlink(&self.src, &self.dst)
-            .await
-            .with_context(|| format!("failed to create symlink: {self}"))?;
+        self.mode.create(self).await?;
         Ok(())
     }
 
     pub(crate) async fn remove(&self) -> Result<()> {
-        if !self.dst.is_symlink() {
-            if self.dst.exists() {
-                return Err(anyhow!("{} is not symlink", self.dst.to_string_lossy()));
-            } else {
-                return Ok(());
+        self.mode.remove(self).await?;
+        Ok(())
+    }
+}
+
+impl SymlinkMode {
+    async fn create(&self, symlink: &Symlink) -> Result<()> {
+        match self {
+            SymlinkMode::Symlink => {
+                fs::symlink(&symlink.src, &symlink.dst)
+                    .await
+                    .with_context(|| format!("failed to create symlink: {symlink}"))?;
+                Ok(())
+            }
+            SymlinkMode::Copy => {
+                fs::copy(&symlink.src, &symlink.dst)
+                    .await
+                    .with_context(|| format!("failed to create symlink: {symlink}"))?;
+                Ok(())
             }
         }
-        fs::remove_file(&self.dst)
-            .await
-            .with_context(|| format!("failed to remove symlink: {self}"))?;
-        Ok(())
+    }
+
+    async fn remove(&self, symlink: &Symlink) -> Result<()> {
+        match self {
+            SymlinkMode::Symlink => {
+                if !symlink.dst.is_symlink() {
+                    if symlink.dst.exists() {
+                        return Err(anyhow!("{} is not symlink", symlink.dst.to_string_lossy()));
+                    } else {
+                        return Ok(());
+                    }
+                }
+                fs::remove_file(&symlink.dst)
+                    .await
+                    .with_context(|| format!("failed to remove symlink: {symlink}"))?;
+                Ok(())
+            }
+            SymlinkMode::Copy => {
+                fs::remove_file(&symlink.dst)
+                    .await
+                    .with_context(|| format!("failed to remove symlink: {symlink}"))?;
+                Ok(())
+            }
+        }
     }
 }

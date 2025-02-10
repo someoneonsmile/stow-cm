@@ -8,11 +8,16 @@ use tokio::io::AsyncWriteExt;
 use crate::constants::*;
 use crate::error::Result;
 use crate::merge::Merge;
+use crate::symlink::SymlinkMode;
 use crate::util;
 
 /// pack config
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct Config {
+    /// symlink mode
+    #[serde(rename = "mode")]
+    pub symlink_mode: Option<SymlinkMode>,
+
     /// install to target dir
     pub target: Option<PathBuf>,
 
@@ -121,6 +126,7 @@ impl Config {
 impl Default for Config {
     fn default() -> Config {
         Config {
+            symlink_mode: Some(SymlinkMode::Symlink),
             target: Some(DEFAULT_PACK_TARGET.into()),
             ignore: Some(vec![CONFIG_FILE_NAME.to_string()]),
             over: None,
