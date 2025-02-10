@@ -22,7 +22,9 @@ pub(crate) struct Symlink {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub(crate) enum SymlinkMode {
     #[default]
+    #[serde(rename = "symlink")]
     Symlink,
+    #[serde(rename = "copy")]
     Copy,
 }
 
