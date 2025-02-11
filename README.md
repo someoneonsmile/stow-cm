@@ -75,6 +75,9 @@ ignore = [
 # default, create a tree-folding symlink
 fold = true
 
+# default, use symlink, another mode is 'copy'
+mode = 'symlink'
+
 [init]
 type = '[Bin/Python/Make/Lua/Shell/ShellStr]'
 # Bin/Shell/Python/Make/Lua: file path relate on the pack
@@ -139,3 +142,5 @@ key_path = '/path/to/key'
 - [x] move .stow-cm-track to $XDG_STATE_HOME
 
 - [ ] pack related properties combine into struct
+
+- [x] support file copy mode

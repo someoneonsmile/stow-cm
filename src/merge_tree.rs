@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use crate::error::Result;
 use crate::merge::Merge;
-use crate::symlink::Symlink;
+use crate::symlink::{Symlink, SymlinkMode};
 use crate::util;
 
 #[derive(Debug)]
@@ -21,6 +21,7 @@ pub(crate) struct MergeOption {
     pub ignore: Option<RegexSet>,
     pub over: Option<RegexSet>,
     pub fold: Option<bool>,
+    pub symlink_mode: Option<SymlinkMode>,
 }
 
 #[derive(Debug)]
@@ -86,6 +87,11 @@ impl MergeTree {
                 to_create_symlinks: Some(vec![Symlink {
                     src: self.source,
                     dst: self.target,
+                    mode: self
+                        .option
+                        .as_ref()
+                        .and_then(|it| it.symlink_mode.clone())
+                        .unwrap_or_default(),
                 }]),
                 has_ignore: false,
                 foldable: true,
@@ -115,6 +121,11 @@ impl MergeTree {
                 to_create_symlinks: Some(vec![Symlink {
                     src: self.source,
                     dst: self.target,
+                    mode: self
+                        .option
+                        .as_ref()
+                        .and_then(|it| it.symlink_mode.clone())
+                        .unwrap_or_default(),
                 }]),
                 has_ignore: false,
                 foldable: true,
@@ -159,6 +170,11 @@ impl MergeTree {
                     to_create_symlinks: Some(vec![Symlink {
                         src: self.source,
                         dst: self.target,
+                        mode: self
+                            .option
+                            .as_ref()
+                            .and_then(|it| it.symlink_mode.clone())
+                            .unwrap_or_default(),
                     }]),
                     has_ignore: false,
                     foldable: true,

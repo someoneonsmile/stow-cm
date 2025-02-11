@@ -9,16 +9,16 @@ use tokio::fs;
 use walkdir::WalkDir;
 
 use crate::error::{anyhow, Result};
-use crate::symlink::Symlink;
+use crate::symlink::{Symlink, SymlinkMode};
 
 pub(crate) fn shell_expand_full<P: AsRef<Path>>(path: P) -> Result<PathBuf> {
     let path = path
         .as_ref()
         .to_str()
         .ok_or_else(|| anyhow!("path error"))?;
-    return Ok(PathBuf::from(
+    Ok(PathBuf::from(
         shellexpand::tilde(shellexpand::full(path)?.as_ref()).as_ref(),
-    ));
+    ))
 }
 
 pub(crate) fn shell_expand_full_with_context<P, C, S>(path: P, context: C) -> Result<PathBuf>
@@ -31,7 +31,7 @@ where
         .as_ref()
         .to_str()
         .ok_or_else(|| anyhow!("path error"))?;
-    return Ok(PathBuf::from(
+    Ok(PathBuf::from(
         shellexpand::tilde(
             shellexpand::env_with_context(path, |key| {
                 std::result::Result::<Option<String>, LookupError<VarError>>::Ok(
@@ -43,7 +43,7 @@ where
             .as_ref(),
         )
         .as_ref(),
-    ));
+    ))
 }
 
 /// expand the dir and symlink the subpath under the dir
@@ -95,6 +95,7 @@ pub(crate) fn find_prefix_symlink(
                     paths.push(Symlink {
                         src: point_to,
                         dst: path,
+                        mode: SymlinkMode::Symlink,
                     });
                 }
             }

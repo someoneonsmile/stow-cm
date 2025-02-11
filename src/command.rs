@@ -115,6 +115,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
                     ignore: ignore_re,
                     over: over_re,
                     fold: config.fold,
+                    symlink_mode: config.symlink_mode.clone(),
                 })),
             )
             .merge_add()?;
@@ -146,15 +147,15 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         .is_some_and(|it| it.enable.is_some_and(identity));
 
     if decrypted {
-        let decrypted_path =
-            decrypted_path.ok_or_else(|| anyhow!("{pack_name}: decrypted path is not configed"))?;
+        let decrypted_path = decrypted_path
+            .ok_or_else(|| anyhow!("{pack_name}: decrypted path is not configured"))?;
 
         let key = {
             let key_path = config
                 .crypted
                 .as_ref()
                 .and_then(|it| it.key_path.as_ref())
-                .ok_or_else(|| anyhow!("{pack_name}: key_path is not configed"))?;
+                .ok_or_else(|| anyhow!("{pack_name}: key_path is not configured"))?;
             if !fs::try_exists(key_path).await? {
                 bail!("{pack_name}: key_path not exist");
             }
@@ -170,7 +171,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
                 .crypted
                 .as_ref()
                 .and_then(|it| it.left_boundry.as_ref())
-                .ok_or_else(|| anyhow!("{pack_name}: left_boundry is not configed"))?;
+                .ok_or_else(|| anyhow!("{pack_name}: left_boundry is not configured"))?;
             s.as_str()
         };
 
@@ -179,7 +180,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
                 .crypted
                 .as_ref()
                 .and_then(|it| it.right_boundry.as_ref())
-                .ok_or_else(|| anyhow!("{pack_name}: right_boundry is not configed"))?;
+                .ok_or_else(|| anyhow!("{pack_name}: right_boundry is not configured"))?;
             s.as_str()
         };
 
@@ -188,7 +189,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
                 .crypted
                 .as_ref()
                 .and_then(|it| it.crypted_alg.as_ref())
-                .ok_or_else(|| anyhow!("{pack_name}: crypted_alg is not configed"))?;
+                .ok_or_else(|| anyhow!("{pack_name}: crypted_alg is not configured"))?;
             s.as_str()
         };
 
@@ -340,8 +341,8 @@ async fn clean_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         .as_ref()
         .is_some_and(|it| it.enable.is_some_and(identity));
     if crypted {
-        let decrypted_path =
-            decrypted_path.ok_or_else(|| anyhow!("{pack_name}: decrypted path is not configed"))?;
+        let decrypted_path = decrypted_path
+            .ok_or_else(|| anyhow!("{pack_name}: decrypted path is not configured"))?;
         if fs::try_exists(decrypted_path.as_path()).await? {
             info!("{pack_name}: clean decrypted dir, {decrypted_path:?}");
             fs::remove_dir_all(decrypted_path).await?;
@@ -450,7 +451,7 @@ pub(crate) async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
             .crypted
             .as_ref()
             .and_then(|it| it.key_path.as_ref())
-            .ok_or_else(|| anyhow!("{pack_name}: key_path is not configed"))?;
+            .ok_or_else(|| anyhow!("{pack_name}: key_path is not configured"))?;
         if !fs::try_exists(key_path).await? {
             bail!("{pack_name}: key_path not exist");
         }
@@ -466,7 +467,7 @@ pub(crate) async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
             .crypted
             .as_ref()
             .and_then(|it| it.left_boundry.as_ref())
-            .ok_or_else(|| anyhow!("{pack_name}: left_boundry is not configed"))?;
+            .ok_or_else(|| anyhow!("{pack_name}: left_boundry is not configured"))?;
         s.as_str()
     };
 
@@ -475,7 +476,7 @@ pub(crate) async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
             .crypted
             .as_ref()
             .and_then(|it| it.right_boundry.as_ref())
-            .ok_or_else(|| anyhow!("{pack_name}: right_boundry is not configed"))?;
+            .ok_or_else(|| anyhow!("{pack_name}: right_boundry is not configured"))?;
         s.as_str()
     };
 
@@ -484,7 +485,7 @@ pub(crate) async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
             .crypted
             .as_ref()
             .and_then(|it| it.crypted_alg.as_ref())
-            .ok_or_else(|| anyhow!("{pack_name}: crypted_alg is not configed"))?;
+            .ok_or_else(|| anyhow!("{pack_name}: crypted_alg is not configured"))?;
         s.as_str()
     };
 
@@ -580,7 +581,7 @@ pub(crate) async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
             .crypted
             .as_ref()
             .and_then(|it| it.key_path.as_ref())
-            .ok_or_else(|| anyhow!("{pack_name}: key_path is not configed"))?;
+            .ok_or_else(|| anyhow!("{pack_name}: key_path is not configured"))?;
         if !fs::try_exists(key_path).await? {
             bail!("{pack_name}: key_path not exist");
         }
@@ -596,7 +597,7 @@ pub(crate) async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
             .crypted
             .as_ref()
             .and_then(|it| it.left_boundry.as_ref())
-            .ok_or_else(|| anyhow!("{pack_name}: left_boundry is not configed"))?;
+            .ok_or_else(|| anyhow!("{pack_name}: left_boundry is not configured"))?;
         s.as_str()
     };
 
@@ -605,7 +606,7 @@ pub(crate) async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
             .crypted
             .as_ref()
             .and_then(|it| it.right_boundry.as_ref())
-            .ok_or_else(|| anyhow!("{pack_name}: right_boundry is not configed"))?;
+            .ok_or_else(|| anyhow!("{pack_name}: right_boundry is not configured"))?;
         s.as_str()
     };
 
@@ -614,7 +615,7 @@ pub(crate) async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
             .crypted
             .as_ref()
             .and_then(|it| it.crypted_alg.as_ref())
-            .ok_or_else(|| anyhow!("{pack_name}: crypted_alg is not configed"))?;
+            .ok_or_else(|| anyhow!("{pack_name}: crypted_alg is not configured"))?;
         s.as_str()
     };
 
