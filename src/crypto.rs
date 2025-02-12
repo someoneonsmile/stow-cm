@@ -42,7 +42,7 @@ pub(crate) fn decrypt_inline(
 }
 
 /// decrypt content
-/// return format: <enc_content_base64>:<nonce_base64>
+/// return format: <`enc_content_base64>`:<`nonce_base64`>
 pub(crate) fn encrypt(content: &str, alg_name: &str, key: &[u8]) -> Result<String> {
     let mut nonce_value = [0_u8; NONCE_LEN];
     SystemRandom::new().fill(&mut nonce_value)?;
@@ -58,7 +58,7 @@ pub(crate) fn encrypt(content: &str, alg_name: &str, key: &[u8]) -> Result<Strin
 
     let enc_content_base64 = base64::encode(&content)?;
     let nonce_base64 = base64::encode(&nonce_value)?;
-    Ok(format!("{}:{}", enc_content_base64, nonce_base64))
+    Ok(format!("{enc_content_base64}:{nonce_base64}"))
 }
 
 /// decrypt content
@@ -68,10 +68,10 @@ pub(crate) fn decrypt(content: &str, alg_name: &str, key: &[u8]) -> Result<Strin
     let [encrypted_content_base64, nonce_base64] = match splitn[..] {
         [a, b] => Ok([a, b]),
         _ => Err(anyhow!(
-            r#"encryption markers do not contain nonce information
+            r"encryption markers do not contain nonce information
         in the format of encrypt_data_base64:nonce_base64
         content: {}
-        "#,
+        ",
             content
         )),
     }?;
@@ -152,7 +152,7 @@ mod test {
         let encrypted_text = "sPO5zRwCrZG0J834t/sd/eeB9F2VthSwrnzLAw==";
 
         let origin_text = super::decrypt(
-            &format!("{}:{}", encrypted_text, nonce_base64),
+            &format!("{encrypted_text}:{nonce_base64}"),
             alg_name,
             &key,
         )?;

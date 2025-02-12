@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::io::AsyncWriteExt;
 
-use crate::constants::*;
+use crate::constants::{CONFIG_FILE_NAME, DEFAULT_CRYPT_ALG, DEFAULT_DECRYPT_LEFT_BOUNDARY, DEFAULT_DECRYPT_RIGHT_BOUNDARY, DEFAULT_PACK_DECRYPT, DEFAULT_PACK_TARGET, GLOBAL_CONFIG_FILE, GLOBAL_XDG_CONFIG_FILE, UNSET_VALUE};
 use crate::error::Result;
 use crate::merge::Merge;
 use crate::symlink::SymlinkMode;
@@ -46,7 +46,7 @@ pub(crate) struct Config {
 pub(crate) struct CryptedConfig {
     /// enable default to false
     pub(crate) enable: Option<bool>,
-    /// decrypted file path when install, default path is ${XDG_DATA_HOME:-~/.local/share}/stow-cm/${pack_name}/decrypted/
+    /// decrypted file path when install, default path is ${`XDG_DATA_HOME`:-~/.local/share}/stow-cm/${pack_name}/decrypted/
     pub(crate) decrypted_path: Option<PathBuf>,
     /// left boundary of content to be decrypted
     pub(crate) left_boundry: Option<String>,

@@ -6,7 +6,6 @@ use log::{debug, info, warn};
 use maplit::hashmap;
 use regex::RegexSet;
 use std::convert::identity;
-use std::ops::Deref;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -16,7 +15,7 @@ use walkdir::WalkDir;
 
 use crate::base64;
 use crate::config::Config;
-use crate::constants::*;
+use crate::constants::{PACK_ID_ENV, PACK_NAME_ENV, PACK_TRACK_FILE};
 use crate::crypto;
 use crate::error::Result;
 use crate::merge_tree;
@@ -49,7 +48,7 @@ pub(crate) async fn install(config: Arc<Config>, pack: impl AsRef<Path>) -> Resu
             (PACK_ID_ENV, util::hash(&pack.to_string_lossy())),
             (PACK_NAME_ENV, pack_name.to_owned()),
         ];
-        command.exec_async(pack.deref(), envs).await?;
+        command.exec_async(&*pack, envs).await?;
     }
 
     Ok(())
@@ -81,8 +80,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     }
     fs::create_dir_all(track_file.parent().with_context(|| {
         format!(
-            "{pack_name}: failed to find track file parent, {:?}",
-            track_file
+            "{pack_name}: failed to find track file parent, {track_file:?}"
         )
     })?)
     .await
@@ -110,7 +108,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         tokio::task::spawn_blocking(move || {
             let merge_result = merge_tree::MergeTree::new(
                 target,
-                pack.deref(),
+                &*pack,
                 Some(Arc::new(MergeOption {
                     ignore: ignore_re,
                     over: over_re,
@@ -160,7 +158,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
                 bail!("{pack_name}: key_path not exist");
             }
             let key_base64 = fs::read_to_string(key_path).await.with_context(|| {
-                format!("{pack_name}: failed to read from key_path={:?}", key_path)
+                format!("{pack_name}: failed to read from key_path={key_path:?}")
             })?;
             base64::decode(&key_base64)?
         };
@@ -197,14 +195,13 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
             fs::create_dir_all(decrypted_path).await.with_context(|| {
                 format!(
                     // FIX: tip track file?
-                    "{pack_name}: failed to create track file dir, {:?}",
-                    decrypted_path
+                    "{pack_name}: failed to create track file dir, {decrypted_path:?}"
                 )
             })?;
         }
 
         let mut decrypted_file_map = vec![];
-        for symlink in symlinks.iter_mut() {
+        for symlink in &mut symlinks {
             let decrypted_file_path =
                 util::change_base_path(&symlink.src, pack.as_path(), decrypted_path.as_path())?;
             debug!(
@@ -296,7 +293,7 @@ pub(crate) async fn clean<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Resul
             (PACK_ID_ENV, util::hash(&pack.to_string_lossy())),
             (PACK_NAME_ENV, pack_name.to_owned()),
         ];
-        command.exec_async(pack.deref(), envs).await?;
+        command.exec_async(&*pack, envs).await?;
     }
 
     Ok(())
@@ -318,7 +315,7 @@ async fn clean_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     let symlinks = {
         let pack = pack.clone();
         let target = target.clone();
-        tokio::task::spawn_blocking(move || util::find_prefix_symlink(target, pack.deref()))
+        tokio::task::spawn_blocking(move || util::find_prefix_symlink(target, &*pack))
             .await??
     };
 
@@ -369,7 +366,7 @@ pub(crate) async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Resu
             (PACK_ID_ENV, util::hash(&pack.to_string_lossy())),
             (PACK_NAME_ENV, pack_name.to_owned()),
         ];
-        command.exec_async(pack.deref(), envs).await?;
+        command.exec_async(&*pack, envs).await?;
     }
 
     Ok(())
@@ -457,7 +454,7 @@ pub(crate) async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
         }
         let key_base64 = fs::read_to_string(key_path)
             .await
-            .with_context(|| format!("{pack_name}: failed to read from key_path={:?}", key_path))?;
+            .with_context(|| format!("{pack_name}: failed to read from key_path={key_path:?}"))?;
         base64::decode(&key_base64)?
     };
     let key = key.as_slice();
@@ -498,7 +495,7 @@ pub(crate) async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
         let pack = pack.clone();
         tokio::task::spawn_blocking(move || {
             // walk file, expect ignore_re, skip binary file
-            let files: Vec<_> = WalkDir::new(pack.deref())
+            let files: Vec<_> = WalkDir::new(&*pack)
                 .into_iter()
                 .filter_map(|entry| {
                     let entry = entry.ok()?;
@@ -546,8 +543,7 @@ pub(crate) async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
             )?;
             fs::write(path, encrypted_content).await.with_context(|| {
                 format!(
-                    "{pack_name}: failed to write encrypted_content to path={:?}",
-                    path
+                    "{pack_name}: failed to write encrypted_content to path={path:?}"
                 )
             })?;
             Result::<(), anyhow::Error>::Ok(())
@@ -587,7 +583,7 @@ pub(crate) async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
         }
         let key_base64 = fs::read_to_string(key_path)
             .await
-            .with_context(|| format!("{pack_name}: failed to read from key_path={:?}", key_path))?;
+            .with_context(|| format!("{pack_name}: failed to read from key_path={key_path:?}"))?;
         base64::decode(&key_base64)?
     };
     let key = key.as_slice();
@@ -628,7 +624,7 @@ pub(crate) async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
         let pack = pack.clone();
         tokio::task::spawn_blocking(move || {
             // walk file, expect ignore_re, skip binary file
-            let files: Vec<_> = WalkDir::new(pack.deref())
+            let files: Vec<_> = WalkDir::new(&*pack)
                 .into_iter()
                 .filter_map(|entry| {
                     let entry = entry.ok()?;
@@ -676,8 +672,7 @@ pub(crate) async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
             )?;
             fs::write(path, decrypted_content).await.with_context(|| {
                 format!(
-                    "{pack_name}: failed to write decrypted_content to path={:?}",
-                    path
+                    "{pack_name}: failed to write decrypted_content to path={path:?}"
                 )
             })?;
             Result::<(), anyhow::Error>::Ok(())

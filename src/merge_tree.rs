@@ -1,6 +1,5 @@
 use regex::RegexSet;
 use std::fs;
-use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -68,7 +67,7 @@ impl MergeTree {
 
         // source ignore
         if let Some(ignore_re) = self.option.as_ref().and_then(|it| it.ignore.as_ref()) {
-            if ignore_re.is_match(self.source.to_string_lossy().deref()) {
+            if ignore_re.is_match(&self.source.to_string_lossy()) {
                 return Ok(MergeResult {
                     conflicts: None,
                     expand_symlinks: None,
@@ -204,7 +203,7 @@ fn check_conflict(
     }
     if let Some(over_re) = over {
         // over
-        if over_re.is_match(source.to_string_lossy().deref()) {
+        if over_re.is_match(&source.to_string_lossy()) {
             return false;
         }
     }

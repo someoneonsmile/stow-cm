@@ -36,7 +36,7 @@ where
             shellexpand::env_with_context(path, |key| {
                 std::result::Result::<Option<String>, LookupError<VarError>>::Ok(
                     context(key)
-                        .map(|it| it.into())
+                        .map(std::convert::Into::into)
                         .or_else(|| std::env::var(key).ok()),
                 )
             })?
@@ -76,7 +76,7 @@ pub(crate) fn is_empty_dir(path: impl AsRef<Path>) -> bool {
                 .is_none())
 }
 
-/// find the symlink that point to the path start with link_prefix
+/// find the symlink that point to the path start with `link_prefix`
 pub(crate) fn find_prefix_symlink(
     dir_path: impl AsRef<Path>,
     link_prefix: impl AsRef<Path>,
@@ -86,7 +86,7 @@ pub(crate) fn find_prefix_symlink(
         for entry in WalkDir::new(dir_path)
             .follow_links(false)
             .into_iter()
-            .filter_map(|e| e.ok())
+            .filter_map(std::result::Result::ok)
         {
             let path = entry.into_path();
             if path.is_symlink() {
@@ -129,7 +129,7 @@ pub(crate) fn has_new_sub(a: impl AsRef<Path>, b: impl AsRef<Path>) -> Result<bo
     Ok(false)
 }
 
-/// Change the path base to new_base
+/// Change the path base to `new_base`
 pub(crate) fn change_base_path(
     path: impl AsRef<Path>,
     base: impl AsRef<Path>,
