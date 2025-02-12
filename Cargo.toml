@@ -46,11 +46,8 @@ strip = true
 
 [lints.clippy]
 pedantic = { level = "deny", priority = -1 }
-unwrap_used = "deny"
-expect_used = "deny"
-todo = "deny"
-unimplemented = "deny"
 exit = "deny"
+expect_used = "deny"
 get_unwrap = "deny"
 index_refutable_slice = "deny"
 indexing_slicing = "deny"
@@ -59,5 +56,8 @@ match_wild_err_arm = "deny"
 missing_panics_doc = "deny"
 panic = "deny"
 string_slice = "deny"
+todo = "deny"
 unchecked_duration_subtraction = "deny"
+unimplemented = "deny"
 unreachable = "deny"
+unwrap_used = "deny"
