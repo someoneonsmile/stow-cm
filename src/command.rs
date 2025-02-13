@@ -532,12 +532,10 @@ pub(crate) async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
         .try_for_each_concurrent(None, |file| async move {
             let path = file.path();
             info!("{pack_name}: encrypt {:?}", path);
-            let content = fs::read_to_string(path).await;
-            if content.is_err() {
+            let Ok(content) = fs::read_to_string(path).await else {
                 warn!("{pack_name}: {:?} contains not invalid utf-8", path);
                 return Ok(());
-            }
-            let content = content?;
+            };
             let encrypted_content = crypto::encrypt_inline(
                 &content,
                 crypted_alg,
@@ -661,12 +659,10 @@ pub(crate) async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
         .try_for_each_concurrent(None, |file| async move {
             let path = file.path();
             info!("{pack_name}: decrypt {:?}", path);
-            let content = fs::read_to_string(path).await;
-            if content.is_err() {
+            let Ok(content) = fs::read_to_string(path).await else {
                 warn!("{pack_name}: {:?} contains not invalid utf-8", path);
                 return Ok(());
-            }
-            let content = content?;
+            };
             let decrypted_content = crypto::decrypt_inline(
                 &content,
                 crypted_alg,
