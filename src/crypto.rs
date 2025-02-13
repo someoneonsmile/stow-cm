@@ -56,8 +56,8 @@ pub(crate) fn encrypt(content: &str, alg_name: &str, key: &[u8]) -> Result<Strin
     };
     key.seal_in_place_append_tag(nonce, Aad::empty(), &mut content)?;
 
-    let enc_content_base64 = base64::encode(&content)?;
-    let nonce_base64 = base64::encode(&nonce_value)?;
+    let enc_content_base64 = base64::encode(&content);
+    let nonce_base64 = base64::encode(&nonce_value);
     Ok(format!("{enc_content_base64}:{nonce_base64}"))
 }
 
@@ -124,21 +124,21 @@ mod test {
     use crate::base64;
     use crate::error::Result;
 
-    #[test]
-    fn encrypt_test() -> Result<()> {
-        // let plain_text = "Hello world!";
-        // let alg_name = "AES-256-GCM";
-        // let key_base64 = "Irl9RrW55AXkbPwBxI85/33pDNyte6753h/G1YERblo=";
-        // let key = base64::decode(key_base64)?;
-        // let nonce_base64 = "U5mgpHMN5h9EYvH2";
-        // let nonce = base64::decode(nonce_base64)?;
+    // #[test]
+    // fn encrypt_test() -> Result<()> {
+    //     // let plain_text = "Hello world!";
+    //     // let alg_name = "AES-256-GCM";
+    //     // let key_base64 = "Irl9RrW55AXkbPwBxI85/33pDNyte6753h/G1YERblo=";
+    //     // let key = base64::decode(key_base64)?;
+    //     // let nonce_base64 = "U5mgpHMN5h9EYvH2";
+    //     // let nonce = base64::decode(nonce_base64)?;
 
-        // let encrypted_text = super::encrypt_with_nonce(plain_text, alg_name, &key, &nonce)?;
+    //     // let encrypted_text = super::encrypt_with_nonce(plain_text, alg_name, &key, &nonce)?;
 
-        // println!("{}", encrypted_text);
+    //     // println!("{}", encrypted_text);
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
     #[test]
     fn decrypt_test() -> Result<()> {
@@ -151,11 +151,8 @@ mod test {
 
         let encrypted_text = "sPO5zRwCrZG0J834t/sd/eeB9F2VthSwrnzLAw==";
 
-        let origin_text = super::decrypt(
-            &format!("{encrypted_text}:{nonce_base64}"),
-            alg_name,
-            &key,
-        )?;
+        let origin_text =
+            super::decrypt(&format!("{encrypted_text}:{nonce_base64}"), alg_name, &key)?;
 
         assert_eq!(plain_text, origin_text);
         Ok(())

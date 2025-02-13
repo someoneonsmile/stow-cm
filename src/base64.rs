@@ -22,9 +22,9 @@ pub(crate) fn decode(data: &str) -> Result<Vec<u8>> {
         .with_context(|| anyhow!("base64 decode error, content={data}"))
 }
 
-pub(crate) fn encode(data: &[u8]) -> Result<String> {
+pub(crate) fn encode(data: &[u8]) -> String {
     debug!("encode: {:?}", data);
-    Ok(general_purpose::STANDARD.encode(data))
+    general_purpose::STANDARD.encode(data)
 }
 
 #[cfg(test)]
@@ -40,7 +40,6 @@ mod test {
         ];
         let e = super::encode(&b);
         println!("{e:?}");
-        assert!(e.is_ok());
     }
 
     /// decode

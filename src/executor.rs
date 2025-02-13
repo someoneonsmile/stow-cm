@@ -46,10 +46,13 @@ where
                 .and_then(|it| it.to_str())
                 .ok_or_else(|| anyhow::anyhow!("path error: {:?}", pack.as_ref()))?;
             // TODO:
-            let mut config = match pack_config.merge_with(|| common_config.deref().clone()) {
-                Some(config) => config,
-                None => unreachable!("no config"),
+            let Some(mut config) = pack_config.merge_with(|| common_config.deref().clone()) else {
+                unreachable!("no config")
             };
+            // let mut config = match pack_config.merge_with(|| common_config.deref().clone()) {
+            //     Some(config) => config,
+            //     None => unreachable!("no config"),
+            // };
 
             let context_map = hashmap! {
                 PACK_ID_ENV => util::hash(&pack.as_ref().to_string_lossy()),

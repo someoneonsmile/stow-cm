@@ -88,9 +88,8 @@ impl SymlinkMode {
                 if !symlink.dst.is_symlink() {
                     if symlink.dst.exists() {
                         return Err(anyhow!("{} is not symlink", symlink.dst.to_string_lossy()));
-                    } else {
-                        return Ok(());
                     }
+                    return Ok(());
                 }
                 fs::remove_file(&symlink.dst)
                     .await
