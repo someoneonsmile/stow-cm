@@ -79,9 +79,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         bail!("{pack_name}: pack has been install")
     }
     fs::create_dir_all(track_file.parent().with_context(|| {
-        format!(
-            "{pack_name}: failed to find track file parent, {track_file:?}"
-        )
+        format!("{pack_name}: failed to find track file parent, {track_file:?}")
     })?)
     .await
     .with_context(|| {
@@ -94,12 +92,16 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     let ignore_re = config
         .ignore
         .as_ref()
-        .and_then(|ignore_regexs| RegexSet::new(ignore_regexs).ok());
+        .map(RegexSet::new)
+        .transpose()
+        .with_context(|| anyhow!("{:?}", config.ignore))?;
 
     let over_re = config
         .over
         .as_ref()
-        .and_then(|over_regexs| RegexSet::new(over_regexs).ok());
+        .map(RegexSet::new)
+        .transpose()
+        .with_context(|| anyhow!("{:?}", config.over))?;
 
     let mut symlinks = {
         let pack = pack.clone();
@@ -315,8 +317,7 @@ async fn clean_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     let symlinks = {
         let pack = pack.clone();
         let target = target.clone();
-        tokio::task::spawn_blocking(move || util::find_prefix_symlink(target, &*pack))
-            .await??
+        tokio::task::spawn_blocking(move || util::find_prefix_symlink(target, &*pack)).await??
     };
 
     debug!("{pack_name}: clean paths: {symlinks:?}");
@@ -489,11 +490,15 @@ pub(crate) async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
     let ignore_re = config
         .ignore
         .as_ref()
-        .and_then(|ignore_regexs| RegexSet::new(ignore_regexs).ok());
+        .map(RegexSet::new)
+        .transpose()
+        .with_context(|| anyhow!("{:?}", config.ignore))?;
 
     let files = {
         let pack = pack.clone();
         tokio::task::spawn_blocking(move || {
+            // FIXME: ignore_re not exists case and regex match file name
+
             // walk file, expect ignore_re, skip binary file
             let files: Vec<_> = WalkDir::new(&*pack)
                 .into_iter()
@@ -542,9 +547,7 @@ pub(crate) async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
                 false,
             )?;
             fs::write(path, encrypted_content).await.with_context(|| {
-                format!(
-                    "{pack_name}: failed to write encrypted_content to path={path:?}"
-                )
+                format!("{pack_name}: failed to write encrypted_content to path={path:?}")
             })?;
             Result::<(), anyhow::Error>::Ok(())
         })
@@ -618,7 +621,9 @@ pub(crate) async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
     let ignore_re = config
         .ignore
         .as_ref()
-        .and_then(|ignore_regexs| RegexSet::new(ignore_regexs).ok());
+        .map(RegexSet::new)
+        .transpose()
+        .with_context(|| anyhow!("{:?}", config.ignore))?;
 
     let files = {
         let pack = pack.clone();
@@ -671,9 +676,7 @@ pub(crate) async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
                 false,
             )?;
             fs::write(path, decrypted_content).await.with_context(|| {
-                format!(
-                    "{pack_name}: failed to write decrypted_content to path={path:?}"
-                )
+                format!("{pack_name}: failed to write decrypted_content to path={path:?}")
             })?;
             Result::<(), anyhow::Error>::Ok(())
         })
