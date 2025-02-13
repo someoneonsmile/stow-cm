@@ -3,15 +3,12 @@
 use anyhow::{anyhow, Context};
 
 use base64::{engine::general_purpose, Engine};
-use lazy_static::lazy_static;
+use lazy_regex::*;
 use log::debug;
-use regex::Regex;
 
 use crate::error::Result;
 
-lazy_static! {
-    static ref BLANK_REPLACER: Regex = Regex::new(r"[\s|\n]*").unwrap();
-}
+static BLANK_REPLACER: Lazy<Regex> = lazy_regex!(r"[\s|\n]*");
 
 pub(crate) fn decode(data: &str) -> Result<Vec<u8>> {
     // debug!("decode: {:?}", data);

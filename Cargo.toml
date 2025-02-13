@@ -27,6 +27,7 @@ clap = { version = "4", features = ["derive"] }
 num_cpus = "1"
 sha3 = "0"
 maplit = "1"
+lazy-regex = "3"
 
 # ignore = "0"
 # xattr = "0"
