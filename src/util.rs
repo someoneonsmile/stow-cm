@@ -139,6 +139,7 @@ pub(crate) fn change_base_path(
 }
 
 /// find var and inplace
+#[allow(clippy::string_slice)]
 pub(crate) fn var_inplace<F>(
     content: &str,
     left_boundary: &str,
