@@ -27,6 +27,7 @@ clap = { version = "4", features = ["derive"] }
 num_cpus = "1"
 sha3 = "0"
 maplit = "1"
+lazy-regex = "3"
 
 # ignore = "0"
 # xattr = "0"
@@ -46,11 +47,8 @@ strip = true
 
 [lints.clippy]
 pedantic = { level = "deny", priority = -1 }
-unwrap_used = "deny"
-expect_used = "deny"
-todo = "deny"
-unimplemented = "deny"
 exit = "deny"
+expect_used = "deny"
 get_unwrap = "deny"
 index_refutable_slice = "deny"
 indexing_slicing = "deny"
@@ -59,5 +57,9 @@ match_wild_err_arm = "deny"
 missing_panics_doc = "deny"
 panic = "deny"
 string_slice = "deny"
+todo = "deny"
 unchecked_duration_subtraction = "deny"
-unreachable = "deny"
+unimplemented = "deny"
+unreachable = "allow"
+unwrap_used = "deny"
+too_many_lines = "allow"

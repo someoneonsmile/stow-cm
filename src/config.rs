@@ -1,3 +1,4 @@
+use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use std::ffi::OsStr;
 use std::fs;
@@ -5,7 +6,11 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::io::AsyncWriteExt;
 
-use crate::constants::*;
+use crate::constants::{
+    CONFIG_FILE_NAME, DEFAULT_CRYPT_ALG, DEFAULT_DECRYPT_LEFT_BOUNDARY,
+    DEFAULT_DECRYPT_RIGHT_BOUNDARY, DEFAULT_PACK_DECRYPT, DEFAULT_PACK_TARGET, GLOBAL_CONFIG_FILE,
+    GLOBAL_XDG_CONFIG_FILE, UNSET_VALUE,
+};
 use crate::error::Result;
 use crate::merge::Merge;
 use crate::symlink::SymlinkMode;
@@ -46,7 +51,7 @@ pub(crate) struct Config {
 pub(crate) struct CryptedConfig {
     /// enable default to false
     pub(crate) enable: Option<bool>,
-    /// decrypted file path when install, default path is ${XDG_DATA_HOME:-~/.local/share}/stow-cm/${pack_name}/decrypted/
+    /// decrypted file path when install, default path is ${`XDG_DATA_HOME`:-~/.local/share}/stow-cm/${pack_name}/decrypted/
     pub(crate) decrypted_path: Option<PathBuf>,
     /// left boundary of content to be decrypted
     pub(crate) left_boundry: Option<String>,
@@ -99,7 +104,7 @@ impl Config {
         let global_xdg_config = Config::from_path(GLOBAL_XDG_CONFIG_FILE)?;
         global_xdg_config
             .merge(global_config)
-            .merge(Some(Default::default()))
+            .merge(Some(Config::default()))
             .ok_or_else(|| unreachable!("the global config should always return"))
     }
 
@@ -133,7 +138,7 @@ impl Default for Config {
             fold: Some(true),
             init: None,
             clear: None,
-            crypted: Some(Default::default()),
+            crypted: Some(CryptedConfig::default()),
         }
     }
 }
@@ -196,7 +201,7 @@ impl Command {
                 c.spawn()?
                     .stdin
                     .take()
-                    .unwrap()
+                    .ok_or_else(|| anyhow!("open sh error"))?
                     .write_all(content.as_bytes())
                     .await?;
                 c

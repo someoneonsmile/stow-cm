@@ -3,15 +3,12 @@
 use anyhow::{anyhow, Context};
 
 use base64::{engine::general_purpose, Engine};
-use lazy_static::lazy_static;
+use lazy_regex::{lazy_regex, Lazy, Regex};
 use log::debug;
-use regex::Regex;
 
 use crate::error::Result;
 
-lazy_static! {
-    static ref BLANK_REPLACER: Regex = Regex::new(r"[\s|\n]*").unwrap();
-}
+static BLANK_REPLACER: Lazy<Regex> = lazy_regex!(r"[\s|\n]*");
 
 pub(crate) fn decode(data: &str) -> Result<Vec<u8>> {
     // debug!("decode: {:?}", data);
@@ -22,9 +19,9 @@ pub(crate) fn decode(data: &str) -> Result<Vec<u8>> {
         .with_context(|| anyhow!("base64 decode error, content={data}"))
 }
 
-pub(crate) fn encode(data: &[u8]) -> Result<String> {
+pub(crate) fn encode(data: &[u8]) -> String {
     debug!("encode: {:?}", data);
-    Ok(general_purpose::STANDARD.encode(data))
+    general_purpose::STANDARD.encode(data)
 }
 
 #[cfg(test)]
@@ -39,8 +36,7 @@ mod test {
             0xa0, 0xff, 0xf5, 0x5d, 0x29, 0xc3, 0xb2, 0xc9, 0x02, 0x2b, 0xa3, 0x74,
         ];
         let e = super::encode(&b);
-        println!("{:?}", e);
-        assert!(e.is_ok());
+        println!("{e:?}");
     }
 
     /// decode
@@ -48,22 +44,22 @@ mod test {
     fn decode_test() {
         let s = "sPO5zRwO+ompOcW9hew=";
         let d = decode(s);
-        println!("{:?}", d);
+        println!("{d:?}");
         assert!(d.is_ok());
 
         let s = "U5mgpHMN5h9EYvH2";
         let d = decode(s);
-        println!("{:?}", d);
+        println!("{d:?}");
         assert!(d.is_ok());
 
         let s = "oP/1XSnDsskCK6N0";
         let d = decode(s);
-        println!("{:?}", d);
+        println!("{d:?}");
         assert!(d.is_ok());
 
         let s = "0wUHEBS3RtDjTK+L";
         let d = decode(s);
-        println!("{:?}", d);
+        println!("{d:?}");
         assert!(d.is_ok());
     }
 }

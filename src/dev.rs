@@ -48,6 +48,6 @@ where
 {
     fn location(self, loc: &Location) -> Result<T> {
         let msg = self.as_ref().err().map(ToString::to_string);
-        self.with_context(|| format!("{} {}", msg.unwrap(), loc))
+        self.with_context(|| -> String { format!("{} {}", msg.unwrap_or_default(), loc) })
     }
 }
