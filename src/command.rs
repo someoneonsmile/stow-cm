@@ -79,9 +79,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         bail!("{pack_name}: pack has been install")
     }
     fs::create_dir_all(track_file.parent().with_context(|| {
-        format!(
-            "{pack_name}: failed to find track file parent, {track_file:?}"
-        )
+        format!("{pack_name}: failed to find track file parent, {track_file:?}")
     })?)
     .await
     .with_context(|| {
@@ -315,8 +313,7 @@ async fn clean_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     let symlinks = {
         let pack = pack.clone();
         let target = target.clone();
-        tokio::task::spawn_blocking(move || util::find_prefix_symlink(target, &*pack))
-            .await??
+        tokio::task::spawn_blocking(move || util::find_prefix_symlink(target, &*pack)).await??
     };
 
     debug!("{pack_name}: clean paths: {symlinks:?}");
@@ -540,9 +537,7 @@ pub(crate) async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
                 false,
             )?;
             fs::write(path, encrypted_content).await.with_context(|| {
-                format!(
-                    "{pack_name}: failed to write encrypted_content to path={path:?}"
-                )
+                format!("{pack_name}: failed to write encrypted_content to path={path:?}")
             })?;
             Result::<(), anyhow::Error>::Ok(())
         })
@@ -667,9 +662,7 @@ pub(crate) async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
                 false,
             )?;
             fs::write(path, decrypted_content).await.with_context(|| {
-                format!(
-                    "{pack_name}: failed to write decrypted_content to path={path:?}"
-                )
+                format!("{pack_name}: failed to write decrypted_content to path={path:?}")
             })?;
             Result::<(), anyhow::Error>::Ok(())
         })
