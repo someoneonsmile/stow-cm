@@ -144,5 +144,3 @@ key_path = '/path/to/key'
 - [ ] pack related properties combine into struct
 
 - [x] support file copy mode
-
-- [ ] spell check

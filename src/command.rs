@@ -184,12 +184,12 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
             s.as_str()
         };
 
-        let crypted_alg = {
+        let encrypted_alg = {
             let s = config
                 .encrypted
                 .as_ref()
                 .and_then(|it| it.encrypted_alg.as_ref())
-                .ok_or_else(|| anyhow!("{pack_name}: crypted_alg is not configured"))?;
+                .ok_or_else(|| anyhow!("{pack_name}: encrypted_alg is not configured"))?;
             s.as_str()
         };
 
@@ -235,7 +235,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
                 let content = fs::read_to_string(origin_file_path).await?;
                 let origin_content = crypto::decrypt_inline(
                     &content,
-                    crypted_alg,
+                    encrypted_alg,
                     key,
                     left_boundary,
                     right_boundary,
@@ -478,12 +478,12 @@ pub(crate) async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
         s.as_str()
     };
 
-    let crypted_alg = {
+    let encrypted_alg = {
         let s = config
             .encrypted
             .as_ref()
             .and_then(|it| it.encrypted_alg.as_ref())
-            .ok_or_else(|| anyhow!("{pack_name}: crypted_alg is not configured"))?;
+            .ok_or_else(|| anyhow!("{pack_name}: encrypted_alg is not configured"))?;
         s.as_str()
     };
 
@@ -536,7 +536,7 @@ pub(crate) async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
             };
             let encrypted_content = crypto::encrypt_inline(
                 &content,
-                crypted_alg,
+                encrypted_alg,
                 key,
                 left_boundary,
                 right_boundary,
@@ -605,12 +605,12 @@ pub(crate) async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
         s.as_str()
     };
 
-    let crypted_alg = {
+    let encrypted_alg = {
         let s = config
             .encrypted
             .as_ref()
             .and_then(|it| it.encrypted_alg.as_ref())
-            .ok_or_else(|| anyhow!("{pack_name}: crypted_alg is not configured"))?;
+            .ok_or_else(|| anyhow!("{pack_name}: encrypted_alg is not configured"))?;
         s.as_str()
     };
 
@@ -663,7 +663,7 @@ pub(crate) async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
             };
             let decrypted_content = crypto::decrypt_inline(
                 &content,
-                crypted_alg,
+                encrypted_alg,
                 key,
                 left_boundary,
                 right_boundary,
