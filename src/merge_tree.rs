@@ -1,7 +1,8 @@
-use regex::RegexSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+
+use regex::RegexSet;
 
 use crate::error::Result;
 use crate::merge::Merge;
@@ -212,8 +213,9 @@ fn check_conflict(
 
 #[cfg(test)]
 mod test {
-    use anyhow::Result;
     use std::env::temp_dir;
+
+    use anyhow::Result;
 
     #[test]
     fn is_symlink() -> Result<()> {
