@@ -6,6 +6,7 @@ use log::{debug, info, warn};
 use maplit::hashmap;
 use regex::RegexSet;
 use std::convert::identity;
+use std::ops::Not;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -517,6 +518,11 @@ pub(crate) async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
                     }
                     None
                 })
+                .filter(|entry| {
+                    let a = entry.path();
+                    // matches!(binaryornot::is_binary(a), Ok(b) if !b)
+                    binaryornot::is_binary(a).map(Not::not).unwrap_or(false)
+                })
                 .collect();
 
             files
@@ -643,6 +649,11 @@ pub(crate) async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
                         return Some(entry);
                     }
                     None
+                })
+                .filter(|entry| {
+                    let a = entry.path();
+                    // matches!(binaryornot::is_binary(a), Ok(b) if !b)
+                    binaryornot::is_binary(a).map(Not::not).unwrap_or(false)
                 })
                 .collect();
 
