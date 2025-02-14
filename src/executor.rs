@@ -58,34 +58,36 @@ where
                 PACK_ID_ENV => util::hash(&pack.as_ref().to_string_lossy()),
                 PACK_NAME_ENV => pack_name.to_owned(),
             };
-            config.target = match config.target.as_ref() {
-                Some(target) => Some(util::shell_expand_full_with_context(target, |key| {
-                    context_map.get(key)
-                })?),
-                None => None,
-            };
-            config.encrypted = match config.encrypted {
-                Some(encrypted) => {
-                    let mut encrypted = encrypted;
-                    encrypted.key_path = match encrypted.key_path {
-                        Some(key_path) => {
-                            Some(util::shell_expand_full_with_context(key_path, |key| {
+            config.target = config
+                .target
+                .as_ref()
+                .map(|target| {
+                    util::shell_expand_full_with_context(target, |key| context_map.get(key))
+                })
+                .transpose()?;
+            config.encrypted = config
+                .encrypted
+                .map(|mut encrypted| {
+                    encrypted.key_path = encrypted
+                        .key_path
+                        .map(|key_path| {
+                            util::shell_expand_full_with_context(key_path, |key| {
                                 context_map.get(key)
-                            })?)
-                        }
-                        None => None,
-                    };
-                    encrypted.decrypted_path = match encrypted.decrypted_path {
-                        Some(decrypted_path) => Some(util::shell_expand_full_with_context(
-                            decrypted_path,
-                            |key| context_map.get(key),
-                        )?),
-                        None => None,
-                    };
-                    Some(encrypted)
-                }
-                None => None,
-            };
+                            })
+                        })
+                        .transpose()?;
+
+                    encrypted.decrypted_path = encrypted
+                        .decrypted_path
+                        .map(|decrypted_path| {
+                            util::shell_expand_full_with_context(decrypted_path, |key| {
+                                context_map.get(key)
+                            })
+                        })
+                        .transpose()?;
+                    anyhow::Ok(encrypted)
+                })
+                .transpose()?;
             let fut = tokio::spawn((f)(Arc::new(config), pack));
             Ok(Some(fut)) as Result<Option<JoinHandle<Result<()>>>>
         })
