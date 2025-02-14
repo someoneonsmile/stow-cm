@@ -92,12 +92,16 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     let ignore_re = config
         .ignore
         .as_ref()
-        .and_then(|ignore_regexs| RegexSet::new(ignore_regexs).ok());
+        .map(RegexSet::new)
+        .transpose()
+        .with_context(|| anyhow!("{:?}", config.ignore))?;
 
     let over_re = config
         .over
         .as_ref()
-        .and_then(|over_regexs| RegexSet::new(over_regexs).ok());
+        .map(RegexSet::new)
+        .transpose()
+        .with_context(|| anyhow!("{:?}", config.over))?;
 
     let mut symlinks = {
         let pack = pack.clone();
@@ -486,7 +490,9 @@ pub(crate) async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
     let ignore_re = config
         .ignore
         .as_ref()
-        .and_then(|ignore_regexs| RegexSet::new(ignore_regexs).ok());
+        .map(RegexSet::new)
+        .transpose()
+        .with_context(|| anyhow!("{:?}", config.ignore))?;
 
     let files = {
         let pack = pack.clone();
@@ -611,7 +617,9 @@ pub(crate) async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
     let ignore_re = config
         .ignore
         .as_ref()
-        .and_then(|ignore_regexs| RegexSet::new(ignore_regexs).ok());
+        .map(RegexSet::new)
+        .transpose()
+        .with_context(|| anyhow!("{:?}", config.ignore))?;
 
     let files = {
         let pack = pack.clone();
