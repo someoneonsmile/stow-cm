@@ -64,10 +64,10 @@ where
                 })?),
                 None => None,
             };
-            config.crypted = match config.crypted {
-                Some(crypted) => {
-                    let mut crypted = crypted;
-                    crypted.key_path = match crypted.key_path {
+            config.encrypted = match config.encrypted {
+                Some(encrypted) => {
+                    let mut encrypted = encrypted;
+                    encrypted.key_path = match encrypted.key_path {
                         Some(key_path) => {
                             Some(util::shell_expand_full_with_context(key_path, |key| {
                                 context_map.get(key)
@@ -75,14 +75,14 @@ where
                         }
                         None => None,
                     };
-                    crypted.decrypted_path = match crypted.decrypted_path {
+                    encrypted.decrypted_path = match encrypted.decrypted_path {
                         Some(decrypted_path) => Some(util::shell_expand_full_with_context(
                             decrypted_path,
                             |key| context_map.get(key),
                         )?),
                         None => None,
                     };
-                    Some(crypted)
+                    Some(encrypted)
                 }
                 None => None,
             };

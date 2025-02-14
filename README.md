@@ -97,7 +97,7 @@ if [ -d /path/to ]; then
 fi
 '''
 
-[crypted]
+[encrypted]
 # default
 enable = false
 # default
@@ -108,7 +108,7 @@ left_boundry = '&{'
 right_boundry = '}'
 # support ChaCha20-Poly1305 | AES-128-GCM | AES-256-GCM
 # default ChaCha20-Poly1305
-crypted_alg = 'ChaCha20-Poly1305'
+encrypted_alg = 'ChaCha20-Poly1305'
 key_path = '/path/to/key'
 ```
 
@@ -123,8 +123,8 @@ key_path = '/path/to/key'
 - [x] remove refact
 - [x] github action (auto archive)
 
-- [x] crypted support
-- [x] crypted support skip binary file
+- [x] encrypted support
+- [x] encrypted support skip binary file
 - [ ] attr macro Merge
 
 - [ ] more test and testable
@@ -144,3 +144,5 @@ key_path = '/path/to/key'
 - [ ] pack related properties combine into struct
 
 - [x] support file copy mode
+
+- [ ] spell check

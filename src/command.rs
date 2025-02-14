@@ -138,11 +138,11 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 
     // if config decrypted, decrypted the file
     let decrypted_path = config
-        .crypted
+        .encrypted
         .as_ref()
         .and_then(|it| it.decrypted_path.as_ref());
     let decrypted = config
-        .crypted
+        .encrypted
         .as_ref()
         .is_some_and(|it| it.enable.is_some_and(identity));
 
@@ -152,7 +152,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 
         let key = {
             let key_path = config
-                .crypted
+                .encrypted
                 .as_ref()
                 .and_then(|it| it.key_path.as_ref())
                 .ok_or_else(|| anyhow!("{pack_name}: key_path is not configured"))?;
@@ -168,7 +168,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 
         let left_boundary = {
             let s = config
-                .crypted
+                .encrypted
                 .as_ref()
                 .and_then(|it| it.left_boundry.as_ref())
                 .ok_or_else(|| anyhow!("{pack_name}: left_boundry is not configured"))?;
@@ -177,7 +177,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 
         let right_boundary = {
             let s = config
-                .crypted
+                .encrypted
                 .as_ref()
                 .and_then(|it| it.right_boundry.as_ref())
                 .ok_or_else(|| anyhow!("{pack_name}: right_boundry is not configured"))?;
@@ -186,9 +186,9 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 
         let crypted_alg = {
             let s = config
-                .crypted
+                .encrypted
                 .as_ref()
-                .and_then(|it| it.crypted_alg.as_ref())
+                .and_then(|it| it.encrypted_alg.as_ref())
                 .ok_or_else(|| anyhow!("{pack_name}: crypted_alg is not configured"))?;
             s.as_str()
         };
@@ -331,14 +331,14 @@ async fn clean_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     // obtain the decryption path from the configuration file
     // if decrypted remove the decrypted dir
     let decrypted_path = config
-        .crypted
+        .encrypted
         .as_ref()
         .and_then(|it| it.decrypted_path.as_ref());
-    let crypted = config
-        .crypted
+    let encrypted = config
+        .encrypted
         .as_ref()
         .is_some_and(|it| it.enable.is_some_and(identity));
-    if crypted {
+    if encrypted {
         let decrypted_path = decrypted_path
             .ok_or_else(|| anyhow!("{pack_name}: decrypted path is not configured"))?;
         if fs::try_exists(decrypted_path.as_path()).await? {
@@ -435,18 +435,18 @@ pub(crate) async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
     info!("encrypt pack: {pack_name:?}");
 
     let decrypted = config
-        .crypted
+        .encrypted
         .as_ref()
         .is_some_and(|it| it.enable.is_some_and(identity));
 
     if !decrypted {
-        warn!("{pack_name}: pack is not enable crypted");
+        warn!("{pack_name}: pack is not enable encrypted");
         return Ok(());
     }
 
     let key = {
         let key_path = config
-            .crypted
+            .encrypted
             .as_ref()
             .and_then(|it| it.key_path.as_ref())
             .ok_or_else(|| anyhow!("{pack_name}: key_path is not configured"))?;
@@ -462,7 +462,7 @@ pub(crate) async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
 
     let left_boundary = {
         let s = config
-            .crypted
+            .encrypted
             .as_ref()
             .and_then(|it| it.left_boundry.as_ref())
             .ok_or_else(|| anyhow!("{pack_name}: left_boundry is not configured"))?;
@@ -471,7 +471,7 @@ pub(crate) async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
 
     let right_boundary = {
         let s = config
-            .crypted
+            .encrypted
             .as_ref()
             .and_then(|it| it.right_boundry.as_ref())
             .ok_or_else(|| anyhow!("{pack_name}: right_boundry is not configured"))?;
@@ -480,9 +480,9 @@ pub(crate) async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
 
     let crypted_alg = {
         let s = config
-            .crypted
+            .encrypted
             .as_ref()
-            .and_then(|it| it.crypted_alg.as_ref())
+            .and_then(|it| it.encrypted_alg.as_ref())
             .ok_or_else(|| anyhow!("{pack_name}: crypted_alg is not configured"))?;
         s.as_str()
     };
@@ -562,18 +562,18 @@ pub(crate) async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
     info!("decrypt pack: {pack_name:?}");
 
     let decrypted = config
-        .crypted
+        .encrypted
         .as_ref()
         .is_some_and(|it| it.enable.is_some_and(identity));
 
     if !decrypted {
-        warn!("{pack_name}: pack is not enable crypted");
+        warn!("{pack_name}: pack is not enable encrypted");
         return Ok(());
     }
 
     let key = {
         let key_path = config
-            .crypted
+            .encrypted
             .as_ref()
             .and_then(|it| it.key_path.as_ref())
             .ok_or_else(|| anyhow!("{pack_name}: key_path is not configured"))?;
@@ -589,7 +589,7 @@ pub(crate) async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
 
     let left_boundary = {
         let s = config
-            .crypted
+            .encrypted
             .as_ref()
             .and_then(|it| it.left_boundry.as_ref())
             .ok_or_else(|| anyhow!("{pack_name}: left_boundry is not configured"))?;
@@ -598,7 +598,7 @@ pub(crate) async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
 
     let right_boundary = {
         let s = config
-            .crypted
+            .encrypted
             .as_ref()
             .and_then(|it| it.right_boundry.as_ref())
             .ok_or_else(|| anyhow!("{pack_name}: right_boundry is not configured"))?;
@@ -607,9 +607,9 @@ pub(crate) async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
 
     let crypted_alg = {
         let s = config
-            .crypted
+            .encrypted
             .as_ref()
-            .and_then(|it| it.crypted_alg.as_ref())
+            .and_then(|it| it.encrypted_alg.as_ref())
             .ok_or_else(|| anyhow!("{pack_name}: crypted_alg is not configured"))?;
         s.as_str()
     };
