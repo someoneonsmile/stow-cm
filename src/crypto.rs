@@ -51,7 +51,8 @@ pub(crate) fn encrypt(content: &str, alg_name: &str, key: &[u8]) -> Result<Strin
     let mut content = content.as_bytes().to_vec();
 
     let key = {
-        let unbound_key = UnboundKey::new(algorithm(alg_name)?, key)?;
+        let unbound_key = UnboundKey::new(algorithm(alg_name)?, key)
+            .map_err(|_| anyhow!("key format not valid"))?;
         LessSafeKey::new(unbound_key)
     };
     key.seal_in_place_append_tag(nonce, Aad::empty(), &mut content)?;
@@ -83,7 +84,8 @@ pub(crate) fn decrypt(content: &str, alg_name: &str, key: &[u8]) -> Result<Strin
     let nonce = base64::decode(nonce_base64)?;
 
     let key = {
-        let unbound_key = UnboundKey::new(algorithm(alg_name)?, key)?;
+        let unbound_key = UnboundKey::new(algorithm(alg_name)?, key)
+            .map_err(|_| anyhow!("key format not valid"))?;
         LessSafeKey::new(unbound_key)
     };
     let origin_data = key.open_in_place(
