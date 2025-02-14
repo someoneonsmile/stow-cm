@@ -108,7 +108,7 @@ impl Config {
             .ok_or_else(|| unreachable!("the global config should always return"))
     }
 
-    /// deal some specical case
+    /// deal some special case
     fn init_deal(&mut self) {
         if self
             .target

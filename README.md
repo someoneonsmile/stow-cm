@@ -1,6 +1,6 @@
-# config manager (gnu-stow like)
+# Config manager (gnu-stow like)
 
-## USEAGE
+## USAGE
 
 ```
 config manager (gnu-stow like)
@@ -39,7 +39,7 @@ stow-cm install ./*
 - `$XDG_CONFIG_HOME/stow-cm/config.toml`: common config
 - `{stow pack dir}/stow-cm.toml`: pack config
 
-> note: it not use the pack/pack_sub_path/stow-cm.toml
+> note: it not uses the pack/pack_sub_path/stow-cm.toml
 
 ### Format
 
@@ -62,7 +62,7 @@ target = '${XDG_CONFIG_HOME:-~/.config}/${PACK_NAME}/'
 
 # override
 override = [
-    # single quotes not excaping
+    # single quotes not escaping
     '.*\.lua',
 ]
 
@@ -118,7 +118,7 @@ key_path = '/path/to/key'
 - [x] override
 - [x] init/clear script
 - [x] valid conflict before install
-- [x] protect mode (don't excute in non stow dir)
+- [x] protect mode (don't execute in non stow dir)
 - [x] if target is none just skip stow dir
 - [x] remove refact
 - [x] github action (auto archive)
