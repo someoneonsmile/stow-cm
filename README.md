@@ -145,6 +145,6 @@ key_path = '/path/to/key'
 
 - [x] support file copy mode
 
-- [ ] encrypted decrypted ignore binary file
+- [x] encrypted decrypted ignore binary file
 
 - [ ] sh auto complete
