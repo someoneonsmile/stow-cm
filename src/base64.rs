@@ -1,7 +1,6 @@
 #![allow(dead_code)]
 
 use anyhow::{anyhow, Context};
-
 use base64::{engine::general_purpose, Engine};
 use lazy_regex::{lazy_regex, Lazy, Regex};
 use log::debug;

@@ -1,9 +1,10 @@
+use std::env::VarError;
+use std::path::{Path, PathBuf};
+
 use anyhow::Context;
 use futures::prelude::*;
 use sha3::{Digest, Sha3_256};
 use shellexpand::LookupError;
-use std::env::VarError;
-use std::path::{Path, PathBuf};
 use stream::{StreamExt, TryStreamExt};
 use tokio::fs;
 use walkdir::WalkDir;

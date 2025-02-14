@@ -1,3 +1,10 @@
+use std::convert::identity;
+use std::ops::Not;
+use std::path::Path;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::vec::Vec;
+
 use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Context;
@@ -5,12 +12,6 @@ use futures::prelude::*;
 use log::{debug, info, warn};
 use maplit::hashmap;
 use regex::RegexSet;
-use std::convert::identity;
-use std::ops::Not;
-use std::path::Path;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::vec::Vec;
 use tokio::fs;
 use walkdir::WalkDir;
 

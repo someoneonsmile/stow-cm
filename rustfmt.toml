@@ -1,0 +1,12 @@
+newline_style = "Unix"
+group_imports = "StdExternalCrate"
+reorder_impl_items = true
+use_field_init_shorthand = true
+use_try_shorthand = true
+# chain_width = 80
+
+# struct_field_align_threshold = 0
+# struct_field_align_threshold = 20
+# use_small_heuristics = "Max"
+
+

@@ -1,17 +1,17 @@
-use crate::merge::MergeWith;
-use futures::prelude::*;
-use log::{error, warn};
-use maplit::hashmap;
 use std::ops::Deref;
 use std::path::Path;
 use std::sync::Arc;
 use std::vec::Vec;
+
+use futures::prelude::*;
+use log::{error, warn};
+use maplit::hashmap;
 use tokio::task::JoinHandle;
 
 use crate::config::Config;
 use crate::constants::{CONFIG_FILE_NAME, PACK_ID_ENV, PACK_NAME_ENV};
 use crate::error::Result;
-
+use crate::merge::MergeWith;
 use crate::util;
 
 /// exec packages

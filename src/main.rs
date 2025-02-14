@@ -1,8 +1,8 @@
+use std::sync::Arc;
+
 use clap::Parser;
 use env_logger::Env;
 use log::debug;
-
-use std::sync::Arc;
 
 use crate::cli::Cli;
 use crate::cli::Commands;

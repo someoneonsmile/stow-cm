@@ -1,6 +1,7 @@
-use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use std::vec::Vec;
+
+use clap::{Parser, Subcommand};
 
 /// config manager (gnu-stow like)
 #[derive(Parser, Debug)]
