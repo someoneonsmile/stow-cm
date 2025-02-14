@@ -144,3 +144,7 @@ key_path = '/path/to/key'
 - [ ] pack related properties combine into struct
 
 - [x] support file copy mode
+
+- [ ] encrypted decrypted ignore binary file
+
+- [ ] sh auto complete
