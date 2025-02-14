@@ -22,7 +22,6 @@ const_format = {version = "0"}
 crypto = { version = "0", features = ["aead", "cipher", "digest", "elliptic-curve"] }
 ring = { version = "0", features = ["std"] }
 base64 = "0"
-lazy_static = "1"
 clap = { version = "4", features = ["derive"] }
 num_cpus = "1"
 sha3 = "0"
