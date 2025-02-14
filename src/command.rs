@@ -497,8 +497,6 @@ pub(crate) async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
     let files = {
         let pack = pack.clone();
         tokio::task::spawn_blocking(move || {
-            // FIXME: ignore_re not exists case and regex match file name
-
             // walk file, expect ignore_re, skip binary file
             let files: Vec<_> = WalkDir::new(&*pack)
                 .into_iter()
