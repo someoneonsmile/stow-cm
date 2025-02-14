@@ -507,7 +507,7 @@ pub(crate) async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
                         Some(ignore_re) => path
                             .to_str()
                             .is_some_and(|path_name| ignore_re.is_match(path_name)),
-                        None => true,
+                        None => false,
                     };
                     if ignore {
                         return None;
@@ -634,7 +634,7 @@ pub(crate) async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
                         Some(ignore_re) => path
                             .to_str()
                             .is_some_and(|path_name| ignore_re.is_match(path_name)),
-                        None => true,
+                        None => false,
                     };
                     if ignore {
                         return None;
