@@ -17,6 +17,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     .into();
     // let outdir: PathBuf = ".".into();
+    println!("outdir: {outdir:?}");
 
     let mut cmd = Cli::command();
     let bin_name = cmd.get_name().to_owned();
