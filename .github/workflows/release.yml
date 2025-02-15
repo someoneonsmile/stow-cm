@@ -12,7 +12,6 @@ on:
   #       default: nightly
   push:
     tags:
-      - "v*.*.*"
       - "*.*.*"
 
 env:
@@ -20,6 +19,7 @@ env:
   USE_CROSS: true
   FETCH_DEPTH: 0
   RELEASE_NAME: "stow-cm"
+  SHELL_HELP_DIR: shell_help
 
 defaults:
   run:
@@ -111,10 +111,12 @@ jobs:
           cp {README.md,LICENSE} "$staging/"
           if [ "${{ matrix.build.os }}" = "windows-latest" ]; then
             cp "target/${{ matrix.build.target }}/release/${{ env.RELEASE_NAME }}.exe" "$staging/"
+            cp -r "${SHELL_HELP_DIR}/*" "$staging/"
             7z a "artifacts/$staging.zip" "$staging"
             sha256sum "artifacts/$staging.zip" > "artifacts/$staging.zip.sha256sum"
           else
             cp "target/${{ matrix.build.target }}/release/${{ env.RELEASE_NAME }}" "$staging/"
+            cp -r "${SHELL_HELP_DIR}/*" "$staging/"
             tar czf "artifacts/$staging.tar.gz" "$staging"
             shasum -a 256 "artifacts/$staging.tar.gz" > "artifacts/$staging.tar.gz.sha256sum"
           fi
