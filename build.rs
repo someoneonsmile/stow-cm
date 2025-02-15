@@ -29,9 +29,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     // man page
-    let man_file_path = outdir.join(format!("man/{bin_name}.1"));
-    create_dir_all(&man_file_path)?;
-    let mut manpage_out = File::create(man_file_path)?;
+    let man_dir = outdir.join("man");
+    create_dir_all(&man_dir)?;
+    let mut manpage_out = File::create(man_dir.join(format!("{bin_name}.1")))?;
     let manpage = Man::new(cmd);
     manpage.render(&mut manpage_out)?;
 
