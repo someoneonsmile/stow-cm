@@ -116,8 +116,6 @@ jobs:
             sha256sum "artifacts/$staging.zip" > "artifacts/$staging.zip.sha256sum"
           else
             cp "target/${{ matrix.build.target }}/release/${{ env.RELEASE_NAME }}" "$staging/"
-            ls "${SHELL_HELP_DIR}/*"
-            echo "${SHELL_HELP_DIR}/*"
             cp -r "${SHELL_HELP_DIR}/*" "$staging/"
             tar czf "artifacts/$staging.tar.gz" "$staging"
             shasum -a 256 "artifacts/$staging.tar.gz" > "artifacts/$staging.tar.gz.sha256sum"
