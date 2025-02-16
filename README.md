@@ -32,6 +32,15 @@ stow-cm decrypt ./nvim /path/to/pack
 stow-cm install ./*
 ```
 
+## INSTALL
+
+### Arch
+
+```sh
+paru -S stow-cm
+paru -S stow-cm-nightly-bin
+```
+
 ## CONFIG
 
 ### Location
