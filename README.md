@@ -147,4 +147,4 @@ key_path = '/path/to/key'
 
 - [x] encrypted decrypted ignore binary file
 
-- [ ] sh auto complete
+- [x] sh auto complete
