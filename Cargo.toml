@@ -42,6 +42,9 @@ version = "1"
 default-features = true
 # features = ["std"]
 
+[target.'cfg(target_env = "musl")'.dependencies]
+mimalloc = "0"
+
 [build-dependencies]
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
