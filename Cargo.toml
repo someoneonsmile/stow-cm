@@ -1,6 +1,6 @@
 [package]
 name = "stow-cm"
-version = "0.14.0"
+version = "0.15.0"
 authors = ["someone"]
 edition = "2021"
 
@@ -41,6 +41,9 @@ binaryornot = "1"
 version = "1"
 default-features = true
 # features = ["std"]
+
+[target.'cfg(target_env = "musl")'.dependencies]
+mimalloc = "0"
 
 [build-dependencies]
 clap = { version = "4", features = ["derive"] }
