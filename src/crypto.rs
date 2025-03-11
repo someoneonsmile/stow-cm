@@ -3,8 +3,8 @@
 use anyhow::{anyhow, bail};
 use log::debug;
 use ring::aead::{
-    Aad, Algorithm, LessSafeKey, Nonce, UnboundKey, AES_128_GCM, AES_256_GCM, CHACHA20_POLY1305,
-    NONCE_LEN,
+    AES_128_GCM, AES_256_GCM, Aad, Algorithm, CHACHA20_POLY1305, LessSafeKey, NONCE_LEN, Nonce,
+    UnboundKey,
 };
 use ring::rand::SecureRandom;
 use ring::rand::SystemRandom;

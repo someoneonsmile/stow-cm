@@ -1,10 +1,10 @@
 use std::env;
 use std::error::Error;
-use std::fs::create_dir_all;
 use std::fs::File;
+use std::fs::create_dir_all;
 
 use clap::{CommandFactory, ValueEnum};
-use clap_complete::{generate_to, Shell};
+use clap_complete::{Shell, generate_to};
 use clap_mangen::Man;
 
 include!("src/cli.rs");
