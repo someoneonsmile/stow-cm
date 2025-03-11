@@ -9,7 +9,7 @@ use stream::{StreamExt, TryStreamExt};
 use tokio::fs;
 use walkdir::WalkDir;
 
-use crate::error::{anyhow, Result};
+use crate::error::{Result, anyhow};
 use crate::symlink::{Symlink, SymlinkMode};
 
 pub(crate) fn shell_expand_full<P: AsRef<Path>>(path: P) -> Result<PathBuf> {

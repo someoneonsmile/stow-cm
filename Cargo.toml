@@ -1,8 +1,8 @@
 [package]
 name = "stow-cm"
-version = "0.15.0"
+version = "0.16.0"
 authors = ["someone"]
-edition = "2021"
+edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

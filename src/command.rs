@@ -5,9 +5,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::vec::Vec;
 
+use anyhow::Context;
 use anyhow::anyhow;
 use anyhow::bail;
-use anyhow::Context;
 use futures::prelude::*;
 use log::{debug, info, warn};
 use maplit::hashmap;
@@ -264,7 +264,9 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         })
         .await?;
 
-    debug!("{pack_name}: installed links record to track file, track_file = {track_file:?}, links = {symlinks:?}");
+    debug!(
+        "{pack_name}: installed links record to track file, track_file = {track_file:?}, links = {symlinks:?}"
+    );
     fs::write(
         track_file,
         toml::to_string_pretty(&Track {

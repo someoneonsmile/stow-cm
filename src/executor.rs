@@ -6,7 +6,6 @@ use std::vec::Vec;
 use futures::prelude::*;
 use log::{error, warn};
 use maplit::hashmap;
-use tokio::task::JoinHandle;
 
 use crate::config::Config;
 use crate::constants::{CONFIG_FILE_NAME, PACK_ID_ENV, PACK_NAME_ENV};
@@ -15,18 +14,17 @@ use crate::merge::MergeWith;
 use crate::util;
 
 /// exec packages
-pub(crate) async fn exec_all<F, P, Fut>(
+pub(crate) async fn exec_all<F, P>(
     common_config: Arc<Option<Config>>,
     packs: Vec<P>,
     f: F,
 ) -> Result<()>
 where
-    F: Fn(Arc<Config>, P) -> Fut,
+    F: AsyncFn(Arc<Config>, P) -> Result<()>,
     P: AsRef<Path>,
-    Fut: std::future::Future<Output = Result<()>> + Send + 'static,
 {
-    futures::stream::iter(packs.into_iter().map(Ok))
-        .try_filter_map(|pack| async {
+    futures::stream::iter(packs.into_iter())
+        .map(async |pack| {
             let pack_config = Config::from_path(pack.as_ref().join(CONFIG_FILE_NAME))?;
             if pack_config.is_none() {
                 warn!(
@@ -88,24 +86,15 @@ where
                     anyhow::Ok(encrypted)
                 })
                 .transpose()?;
-            let fut = tokio::spawn((f)(Arc::new(config), pack));
-            Ok(Some(fut)) as Result<Option<JoinHandle<Result<()>>>>
+            (f)(Arc::new(config), pack).await?;
+            anyhow::Ok(())
         })
-        .try_for_each_concurrent(None, |future| async move {
-            let rr = future.await;
-            match rr {
-                Ok(Err(err)) => {
-                    error!("{:?}", err);
-                }
-                Err(err) => {
-                    error!("{:?}", err);
-                }
-                _ => {}
-            };
-
-            Ok(())
+        .for_each_concurrent(None, async |f| {
+            let r = f.await;
+            if let Err(e) = r {
+                error!("{:?}", e);
+            }
         })
-        .await?;
-
+        .await;
     Ok(())
 }
