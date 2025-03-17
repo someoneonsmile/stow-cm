@@ -27,14 +27,14 @@ use crate::track_file::Track;
 use crate::util;
 
 /// reload packages
-pub(crate) async fn reload(config: Arc<Config>, pack: impl AsRef<Path>) -> Result<()> {
+pub async fn reload(config: Arc<Config>, pack: impl AsRef<Path>) -> Result<()> {
     remove(config.clone(), &pack).await?;
     install(config, &pack).await?;
     Ok(())
 }
 
 /// install packages
-pub(crate) async fn install(config: Arc<Config>, pack: impl AsRef<Path>) -> Result<()> {
+pub async fn install(config: Arc<Config>, pack: impl AsRef<Path>) -> Result<()> {
     let pack = Arc::new(pack.as_ref().to_path_buf());
     let pack_name = pack
         .file_name()
@@ -283,7 +283,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 }
 
 /// clean packages
-pub(crate) async fn clean<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
+pub async fn clean<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
     let pack = Arc::new(pack.as_ref().to_path_buf());
     let pack_name = pack
         .file_name()
@@ -355,7 +355,7 @@ async fn clean_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 }
 
 /// remove packages
-pub(crate) async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
+pub async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
     let pack = Arc::new(pack.as_ref().to_path_buf());
     let pack_name = pack
         .file_name()
@@ -430,7 +430,7 @@ async fn remove_link(_config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 }
 
 /// encrypt packages
-pub(crate) async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
+pub async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
     let pack = Arc::new(pack.as_ref().to_path_buf());
     let pack_name = pack
         .file_name()
@@ -562,7 +562,7 @@ pub(crate) async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Res
 }
 
 /// decrypt packages
-pub(crate) async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
+pub async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
     let pack = Arc::new(pack.as_ref().to_path_buf());
     let pack_name = pack
         .file_name()

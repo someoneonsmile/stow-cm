@@ -6,7 +6,7 @@ use crate::symlink::Symlink;
 
 /// track struct
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct Track {
+pub struct Track {
     /// save links
     pub links: Vec<Symlink>,
     /// decrypted file path

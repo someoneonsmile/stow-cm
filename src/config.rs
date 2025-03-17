@@ -14,12 +14,14 @@ use crate::constants::{
 };
 use crate::error::Result;
 use crate::merge::Merge;
+use crate::merge::strategy::option_vec_merge;
 use crate::symlink::SymlinkMode;
 use crate::util;
 
 /// pack config
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct Config {
+#[derive(Debug, Clone, Serialize, Deserialize, Merge)]
+#[merge(strategy = merge::option::overwrite_none)]
+pub struct Config {
     /// symlink mode
     #[serde(rename = "mode")]
     pub symlink_mode: Option<SymlinkMode>,
@@ -28,10 +30,12 @@ pub(crate) struct Config {
     pub target: Option<PathBuf>,
 
     /// ignore file regx
+    #[merge(strategy = option_vec_merge)]
     pub ignore: Option<Vec<String>>,
 
     /// override file regx
     #[serde(rename = "override")]
+    #[merge(strategy = option_vec_merge)]
     pub over: Option<Vec<String>>,
 
     /// force override
@@ -48,25 +52,26 @@ pub(crate) struct Config {
 }
 
 /// encrypted config
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct EncryptedConfig {
+#[derive(Debug, Clone, Serialize, Deserialize, Merge)]
+#[merge(strategy = merge::option::overwrite_none)]
+pub struct EncryptedConfig {
     /// enable default to false
-    pub(crate) enable: Option<bool>,
+    pub enable: Option<bool>,
     /// decrypted file path when install, default path is ${`XDG_DATA_HOME`:-~/.local/share}/stow-cm/${pack_name}/decrypted/
-    pub(crate) decrypted_path: Option<PathBuf>,
+    pub decrypted_path: Option<PathBuf>,
     /// left boundary of content to be decrypted
-    pub(crate) left_boundry: Option<String>,
+    pub left_boundry: Option<String>,
     /// right boundary of content to be decrypted
-    pub(crate) right_boundry: Option<String>,
+    pub right_boundry: Option<String>,
     /// the algorithm of encrypted content, default to chacha20poly1305
-    pub(crate) encrypted_alg: Option<String>,
+    pub encrypted_alg: Option<String>,
     /// the algorithm of encrypted content, default to chacha20poly1305
-    pub(crate) key_path: Option<PathBuf>,
+    pub key_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "content")]
-pub(crate) enum Command {
+pub enum Command {
     /// executable bin / script
     Bin(PathBuf),
 
@@ -88,7 +93,7 @@ pub(crate) enum Command {
 
 impl Config {
     /// parse config file
-    pub(crate) fn from_path<P: AsRef<Path>>(config_path: P) -> Result<Option<Config>> {
+    pub fn from_path<P: AsRef<Path>>(config_path: P) -> Result<Option<Config>> {
         let config_path = util::shell_expand_full(config_path)?;
         if !config_path.exists() {
             return Ok(None);
@@ -100,13 +105,12 @@ impl Config {
     }
 
     /// get global config
-    pub(crate) fn global() -> Result<Config> {
+    pub fn global() -> Result<Config> {
         let global_config = Config::from_path(GLOBAL_CONFIG_FILE)?;
-        let global_xdg_config = Config::from_path(GLOBAL_XDG_CONFIG_FILE)?;
-        global_xdg_config
-            .merge(global_config)
-            .merge(Some(Config::default()))
-            .ok_or_else(|| unreachable!("the global config should always return"))
+        let mut global_xdg_config = Config::from_path(GLOBAL_XDG_CONFIG_FILE)?;
+        merge::option::recurse(&mut global_xdg_config, global_config);
+        merge::option::recurse(&mut global_xdg_config, Some(Config::default()));
+        global_xdg_config.ok_or_else(|| unreachable!("the global config should always return"))
     }
 
     /// deal some special case
@@ -121,7 +125,7 @@ impl Config {
     }
 
     // parse config from cli args
-    // pub(crate) fn from_cli(opt: &Opt) -> Result<Option<Config>> {
+    // pub fn from_cli(opt: &Opt) -> Result<Option<Config>> {
     //     Ok(Some(Config {
     //         force: Some(opt.force),
     //         ..Default::default()
@@ -144,21 +148,8 @@ impl Default for Config {
     }
 }
 
-impl Merge<Self> for Config {
-    fn merge(mut self, other: Config) -> Config {
-        self.target = self.target.merge(other.target);
-        self.ignore = self.ignore.merge(other.ignore);
-        self.over = self.over.merge(other.over);
-        self.fold = self.fold.merge(other.fold);
-        self.init = self.init.merge(other.init);
-        self.clear = self.clear.merge(other.clear);
-        self.encrypted = self.encrypted.merge(other.encrypted);
-        self
-    }
-}
-
 impl Command {
-    pub(crate) async fn exec_async<I, K, V>(&self, wd: impl AsRef<Path>, envs: I) -> Result<()>
+    pub async fn exec_async<I, K, V>(&self, wd: impl AsRef<Path>, envs: I) -> Result<()>
     where
         I: IntoIterator<Item = (K, V)> + Clone,
         K: AsRef<OsStr>,
@@ -213,12 +204,6 @@ impl Command {
     }
 }
 
-impl Merge<Self> for Command {
-    fn merge(self, _other: Self) -> Self {
-        self
-    }
-}
-
 impl Default for EncryptedConfig {
     fn default() -> Self {
         EncryptedConfig {
@@ -228,22 +213,6 @@ impl Default for EncryptedConfig {
             right_boundry: Some(DEFAULT_DECRYPT_RIGHT_BOUNDARY.into()),
             encrypted_alg: Some(DEFAULT_CRYPT_ALG.into()),
             key_path: None,
-        }
-    }
-}
-
-impl Merge<Self> for EncryptedConfig {
-    fn merge(self, other: Self) -> Self {
-        EncryptedConfig {
-            enable: self.enable.merge(other.enable),
-            decrypted_path: self.decrypted_path.merge(other.decrypted_path),
-            right_boundry: match self.left_boundry {
-                Some(_) => self.right_boundry.merge(other.right_boundry),
-                None => other.right_boundry,
-            },
-            left_boundry: self.left_boundry.merge(other.left_boundry),
-            encrypted_alg: self.encrypted_alg.merge(other.encrypted_alg),
-            key_path: self.key_path.merge(other.key_path),
         }
     }
 }

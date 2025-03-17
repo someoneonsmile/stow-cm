@@ -9,7 +9,7 @@ use crate::error::Result;
 
 static BLANK_REPLACER: Lazy<Regex> = lazy_regex!(r"[\s|\n]*");
 
-pub(crate) fn decode(data: &str) -> Result<Vec<u8>> {
+pub fn decode(data: &str) -> Result<Vec<u8>> {
     // debug!("decode: {:?}", data);
     let data_replace = BLANK_REPLACER.replace_all(data, "");
     debug!("decode: data={:?}, replace={:?}", data, data_replace);
@@ -18,7 +18,7 @@ pub(crate) fn decode(data: &str) -> Result<Vec<u8>> {
         .with_context(|| anyhow!("base64 decode error, content={data}"))
 }
 
-pub(crate) fn encode(data: &[u8]) -> String {
+pub fn encode(data: &[u8]) -> String {
     debug!("encode: {:?}", data);
     general_purpose::STANDARD.encode(data)
 }

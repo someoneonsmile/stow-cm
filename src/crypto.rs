@@ -14,7 +14,7 @@ use crate::error::Result;
 use crate::util;
 
 /// decrypt content
-pub(crate) fn encrypt_inline(
+pub fn encrypt_inline(
     content: &str,
     alg_name: &str,
     key: &[u8],
@@ -28,7 +28,7 @@ pub(crate) fn encrypt_inline(
 }
 
 /// decrypt content
-pub(crate) fn decrypt_inline(
+pub fn decrypt_inline(
     content: &str,
     alg_name: &str,
     key: &[u8],
@@ -43,7 +43,7 @@ pub(crate) fn decrypt_inline(
 
 /// decrypt content
 /// return format: <`enc_content_base64>`:<`nonce_base64`>
-pub(crate) fn encrypt(content: &str, alg_name: &str, key: &[u8]) -> Result<String> {
+pub fn encrypt(content: &str, alg_name: &str, key: &[u8]) -> Result<String> {
     let mut nonce_value = [0_u8; NONCE_LEN];
     SystemRandom::new().fill(&mut nonce_value)?;
     let nonce = Nonce::try_assume_unique_for_key(&nonce_value)?;
@@ -63,7 +63,7 @@ pub(crate) fn encrypt(content: &str, alg_name: &str, key: &[u8]) -> Result<Strin
 }
 
 /// decrypt content
-pub(crate) fn decrypt(content: &str, alg_name: &str, key: &[u8]) -> Result<String> {
+pub fn decrypt(content: &str, alg_name: &str, key: &[u8]) -> Result<String> {
     let splitn: Vec<_> = content.splitn(2, ':').collect();
 
     let [encrypted_content_base64, nonce_base64] = match splitn[..] {

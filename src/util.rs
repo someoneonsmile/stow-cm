@@ -12,7 +12,7 @@ use walkdir::WalkDir;
 use crate::error::{Result, anyhow};
 use crate::symlink::{Symlink, SymlinkMode};
 
-pub(crate) fn shell_expand_full<P: AsRef<Path>>(path: P) -> Result<PathBuf> {
+pub fn shell_expand_full<P: AsRef<Path>>(path: P) -> Result<PathBuf> {
     let path = path
         .as_ref()
         .to_str()
@@ -22,7 +22,7 @@ pub(crate) fn shell_expand_full<P: AsRef<Path>>(path: P) -> Result<PathBuf> {
     ))
 }
 
-pub(crate) fn shell_expand_full_with_context<P, C, S>(path: P, context: C) -> Result<PathBuf>
+pub fn shell_expand_full_with_context<P, C, S>(path: P, context: C) -> Result<PathBuf>
 where
     P: AsRef<Path>,
     C: Fn(&str) -> Option<S>,
@@ -48,7 +48,7 @@ where
 }
 
 /// expand the dir and symlink the subpath under the dir
-pub(crate) fn expand_symlink_dir(expand_symlink: impl AsRef<Path>) -> Result<()> {
+pub fn expand_symlink_dir(expand_symlink: impl AsRef<Path>) -> Result<()> {
     let sub_paths = std::fs::read_dir(&expand_symlink)?;
     let point_to = std::fs::read_link(&expand_symlink)?;
     std::fs::remove_file(&expand_symlink)?;
@@ -66,7 +66,7 @@ pub(crate) fn expand_symlink_dir(expand_symlink: impl AsRef<Path>) -> Result<()>
 }
 
 /// just contains the dir don't has file
-pub(crate) fn is_empty_dir(path: impl AsRef<Path>) -> bool {
+pub fn is_empty_dir(path: impl AsRef<Path>) -> bool {
     !path.as_ref().exists()
         || (path.as_ref().is_dir()
             && walkdir::WalkDir::new(path)
@@ -78,7 +78,7 @@ pub(crate) fn is_empty_dir(path: impl AsRef<Path>) -> bool {
 }
 
 /// find the symlink that point to the path start with `link_prefix`
-pub(crate) fn find_prefix_symlink(
+pub fn find_prefix_symlink(
     dir_path: impl AsRef<Path>,
     link_prefix: impl AsRef<Path>,
 ) -> Result<Vec<Symlink>> {
@@ -106,7 +106,7 @@ pub(crate) fn find_prefix_symlink(
 }
 
 /// return true if three has different sub node (empty dir exclude)
-pub(crate) fn has_new_sub(a: impl AsRef<Path>, b: impl AsRef<Path>) -> Result<bool> {
+pub fn has_new_sub(a: impl AsRef<Path>, b: impl AsRef<Path>) -> Result<bool> {
     let a = a.as_ref();
     let b = b.as_ref();
 
@@ -131,7 +131,7 @@ pub(crate) fn has_new_sub(a: impl AsRef<Path>, b: impl AsRef<Path>) -> Result<bo
 }
 
 /// Change the path base to `new_base`
-pub(crate) fn change_base_path(
+pub fn change_base_path(
     path: impl AsRef<Path>,
     base: impl AsRef<Path>,
     new_base: impl AsRef<Path>,
@@ -141,7 +141,7 @@ pub(crate) fn change_base_path(
 
 /// find var and inplace
 #[allow(clippy::string_slice)]
-pub(crate) fn var_inplace<F>(
+pub fn var_inplace<F>(
     content: &str,
     left_boundary: &str,
     right_boundary: &str,
@@ -174,7 +174,7 @@ where
 }
 
 #[inline]
-pub(crate) async fn canonicalize(paths: Vec<PathBuf>) -> Result<Vec<PathBuf>> {
+pub async fn canonicalize(paths: Vec<PathBuf>) -> Result<Vec<PathBuf>> {
     futures::stream::iter(paths)
         .map(|path| async move {
             fs::canonicalize(&path)
@@ -187,7 +187,7 @@ pub(crate) async fn canonicalize(paths: Vec<PathBuf>) -> Result<Vec<PathBuf>> {
 }
 
 #[inline]
-pub(crate) fn hash(content: &str) -> String {
+pub fn hash(content: &str) -> String {
     let mut hasher = Sha3_256::new();
     hasher.update(content);
     let result = hasher.finalize();

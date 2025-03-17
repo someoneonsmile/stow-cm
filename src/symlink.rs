@@ -10,7 +10,7 @@ use tokio::fs;
 use crate::error::Result;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct Symlink {
+pub struct Symlink {
     /// the path will link to
     pub src: PathBuf,
     /// the path of the link file
@@ -21,7 +21,7 @@ pub(crate) struct Symlink {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub(crate) enum SymlinkMode {
+pub enum SymlinkMode {
     #[default]
     #[serde(rename = "symlink")]
     Symlink,
@@ -42,7 +42,7 @@ impl Display for Symlink {
 }
 
 impl Symlink {
-    pub(crate) async fn create(&self, force: bool) -> Result<()> {
+    pub async fn create(&self, force: bool) -> Result<()> {
         if let Some(parent) = self.dst.parent() {
             fs::create_dir_all(parent).await?;
         }
@@ -59,7 +59,7 @@ impl Symlink {
         Ok(())
     }
 
-    pub(crate) async fn remove(&self) -> Result<()> {
+    pub async fn remove(&self) -> Result<()> {
         self.mode.remove(self).await?;
         Ok(())
     }

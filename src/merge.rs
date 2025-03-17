@@ -1,66 +1,35 @@
 #![allow(dead_code)]
 
-use std::path::PathBuf;
+pub use merge::Merge;
 
-pub(crate) trait Merge<T> {
-    fn merge(self, other: T) -> T;
+pub trait MergeWith<F: Fn() -> Self> {
+    fn merge_with(&mut self, other: F);
 }
 
-pub(crate) trait MergeWith<T, F: Fn() -> T> {
-    fn merge_with(self, other: F) -> T;
+pub trait MergeDefault {
+    fn merge_default(&mut self);
 }
 
-pub(crate) trait MergeDefault<T> {
-    fn merge_default(self) -> T;
-}
-
-impl<T: Merge<T>, F: Fn() -> T> MergeWith<T, F> for T {
-    fn merge_with(self, other: F) -> T {
-        self.merge((other)())
+impl<T: Merge, F: Fn() -> T> MergeWith<F> for T {
+    fn merge_with(&mut self, other: F) {
+        self.merge((other)());
     }
 }
 
-impl<T: Merge<T> + Default> MergeDefault<T> for T {
-    fn merge_default(self) -> T {
-        self.merge(Default::default())
+impl<T: Merge + Default> MergeDefault for T {
+    fn merge_default(&mut self) {
+        self.merge(Default::default());
     }
 }
 
-impl<T: Merge<T>> Merge<Self> for Option<T> {
-    fn merge(self, other: Option<T>) -> Option<T> {
-        // match (self, other) {
-        //     (Some(a), Some(b)) => Some(a.merge(b)),
-        //     (Some(a), None) => Some(a),
-        //     (None, Some(b)) => Some(b),
-        //     (None, None) => None,
-        match (self, other) {
-            (Some(a), Some(b)) => Some(a.merge(b)),
-            (a, b) => a.or(b),
+pub mod strategy {
+    pub fn option_vec_merge<T>(left: &mut Option<Vec<T>>, right: Option<Vec<T>>) {
+        if let Some(new) = right {
+            if let Some(original) = left {
+                merge::vec::append(original, new);
+            } else {
+                *left = Some(new);
+            }
         }
-    }
-}
-
-impl<T> Merge<Self> for Vec<T> {
-    fn merge(mut self, mut other: Vec<T>) -> Vec<T> {
-        self.append(&mut other);
-        self
-    }
-}
-
-impl Merge<Self> for PathBuf {
-    fn merge(self, _other: Self) -> Self {
-        self
-    }
-}
-
-impl Merge<Self> for bool {
-    fn merge(self, _other: bool) -> bool {
-        self
-    }
-}
-
-impl Merge<Self> for String {
-    fn merge(self, _other: Self) -> Self {
-        self
     }
 }
