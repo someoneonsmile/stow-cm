@@ -5,19 +5,19 @@ use std::sync::Arc;
 use regex::RegexSet;
 
 use crate::error::Result;
-use crate::merge::Merge;
+use crate::merge::strategy::option_vec_merge;
 use crate::symlink::{Symlink, SymlinkMode};
 use crate::util;
 
 #[derive(Debug)]
-pub(crate) struct MergeTree {
+pub struct MergeTree {
     target: PathBuf,
     source: PathBuf,
     option: Option<Arc<MergeOption>>,
 }
 
 #[derive(Debug)]
-pub(crate) struct MergeOption {
+pub struct MergeOption {
     pub ignore: Option<RegexSet>,
     pub over: Option<RegexSet>,
     pub fold: Option<bool>,
@@ -25,7 +25,7 @@ pub(crate) struct MergeOption {
 }
 
 #[derive(Debug)]
-pub(crate) struct MergeResult {
+pub struct MergeResult {
     /// conflict file or dir
     pub conflicts: Option<Vec<PathBuf>>,
     /// install paths
@@ -39,7 +39,7 @@ pub(crate) struct MergeResult {
 }
 
 impl MergeTree {
-    pub(crate) fn new(
+    pub fn new(
         target: impl AsRef<Path>,
         source: impl AsRef<Path>,
         option: Option<Arc<MergeOption>>,
@@ -54,7 +54,7 @@ impl MergeTree {
     /// 从树的叶子节点回溯
     /// 没有 Ignore 的时候, 折叠目录
     /// 返回当前根节点
-    pub(crate) fn merge_add(self) -> Result<MergeResult> {
+    pub fn merge_add(self) -> Result<MergeResult> {
         // source not exists
         if !self.source.exists() {
             return Ok(MergeResult {
@@ -153,9 +153,9 @@ impl MergeTree {
             )
             .merge_add()?;
             has_ignore |= sub_result.has_ignore;
-            conflicts = conflicts.merge(sub_result.conflicts);
-            expand_symlinks = expand_symlinks.merge(sub_result.expand_symlinks);
-            install_paths = install_paths.merge(sub_result.to_create_symlinks);
+            option_vec_merge(&mut conflicts, sub_result.conflicts);
+            option_vec_merge(&mut expand_symlinks, sub_result.expand_symlinks);
+            option_vec_merge(&mut install_paths, sub_result.to_create_symlinks);
             foldable &= sub_result.foldable;
         }
         // is there has other tree file?

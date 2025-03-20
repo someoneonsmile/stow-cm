@@ -8,13 +8,13 @@ use clap::{Parser, Subcommand};
 #[command(version, about, name = "stow-cm")]
 #[command(arg_required_else_help = true)]
 // #[command(propagate_version = true)]
-pub(crate) struct Cli {
+pub struct Cli {
     #[command(subcommand)]
-    pub(crate) command: Commands,
+    pub command: Commands,
 }
 
 #[derive(Subcommand, Debug)]
-pub(crate) enum Commands {
+pub enum Commands {
     /// Install packs
     #[command(arg_required_else_help = true)]
     Install {

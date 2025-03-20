@@ -22,7 +22,7 @@ macro_rules! here {
     };
 }
 
-pub(crate) struct Location {
+pub struct Location {
     file: &'static str,
     line: u32,
     column: u32,
@@ -37,7 +37,7 @@ impl Display for Location {
     }
 }
 
-pub(crate) trait ErrorLocation<T> {
+pub trait ErrorLocation<T> {
     fn location(self, loc: &Location) -> Result<T>;
 }
 

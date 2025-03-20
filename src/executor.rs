@@ -10,22 +10,17 @@ use maplit::hashmap;
 use crate::config::Config;
 use crate::constants::{CONFIG_FILE_NAME, PACK_ID_ENV, PACK_NAME_ENV};
 use crate::error::Result;
-use crate::merge::MergeWith;
 use crate::util;
 
 /// exec packages
-pub(crate) async fn exec_all<F, P>(
-    common_config: Arc<Option<Config>>,
-    packs: Vec<P>,
-    f: F,
-) -> Result<()>
+pub async fn exec_all<F, P>(common_config: Arc<Option<Config>>, packs: Vec<P>, f: F) -> Result<()>
 where
     F: AsyncFn(Arc<Config>, P) -> Result<()>,
     P: AsRef<Path>,
 {
     futures::stream::iter(packs.into_iter())
         .map(async |pack| {
-            let pack_config = Config::from_path(pack.as_ref().join(CONFIG_FILE_NAME))?;
+            let mut pack_config = Config::from_path(pack.as_ref().join(CONFIG_FILE_NAME))?;
             if pack_config.is_none() {
                 warn!(
                     "{:?}: doesn't have its own config file, will use the common config file",
@@ -44,7 +39,8 @@ where
                 .and_then(|it| it.to_str())
                 .ok_or_else(|| anyhow::anyhow!("path error: {:?}", pack.as_ref()))?;
             // TODO:
-            let Some(mut config) = pack_config.merge_with(|| common_config.deref().clone()) else {
+            merge::option::recurse(&mut pack_config, common_config.deref().clone());
+            let Some(mut config) = pack_config else {
                 unreachable!("no config")
             };
             // let mut config = match pack_config.merge_with(|| common_config.deref().clone()) {
