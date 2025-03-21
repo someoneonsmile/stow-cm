@@ -73,6 +73,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Dasel
+        # You may pin to the exact commit or the version.
+        # uses: allejo/setup-dasel@46b82a2767c056e889bda5a939e96c63bbe06890
+        uses: allejo/setup-dasel@v1.0.1
+        with:
+          # The version of dasel to install
+          # optional, default is latest
+          version: v2.8.1
+
+      - name: modify the cargo.toml package.version
+        run: |
+          version=$(dasel -f Cargo.toml 'package.version' -w -)-$(date +%Y%m%d)-$(git rev-parse --short HEAD)
+          dasel put -f Cargo.toml -t string -v ${version} 'package.version'
+
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ matrix.build.rust }}
