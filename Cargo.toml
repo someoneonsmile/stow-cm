@@ -20,7 +20,8 @@ walkdir = "2"
 async-trait = "0"
 const_format = { version = "0" }
 # merge = "0"
-merge = { git = "https://git.sr.ht/~ireas/merge-rs", branch = "master" }
+# merge = { git = "https://git.sr.ht/~ireas/merge-rs", branch = "master" }
+merge = { git = "https://github.com/someoneonsmile/merge-rs", branch = "main" }
 crypto = { version = "0", features = [
   "aead",
   "cipher",

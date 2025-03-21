@@ -14,7 +14,7 @@ use crate::constants::{
 };
 use crate::error::Result;
 use crate::merge::Merge;
-use crate::merge::strategy::option_vec_merge;
+use crate::merge::strategy::option_deep;
 use crate::symlink::SymlinkMode;
 use crate::util;
 
@@ -30,12 +30,12 @@ pub struct Config {
     pub target: Option<PathBuf>,
 
     /// ignore file regx
-    #[merge(strategy = option_vec_merge)]
+    #[merge(strategy = option_deep(merge::vec::append))]
     pub ignore: Option<Vec<String>>,
 
     /// override file regx
     #[serde(rename = "override")]
-    #[merge(strategy = option_vec_merge)]
+    #[merge(strategy = option_deep(merge::vec::append))]
     pub over: Option<Vec<String>>,
 
     /// force override
