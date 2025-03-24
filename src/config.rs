@@ -19,7 +19,7 @@ use crate::symlink::SymlinkMode;
 use crate::util;
 
 /// pack config
-#[derive(Debug, Clone, Serialize, Deserialize, Merge)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Merge)]
 #[merge(strategy = merge::option::overwrite_none)]
 pub struct Config {
     /// symlink mode
@@ -52,7 +52,7 @@ pub struct Config {
 }
 
 /// encrypted config
-#[derive(Debug, Clone, Serialize, Deserialize, Merge)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Merge)]
 #[merge(strategy = merge::option::overwrite_none)]
 pub struct EncryptedConfig {
     /// enable default to false
@@ -69,7 +69,7 @@ pub struct EncryptedConfig {
     pub key_path: Option<PathBuf>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", content = "content")]
 pub enum Command {
     /// executable bin / script
@@ -214,5 +214,52 @@ impl Default for EncryptedConfig {
             encrypted_alg: Some(DEFAULT_CRYPT_ALG.into()),
             key_path: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use merge::Merge;
+
+    use super::{Config, EncryptedConfig};
+    use crate::symlink::SymlinkMode;
+
+    #[test]
+    fn config_merge() {
+        let mut left = Config {
+            symlink_mode: Some(SymlinkMode::Symlink),
+            target: Some("temp_a".into()),
+            ignore: Some(vec!["a".to_owned()]),
+            over: None,
+            fold: Some(true),
+            init: None,
+            clear: None,
+            encrypted: None,
+        };
+        let right = Config {
+            symlink_mode: Some(SymlinkMode::Copy),
+            target: Some("temp_b".into()),
+            ignore: Some(vec!["b".to_owned()]),
+            over: Some(vec!["a".to_owned()]),
+            fold: Some(true),
+            init: None,
+            clear: None,
+            encrypted: Some(EncryptedConfig::default()),
+        };
+
+        left.merge(right);
+        assert_eq!(
+            Config {
+                symlink_mode: Some(SymlinkMode::Symlink),
+                target: Some("temp_a".into()),
+                ignore: Some(vec!["a".to_owned(), "b".to_owned()]),
+                over: Some(vec!["a".to_owned()]),
+                fold: Some(true),
+                init: None,
+                clear: None,
+                encrypted: Some(EncryptedConfig::default()),
+            },
+            left
+        );
     }
 }
