@@ -21,17 +21,3 @@ impl<T: Merge + Default> MergeDefault for T {
         self.merge(Default::default());
     }
 }
-
-pub mod strategy {
-    pub fn option_deep<T>(f: fn(&mut T, T)) -> impl Fn(&mut Option<T>, Option<T>) {
-        move |left: &mut Option<T>, right: Option<T>| {
-            if let Some(new) = right {
-                if let Some(original) = left {
-                    f(original, new);
-                } else {
-                    *left = Some(new);
-                }
-            }
-        }
-    }
-}

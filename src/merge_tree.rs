@@ -2,11 +2,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use merge::option::with_recurse_strategy;
 use merge::vec::append;
 use regex::RegexSet;
 
 use crate::error::Result;
-use crate::merge::strategy::option_deep;
 use crate::symlink::{Symlink, SymlinkMode};
 use crate::util;
 
@@ -154,9 +154,9 @@ impl MergeTree {
             )
             .merge_add()?;
             has_ignore |= sub_result.has_ignore;
-            option_deep(append)(&mut conflicts, sub_result.conflicts);
-            option_deep(append)(&mut expand_symlinks, sub_result.expand_symlinks);
-            option_deep(append)(&mut install_paths, sub_result.to_create_symlinks);
+            with_recurse_strategy(append)(&mut conflicts, sub_result.conflicts);
+            with_recurse_strategy(append)(&mut expand_symlinks, sub_result.expand_symlinks);
+            with_recurse_strategy(append)(&mut install_paths, sub_result.to_create_symlinks);
             foldable &= sub_result.foldable;
         }
         // is there has other tree file?
