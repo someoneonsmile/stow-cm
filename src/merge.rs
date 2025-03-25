@@ -12,7 +12,7 @@ pub trait MergeDefault {
 
 impl<T: Merge, F: Fn() -> T> MergeWith<F> for T {
     fn merge_with(&mut self, other: F) {
-        self.merge((other)());
+        self.merge(other());
     }
 }
 

@@ -82,7 +82,7 @@ where
                     anyhow::Ok(encrypted)
                 })
                 .transpose()?;
-            (f)(Arc::new(config), pack).await?;
+            f(Arc::new(config), pack).await?;
             anyhow::Ok(())
         })
         .for_each_concurrent(None, async |f| {
