@@ -18,7 +18,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: ${{ env.FETCH_DEPTH }}
       - uses: Swatinem/rust-cache@v2
@@ -39,7 +39,7 @@ jobs:
   rustfmt:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: ${{ env.FETCH_DEPTH }}
       - uses: Swatinem/rust-cache@v2
@@ -57,7 +57,7 @@ jobs:
   clippy-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: ${{ env.FETCH_DEPTH }}
       - uses: Swatinem/rust-cache@v2
