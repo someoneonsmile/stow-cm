@@ -68,16 +68,16 @@ impl MergeTree {
         }
 
         // source ignore
-        if let Some(ignore_re) = self.option.as_ref().and_then(|it| it.ignore.as_ref()) {
-            if ignore_re.is_match(&self.source.to_string_lossy()) {
-                return Ok(MergeResult {
-                    conflicts: None,
-                    expand_symlinks: None,
-                    to_create_symlinks: None,
-                    has_ignore: true,
-                    foldable: false,
-                });
-            }
+        if let Some(ignore_re) = self.option.as_ref().and_then(|it| it.ignore.as_ref())
+            && ignore_re.is_match(&self.source.to_string_lossy())
+        {
+            return Ok(MergeResult {
+                conflicts: None,
+                expand_symlinks: None,
+                to_create_symlinks: None,
+                has_ignore: true,
+                foldable: false,
+            });
         }
 
         // same file
@@ -163,24 +163,24 @@ impl MergeTree {
         foldable = foldable && !util::has_new_sub(&self.target, &self.source)?;
 
         // fold dir
-        if let Some(true) = self.option.as_ref().and_then(|it| it.fold) {
-            if foldable {
-                return Ok(MergeResult {
-                    conflicts: None,
-                    expand_symlinks: None,
-                    to_create_symlinks: Some(vec![Symlink {
-                        src: self.source,
-                        dst: self.target,
-                        mode: self
-                            .option
-                            .as_ref()
-                            .and_then(|it| it.symlink_mode.clone())
-                            .unwrap_or_default(),
-                    }]),
-                    has_ignore: false,
-                    foldable: true,
-                });
-            }
+        if let Some(true) = self.option.as_ref().and_then(|it| it.fold)
+            && foldable
+        {
+            return Ok(MergeResult {
+                conflicts: None,
+                expand_symlinks: None,
+                to_create_symlinks: Some(vec![Symlink {
+                    src: self.source,
+                    dst: self.target,
+                    mode: self
+                        .option
+                        .as_ref()
+                        .and_then(|it| it.symlink_mode.clone())
+                        .unwrap_or_default(),
+                }]),
+                has_ignore: false,
+                foldable: true,
+            });
         }
 
         Ok(MergeResult {

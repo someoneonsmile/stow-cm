@@ -32,7 +32,7 @@ where
                 //     CONFIG_FILE_NAME
                 // );
                 // return Ok(None);
-            };
+            }
             let pack_name = pack
                 .as_ref()
                 .file_name()

@@ -179,7 +179,7 @@ pub async fn canonicalize(paths: Vec<PathBuf>) -> Result<Vec<PathBuf>> {
         .map(|path| async move {
             fs::canonicalize(&path)
                 .await
-                .with_context(|| format!("path: {path:?}"))
+                .with_context(|| format!("path: {}", path.display()))
         })
         .buffer_unordered(num_cpus::get())
         .try_collect()

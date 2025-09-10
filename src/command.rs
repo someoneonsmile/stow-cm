@@ -39,7 +39,7 @@ pub async fn install(config: Arc<Config>, pack: impl AsRef<Path>) -> Result<()> 
     let pack_name = pack
         .file_name()
         .and_then(|it| it.to_str())
-        .ok_or_else(|| anyhow!("path error: {pack:?}"))?;
+        .ok_or_else(|| anyhow!("path error: {}", pack.display()))?;
     info!("install pack: {pack_name}");
 
     install_link(&config, &pack).await?;
@@ -61,13 +61,10 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     let pack_name = pack
         .file_name()
         .and_then(|it| it.to_str())
-        .ok_or_else(|| anyhow!("path error: {:?}", pack.as_ref()))?;
-    let target = match config.target.as_ref() {
-        None => {
-            warn!("{pack_name}: target is none, skip install links");
-            return Ok(());
-        }
-        Some(target) => target,
+        .ok_or_else(|| anyhow!("path error: {}", pack.display()))?;
+    let Some(target) = config.target.as_ref() else {
+        warn!("{pack_name}: target is none, skip install links");
+        return Ok(());
     };
 
     // if trace file has exists, then then pack has been installed
@@ -81,7 +78,10 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         bail!("{pack_name}: pack has been install")
     }
     fs::create_dir_all(track_file.parent().with_context(|| {
-        format!("{pack_name}: failed to find track file parent, {track_file:?}")
+        format!(
+            "{pack_name}: failed to find track file parent, {}",
+            track_file.display()
+        )
     })?)
     .await
     .with_context(|| {
@@ -162,7 +162,10 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
                 bail!("{pack_name}: key_path not exist");
             }
             let key_base64 = fs::read_to_string(key_path).await.with_context(|| {
-                format!("{pack_name}: failed to read from key_path={key_path:?}")
+                format!(
+                    "{pack_name}: failed to read from key_path={}",
+                    key_path.display()
+                )
             })?;
             base64::decode(&key_base64)?
         };
@@ -199,7 +202,8 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
             fs::create_dir_all(decrypted_path).await.with_context(|| {
                 format!(
                     // FIX: tip track file?
-                    "{pack_name}: failed to create track file dir, {decrypted_path:?}"
+                    "{pack_name}: failed to create track file dir, {}",
+                    decrypted_path.display()
                 )
             })?;
         }
@@ -209,11 +213,11 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
             let decrypted_file_path =
                 util::change_base_path(&symlink.src, pack.as_path(), decrypted_path.as_path())?;
             debug!(
-                "{pack_name}: change_base_path, src={:?}, base={:?}, new_base={:?}, result={:?}",
-                symlink.src,
-                pack.as_path(),
-                decrypted_path.as_path(),
-                decrypted_file_path,
+                "{pack_name}: change_base_path, src={}, base={}, new_base={}, result={}",
+                symlink.src.display(),
+                pack.display(),
+                decrypted_path.display(),
+                decrypted_file_path.display(),
             );
             decrypted_file_map.push((symlink.src.clone(), decrypted_file_path.clone()));
             symlink.src = decrypted_file_path;
@@ -231,8 +235,9 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
                     }
                 }
                 info!(
-                    "{pack_name}: decrypt {:?} to {:?}",
-                    origin_file_path, decrypted_file_path
+                    "{pack_name}: decrypt {} to {}",
+                    origin_file_path.display(),
+                    decrypted_file_path.display()
                 );
                 let content = fs::read_to_string(origin_file_path).await?;
                 let origin_content = crypto::decrypt_inline(
@@ -247,8 +252,8 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
                     .await
                     .with_context(|| {
                         format!(
-                            "{pack_name}: failed to write decrypted content to path={:?}",
-                            &decrypted_file_path
+                            "{pack_name}: failed to write decrypted content to path={}",
+                            decrypted_file_path.display()
                         )
                     })?;
                 Result::<(), anyhow::Error>::Ok(())
@@ -265,7 +270,8 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         .await?;
 
     debug!(
-        "{pack_name}: installed links record to track file, track_file = {track_file:?}, links = {symlinks:?}"
+        "{pack_name}: installed links record to track file, track_file = {}, links = {symlinks:?}",
+        track_file.display()
     );
     fs::write(
         track_file,
@@ -288,7 +294,7 @@ pub async fn clean<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
     let pack_name = pack
         .file_name()
         .and_then(|it| it.to_str())
-        .ok_or_else(|| anyhow!("path error: {pack:?}"))?;
+        .ok_or_else(|| anyhow!("path error: {}", pack.display()))?;
     info!("clean pack: {pack_name}");
 
     clean_link(&config, &pack).await?;
@@ -310,13 +316,10 @@ async fn clean_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     let pack_name = pack
         .file_name()
         .and_then(|it| it.to_str())
-        .ok_or_else(|| anyhow!("path error: {:?}", pack.as_ref()))?;
-    let target = match config.target.as_ref() {
-        None => {
-            warn!("{pack_name}: target is none, skip clean links");
-            return Ok(());
-        }
-        Some(target) => target,
+        .ok_or_else(|| anyhow!("path error: {}", pack.display()))?;
+    let Some(target) = config.target.as_ref() else {
+        warn!("{pack_name}: target is none, skip clean links");
+        return Ok(());
     };
     let symlinks = {
         let pack = pack.clone();
@@ -346,7 +349,10 @@ async fn clean_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         let decrypted_path = decrypted_path
             .ok_or_else(|| anyhow!("{pack_name}: decrypted path is not configured"))?;
         if fs::try_exists(decrypted_path.as_path()).await? {
-            info!("{pack_name}: clean decrypted dir, {decrypted_path:?}");
+            info!(
+                "{pack_name}: clean decrypted dir, {}",
+                decrypted_path.display()
+            );
             fs::remove_dir_all(decrypted_path).await?;
         }
     }
@@ -360,8 +366,8 @@ pub async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> 
     let pack_name = pack
         .file_name()
         .and_then(|it| it.to_str())
-        .ok_or_else(|| anyhow!("path error: {:?}", pack.as_ref()))?;
-    info!("remove pack: {pack_name:?}");
+        .ok_or_else(|| anyhow!("path error: {}", pack.display()))?;
+    info!("remove pack: {pack_name}");
 
     remove_link(&config, &pack).await?;
 
@@ -382,7 +388,7 @@ async fn remove_link(_config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     let pack_name = pack
         .file_name()
         .and_then(|it| it.to_str())
-        .ok_or_else(|| anyhow!("path error: {:?}", pack.as_ref()))?;
+        .ok_or_else(|| anyhow!("path error: {}", pack.display()))?;
     // NOTE: not need because track file move from target dir to $XDG_STATE_HOME
     // let target = match config.target.as_ref() {
     //     None => {
@@ -418,12 +424,13 @@ async fn remove_link(_config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 
     // obtain the decryption path from the track file
     // if is decrypted, delete the decrypted file
-    if let Some(path) = track.decrypted_path {
-        if fs::try_exists(path.as_path()).await? {
-            debug!("{pack_name}: remove decrypted dir, {path:?}");
-            fs::remove_dir_all(path).await?;
-        }
+    if let Some(path) = track.decrypted_path
+        && fs::try_exists(path.as_path()).await?
+    {
+        debug!("{pack_name}: remove decrypted dir, {}", path.display());
+        fs::remove_dir_all(path).await?;
     }
+
     fs::remove_file(track_file).await?;
 
     Ok(())
@@ -435,8 +442,8 @@ pub async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()>
     let pack_name = pack
         .file_name()
         .and_then(|it| it.to_str())
-        .ok_or_else(|| anyhow!("path error: {:?}", pack.as_ref()))?;
-    info!("encrypt pack: {pack_name:?}");
+        .ok_or_else(|| anyhow!("path error: {}", pack.display()))?;
+    info!("encrypt pack: {pack_name}");
 
     let decrypted = config
         .encrypted
@@ -457,9 +464,12 @@ pub async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()>
         if !fs::try_exists(key_path).await? {
             bail!("{pack_name}: key_path not exist");
         }
-        let key_base64 = fs::read_to_string(key_path)
-            .await
-            .with_context(|| format!("{pack_name}: failed to read from key_path={key_path:?}"))?;
+        let key_base64 = fs::read_to_string(key_path).await.with_context(|| {
+            format!(
+                "{pack_name}: failed to read from key_path={}",
+                key_path.display()
+            )
+        })?;
         base64::decode(&key_base64)?
     };
     let key = key.as_slice();
@@ -538,9 +548,9 @@ pub async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()>
     futures::stream::iter(files.into_iter().map(Ok))
         .try_for_each_concurrent(None, |file| async move {
             let path = file.path();
-            info!("{pack_name}: encrypt {:?}", path);
+            info!("{pack_name}: encrypt {}", path.display());
             let Ok(content) = fs::read_to_string(path).await else {
-                warn!("{pack_name}: {:?} contains not invalid utf-8", path);
+                warn!("{pack_name}: {} contains not invalid utf-8", path.display());
                 return Ok(());
             };
             let encrypted_content = crypto::encrypt_inline(
@@ -552,7 +562,10 @@ pub async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()>
                 false,
             )?;
             fs::write(path, encrypted_content).await.with_context(|| {
-                format!("{pack_name}: failed to write encrypted_content to path={path:?}")
+                format!(
+                    "{pack_name}: failed to write encrypted_content to path={}",
+                    path.display()
+                )
             })?;
             Result::<(), anyhow::Error>::Ok(())
         })
@@ -567,7 +580,7 @@ pub async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()>
     let pack_name = pack
         .file_name()
         .and_then(|it| it.to_str())
-        .ok_or_else(|| anyhow!("path error: {:?}", pack.as_ref()))?;
+        .ok_or_else(|| anyhow!("path error: {}", pack.display()))?;
     info!("decrypt pack: {pack_name:?}");
 
     let decrypted = config
@@ -589,9 +602,12 @@ pub async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()>
         if !fs::try_exists(key_path).await? {
             bail!("{pack_name}: key_path not exist");
         }
-        let key_base64 = fs::read_to_string(key_path)
-            .await
-            .with_context(|| format!("{pack_name}: failed to read from key_path={key_path:?}"))?;
+        let key_base64 = fs::read_to_string(key_path).await.with_context(|| {
+            format!(
+                "{pack_name}: failed to read from key_path={}",
+                key_path.display()
+            )
+        })?;
         base64::decode(&key_base64)?
     };
     let key = key.as_slice();
@@ -670,9 +686,9 @@ pub async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()>
     futures::stream::iter(files.into_iter().map(Ok))
         .try_for_each_concurrent(None, |file| async move {
             let path = file.path();
-            info!("{pack_name}: decrypt {:?}", path);
+            info!("{pack_name}: decrypt {}", path.display());
             let Ok(content) = fs::read_to_string(path).await else {
-                warn!("{pack_name}: {:?} contains not invalid utf-8", path);
+                warn!("{pack_name}: {} contains not invalid utf-8", path.display());
                 return Ok(());
             };
             let decrypted_content = crypto::decrypt_inline(
@@ -684,7 +700,10 @@ pub async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()>
                 false,
             )?;
             fs::write(path, decrypted_content).await.with_context(|| {
-                format!("{pack_name}: failed to write decrypted_content to path={path:?}")
+                format!(
+                    "{pack_name}: failed to write decrypted_content to path={}",
+                    path.display()
+                )
             })?;
             Result::<(), anyhow::Error>::Ok(())
         })

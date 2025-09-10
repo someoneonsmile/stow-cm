@@ -79,7 +79,7 @@ async fn main() -> Result<()> {
             let paths = util::canonicalize(paths).await?;
             executor::exec_all(common_config, paths, decrypt).await?;
         }
-    };
+    }
 
     Ok(())
 }
