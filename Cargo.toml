@@ -36,6 +36,7 @@ sha3 = "0"
 maplit = "1"
 lazy-regex = "3"
 binaryornot = "1"
+hex = "0"
 
 # ignore = "0"
 # xattr = "0"

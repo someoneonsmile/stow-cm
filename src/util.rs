@@ -191,5 +191,7 @@ pub fn hash(content: &str) -> String {
     let mut hasher = Sha3_256::new();
     hasher.update(content);
     let result = hasher.finalize();
-    format!("{result:x}")
+    // format!("{result:x}")
+    // result.iter().map(|b| format!("{:02x}", b)).collect::<String>()
+    hex::encode(result)
 }
