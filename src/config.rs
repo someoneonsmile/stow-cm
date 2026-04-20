@@ -11,10 +11,10 @@ use tokio::io::AsyncWriteExt;
 use crate::constants::{
     CONFIG_FILE_NAME, DEFAULT_CRYPT_ALG, DEFAULT_DECRYPT_LEFT_BOUNDARY,
     DEFAULT_DECRYPT_RIGHT_BOUNDARY, DEFAULT_PACK_DECRYPT, DEFAULT_PACK_TARGET, GLOBAL_CONFIG_FILE,
-    GLOBAL_XDG_CONFIG_FILE, UNSET_VALUE,
+    GLOBAL_XDG_CONFIG_FILE,
 };
 use crate::error::Result;
-use crate::merge::Merge;
+use crate::merge::{Finalize, Merge};
 use crate::symlink::SymlinkMode;
 use crate::util;
 
@@ -99,8 +99,7 @@ impl Config {
             return Ok(None);
         }
         let config_str = fs::read_to_string(config_path)?;
-        let mut config: Config = toml::from_str(&config_str)?;
-        config.init_deal();
+        let config: Config = toml::from_str(&config_str)?;
         Ok(Some(config))
     }
 
@@ -113,24 +112,6 @@ impl Config {
         global_xdg_config.ok_or_else(|| unreachable!("the global config should always return"))
     }
 
-    /// deal some special case
-    fn init_deal(&mut self) {
-        if self
-            .target
-            .as_ref()
-            .is_some_and(|path| matches!(path.to_str().map(str::trim), None | Some(UNSET_VALUE)))
-        {
-            self.target = None;
-        }
-    }
-
-    // parse config from cli args
-    // pub fn from_cli(opt: &Opt) -> Result<Option<Config>> {
-    //     Ok(Some(Config {
-    //         force: Some(opt.force),
-    //         ..Default::default()
-    //     }))
-    // }
 }
 
 impl Default for Config {
@@ -204,6 +185,33 @@ impl Command {
     }
 }
 
+impl Finalize for Config {
+    fn finalize(&mut self) {
+        self.target.finalize();
+        self.ignore.finalize();
+        self.over.finalize();
+        self.encrypted.finalize();
+    }
+}
+
+impl Finalize for EncryptedConfig {
+    fn finalize(&mut self) {
+        self.decrypted_path.finalize();
+        self.left_boundry.finalize();
+        self.right_boundry.finalize();
+        self.encrypted_alg.finalize();
+        self.key_path.finalize();
+    }
+}
+
+impl Finalize for Option<EncryptedConfig> {
+    fn finalize(&mut self) {
+        if let Some(inner) = self {
+            inner.finalize();
+        }
+    }
+}
+
 impl Default for EncryptedConfig {
     fn default() -> Self {
         EncryptedConfig {
@@ -222,6 +230,7 @@ mod test {
     use merge::Merge;
 
     use super::{Config, EncryptedConfig};
+    use crate::merge::Finalize;
     use crate::symlink::SymlinkMode;
 
     #[test]
@@ -261,5 +270,74 @@ mod test {
             },
             left
         );
+    }
+
+    fn make_config(target: Option<&str>, ignore: Option<Vec<&str>>) -> Config {
+        Config {
+            symlink_mode: None,
+            target: target.map(Into::into),
+            ignore: ignore.map(|v| v.into_iter().map(String::from).collect()),
+            over: None,
+            fold: None,
+            init: None,
+            clear: None,
+            encrypted: None,
+        }
+    }
+
+    #[test]
+    fn finalize_unset_target() {
+        let mut config = make_config(Some("!"), None);
+        config.finalize();
+        assert_eq!(config.target, None);
+    }
+
+    #[test]
+    fn finalize_keeps_normal_target() {
+        let mut config = make_config(Some("~/.config/test"), None);
+        config.finalize();
+        assert_eq!(config.target, Some("~/.config/test".into()));
+    }
+
+    #[test]
+    fn finalize_unset_target_survives_merge() {
+        // pack: target = "!" → 应穿透 merge，最终被 finalize 置 None
+        let mut pack = Some(make_config(Some("!"), None));
+        let global = Some(make_config(Some("~/.config/nvim"), None));
+        merge::option::recurse(&mut pack, global);
+        let mut config = pack.unwrap();
+        config.finalize();
+        assert_eq!(config.target, None);
+    }
+
+    #[test]
+    fn finalize_array_truncate_override() {
+        // pack: ['a', '!'] + global: ['x', 'y'] → 合并后 ['a', '!', 'x', 'y'] → 截断 → ['a']
+        let mut pack = Some(make_config(None, Some(vec!["a", "!"])));
+        let global = Some(make_config(None, Some(vec!["x", "y"])));
+        merge::option::recurse(&mut pack, global);
+        let mut config = pack.unwrap();
+        config.finalize();
+        assert_eq!(config.ignore, Some(vec!["a".to_owned()]));
+    }
+
+    #[test]
+    fn finalize_array_truncate_clear_all() {
+        // pack: ['!'] + global: ['x'] → 合并后 ['!', 'x'] → 截断 → [] → None
+        let mut pack = Some(make_config(None, Some(vec!["!"])));
+        let global = Some(make_config(None, Some(vec!["x"])));
+        merge::option::recurse(&mut pack, global);
+        let mut config = pack.unwrap();
+        config.finalize();
+        assert_eq!(config.ignore, None);
+    }
+
+    #[test]
+    fn finalize_array_no_marker_merges_normally() {
+        let mut pack = Some(make_config(None, Some(vec!["a"])));
+        let global = Some(make_config(None, Some(vec!["b"])));
+        merge::option::recurse(&mut pack, global);
+        let config = pack.unwrap();
+        assert_eq!(config.ignore, Some(vec!["a".to_owned(), "b".to_owned()]));
     }
 }

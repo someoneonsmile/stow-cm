@@ -1,6 +1,10 @@
 #![allow(dead_code)]
 
+use std::path::PathBuf;
+
 pub use merge::Merge;
+
+use crate::constants::UNSET_VALUE;
 
 pub trait MergeWith<F: Fn() -> Self> {
     fn merge_with(&mut self, other: F);
@@ -19,5 +23,45 @@ impl<T: Merge, F: Fn() -> T> MergeWith<F> for T {
 impl<T: Merge + Default> MergeDefault for T {
     fn merge_default(&mut self) {
         self.merge(Default::default());
+    }
+}
+
+/// 合并后处理 trait，处理 `!` 取消设置标记。
+///
+/// 标量字段: 值为 `!` 则置 None
+/// 数组字段: 在首个 `!` 元素处截断，仅保留其前面的元素
+pub(crate) trait Finalize {
+    fn finalize(&mut self);
+}
+
+impl Finalize for Option<String> {
+    fn finalize(&mut self) {
+        if self.as_ref().is_some_and(|s| s.trim() == UNSET_VALUE) {
+            *self = None;
+        }
+    }
+}
+
+impl Finalize for Option<PathBuf> {
+    fn finalize(&mut self) {
+        if self
+            .as_ref()
+            .is_some_and(|p| p.to_str().map(str::trim) == Some(UNSET_VALUE))
+        {
+            *self = None;
+        }
+    }
+}
+
+impl Finalize for Option<Vec<String>> {
+    fn finalize(&mut self) {
+        if let Some(vec) = self {
+            if let Some(pos) = vec.iter().position(|s| s.trim() == UNSET_VALUE) {
+                vec.truncate(pos);
+            }
+            if vec.is_empty() {
+                *self = None;
+            }
+        }
     }
 }

@@ -63,7 +63,8 @@ paru -S stow-cm-nightly-bin
 # env var support the default value: ${env:-default}
 # target = '~'
 
-# ! represents unset the value
+# '!' unset the value (override global/default to None)
+# works for all string/path fields: target, encrypted.decrypted_path, encrypted.key_path, etc.
 # target = '!'
 
 # default
@@ -80,6 +81,12 @@ ignore = [
     '.*\.md',
     ".*\\.lock",
 ]
+
+# '!' in array: truncate at '!', only keep elements before it
+# default merge strategy for arrays is append (pack + global)
+# place '!' at the end to override (discard global values)
+# ignore = ['.*\.md', '!']  # override: only '.*\.md', discard global ignore
+# ignore = ['!']            # clear all ignore patterns
 
 # default, create a tree-folding symlink
 fold = true
