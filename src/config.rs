@@ -8,22 +8,25 @@ use merge::option::with_recurse_strategy;
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 
+use stow_cm_macros::Finalize;
+
 use crate::constants::{
     CONFIG_FILE_NAME, DEFAULT_CRYPT_ALG, DEFAULT_DECRYPT_LEFT_BOUNDARY,
     DEFAULT_DECRYPT_RIGHT_BOUNDARY, DEFAULT_PACK_DECRYPT, DEFAULT_PACK_TARGET, GLOBAL_CONFIG_FILE,
     GLOBAL_XDG_CONFIG_FILE,
 };
 use crate::error::Result;
-use crate::merge::{Finalize, Merge};
+use crate::merge::Merge;
 use crate::symlink::SymlinkMode;
 use crate::util;
 
 /// pack config
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Merge)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Merge, Finalize)]
 #[merge(strategy = merge::option::overwrite_none)]
 pub struct Config {
     /// symlink mode
     #[serde(rename = "mode")]
+    #[finalize(skip)]
     pub symlink_mode: Option<SymlinkMode>,
 
     /// install to target dir
@@ -39,12 +42,15 @@ pub struct Config {
     pub over: Option<Vec<String>>,
 
     /// force override
+    #[finalize(skip)]
     pub fold: Option<bool>,
 
     /// init script (option)
+    #[finalize(skip)]
     pub init: Option<Command>,
 
     /// clear script (option)
+    #[finalize(skip)]
     pub clear: Option<Command>,
 
     /// encrypted config
@@ -52,10 +58,11 @@ pub struct Config {
 }
 
 /// encrypted config
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Merge)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Merge, Finalize)]
 #[merge(strategy = merge::option::overwrite_none)]
 pub struct EncryptedConfig {
     /// enable default to false
+    #[finalize(skip)]
     pub enable: Option<bool>,
     /// decrypted file path when install, default path is ${`XDG_DATA_HOME`:-~/.local/share}/stow-cm/${pack_name}/decrypted/
     pub decrypted_path: Option<PathBuf>,
@@ -111,7 +118,6 @@ impl Config {
         merge::option::recurse(&mut global_xdg_config, Some(Config::default()));
         global_xdg_config.ok_or_else(|| unreachable!("the global config should always return"))
     }
-
 }
 
 impl Default for Config {
@@ -182,33 +188,6 @@ impl Command {
         };
         command.current_dir(wd).envs(envs).status().await?;
         Ok(())
-    }
-}
-
-impl Finalize for Config {
-    fn finalize(&mut self) {
-        self.target.finalize();
-        self.ignore.finalize();
-        self.over.finalize();
-        self.encrypted.finalize();
-    }
-}
-
-impl Finalize for EncryptedConfig {
-    fn finalize(&mut self) {
-        self.decrypted_path.finalize();
-        self.left_boundry.finalize();
-        self.right_boundry.finalize();
-        self.encrypted_alg.finalize();
-        self.key_path.finalize();
-    }
-}
-
-impl Finalize for Option<EncryptedConfig> {
-    fn finalize(&mut self) {
-        if let Some(inner) = self {
-            inner.finalize();
-        }
     }
 }
 

@@ -1,12 +1,14 @@
+[workspace]
+members = ["stow-cm-macros"]
+
 [package]
 name = "stow-cm"
 version = "0.17.0"
 authors = ["someone"]
 edition = "2024"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
+stow-cm-macros = { path = "stow-cm-macros" }
 same-file = "1"
 toml = "0"
 serde = { version = "1", features = ["derive"] }

@@ -26,10 +26,6 @@ impl<T: Merge + Default> MergeDefault for T {
     }
 }
 
-/// 合并后处理 trait，处理 `!` 取消设置标记。
-///
-/// 标量字段: 值为 `!` 则置 None
-/// 数组字段: 在首个 `!` 元素处截断，仅保留其前面的元素
 pub(crate) trait Finalize {
     fn finalize(&mut self);
 }
@@ -62,6 +58,14 @@ impl Finalize for Option<Vec<String>> {
             if vec.is_empty() {
                 *self = None;
             }
+        }
+    }
+}
+
+impl<T: Finalize> Finalize for Option<T> {
+    fn finalize(&mut self) {
+        if let Some(inner) = self {
+            inner.finalize();
         }
     }
 }
