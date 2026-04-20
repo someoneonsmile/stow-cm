@@ -10,7 +10,6 @@ use maplit::hashmap;
 use crate::config::Config;
 use crate::constants::{CONFIG_FILE_NAME, PACK_ID_ENV, PACK_NAME_ENV};
 use crate::error::Result;
-use crate::merge::Finalize;
 use crate::util;
 
 /// exec packages
@@ -43,7 +42,8 @@ where
             let Some(mut config) = pack_config else {
                 unreachable!("no config")
             };
-            config.finalize();
+            config.normalize();
+
             // let mut config = match pack_config.merge_with(|| common_config.deref().clone()) {
             //     Some(config) => config,
             //     None => unreachable!("no config"),

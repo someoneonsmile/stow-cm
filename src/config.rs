@@ -16,7 +16,7 @@ use crate::constants::{
     GLOBAL_XDG_CONFIG_FILE,
 };
 use crate::error::Result;
-use crate::merge::Merge;
+use crate::merge::{Finalize, Merge, SystemInstance};
 use crate::symlink::SymlinkMode;
 use crate::util;
 
@@ -118,6 +118,13 @@ impl Config {
         merge::option::recurse(&mut global_xdg_config, Some(Config::default()));
         global_xdg_config.ok_or_else(|| unreachable!("the global config should always return"))
     }
+
+    /// Normalize config by finalizing and merging system defaults.
+    /// First processes "!" markers, then merges system instance values.
+    pub fn normalize(&mut self) {
+        self.finalize();
+        self.merge(Config::system());
+    }
 }
 
 impl Default for Config {
@@ -125,7 +132,7 @@ impl Default for Config {
         Config {
             symlink_mode: Some(SymlinkMode::Symlink),
             target: Some(DEFAULT_PACK_TARGET.into()),
-            ignore: Some(vec![CONFIG_FILE_NAME.to_string()]),
+            ignore: None,
             over: None,
             fold: Some(true),
             init: None,
@@ -200,6 +207,21 @@ impl Default for EncryptedConfig {
             right_boundry: Some(DEFAULT_DECRYPT_RIGHT_BOUNDARY.into()),
             encrypted_alg: Some(DEFAULT_CRYPT_ALG.into()),
             key_path: None,
+        }
+    }
+}
+
+impl SystemInstance for Config {
+    fn system() -> Self {
+        Config {
+            symlink_mode: None,
+            target: None,
+            ignore: Some(vec![CONFIG_FILE_NAME.to_string()]),
+            over: None,
+            fold: None,
+            init: None,
+            clear: None,
+            encrypted: None,
         }
     }
 }

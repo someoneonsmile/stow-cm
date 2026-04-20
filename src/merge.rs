@@ -69,3 +69,7 @@ impl<T: Finalize> Finalize for Option<T> {
         }
     }
 }
+
+pub(crate) trait SystemInstance {
+    fn system() -> Self;
+}
