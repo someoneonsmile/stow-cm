@@ -1,144 +1,61 @@
 # AGENTS.md - stow-cm
 
-## Project Overview
+A gnu-stow-like config manager written in Rust. Single binary crate.
 
-A Rust-based config manager (GNU Stow-like) that creates symlinks from a source pack directory to target locations. Supports encryption, custom init/clear scripts, and multiple install modes.
-
-## Essential Commands
-
-### Build & Development
+## Build & Test Commands
 
 ```bash
-# Check
-cargo check
-
-# Build (debug)
-cargo build
-
-# Build release (optimized, uses cross for musl targets)
-cargo build --release
-
-# Run with logging
-RUST_LOG=debug cargo run -- install ./mypack
+make              # Build release binary + shell completions/man pages
+make test         # cargo test
+make ci           # check + test + fmt-check + clippy (full CI pipeline)
+make lint         # cargo clippy --all-features
+make fmt          # cargo fmt --all
+make run          # cargo run --
+make dev          # RUST_LOG=debug cargo run --   # with debug logging
+make clean        # cargo clean + rm shell_help/
 ```
 
-### Code Quality (CI-required)
+**Important**: `make build-completions` (called by `make`) runs `cargo build --release` with `SHELL_HELP_DIR=shell_help` to generate shell completions and man pages into `shell_help/`. This directory is gitignored.
 
-```bash
-# Format (enforced in CI)
-cargo fmt --all -- --check
+## Rust Toolchain
 
-# Clippy (strict: pedantic + many denies)
-cargo clippy --all-features
+- **Edition**: 2024 (very recent; some Rust features may be unstable)
+- **Channel**: stable
+- **Cross-compilation**: Uses `cross` for musl target (`x86_64-unknown-linux-musl`)
 
-# Tests (minimal test coverage currently)
-cargo test
-```
+## Clippy Strictness
 
-**CI order**: `cargo check` → `cargo test` → `cargo fmt --check` → `cargo clippy`
+`Cargo.toml` enables `pedantic` lint with many `deny` rules including:
+- `unwrap_used = "deny"`
+- `expect_used = "deny"`
+- `todo = "deny"`
+- `panic = "deny"`
+
+Exceptions in `clippy.toml`: `allow-unwrap-in-tests` and `allow-expect-in-tests` are enabled.
 
 ## Architecture
 
-### Source Layout
+- **Entry point**: `src/main.rs` - async main using tokio
+- **CLI**: `src/cli.rs` - clap derive, commands: `install`, `remove`, `reload`, `clean`, `encrypt`, `decrypt`
+- **Command dispatch**: `src/command.rs` - maps CLI commands to implementation
+- **Execution**: `src/executor.rs` - parallel execution of pack operations
+- **Key modules**: `config`, `crypto`, `merge_tree`, `symlink`, `track_file`, `util`
 
-```
-src/
-├── main.rs        # Entry point, tokio async runtime
-├── cli.rs         # Clap CLI definitions (used by build.rs)
-├── config.rs      # Config parsing, merging, defaults
-├── constants.rs   # Paths, env vars, defaults
-├── command/       # Core commands: install, remove, reload, clean, encrypt, decrypt
-├── executor.rs    # Async execution orchestration
-├── symlink.rs     # Symlink operations (symlink vs copy modes)
-├── track_file.rs  # State tracking in $XDG_STATE_HOME
-├── merge.rs       # Config merge strategies
-├── merge_tree.rs  # Directory tree merging
-├── crypto.rs      # Encryption (ChaCha20-Poly1305, AES-GCM)
-├── base64.rs      # Base64 utilities
-├── util.rs        # Path/canonicalization helpers
-├── error.rs       # anyhow Result type
-├── custom_type.rs # Type wrappers
-└── dev.rs         # Dev utilities
-```
+## Config File Locations
 
-### Key Design Patterns
+- **Global config**: `$XDG_CONFIG_HOME/stow-cm/config.toml`
+- **Pack config**: `{pack_dir}/stow-cm.toml` (NOT `pack_dir/pack_sub_path/stow-cm.toml`)
 
-1. **Async throughout**: Uses `tokio` for async file operations and subprocess execution
-2. **Config merging**: Layered config system (global → XDG → pack → defaults) using custom `Merge` trait
-3. **Track file**: State stored in `$XDG_STATE_HOME/stow-cm/{PACK_ID}/track.toml`
-4. **Symlink modes**: `Symlink` (default) or `Copy` mode per pack
-5. **Script execution**: Supports Bin, Shell, ShellStr, Make, Python, Lua init/clear scripts
+## CI/Release
 
-## Critical Constraints
+- **CI** (push to main, PRs): `cargo check` → `cargo test` → `cargo fmt --all -- --check` → `cargo clippy --all-features`
+- **Release**: Tag `*.*.*` triggers `release.yml` - builds linux-musl + macOS binaries via `cross`
+- **Nightly**: `workflow_dispatch` on `nightly.yml` - bumps version with date+commit and creates prerelease
 
-### Clippy (Strict)
+## Build-Time Code Generation
 
-- `pedantic` level with `priority = -1` (deny all)
-- Explicitly denies: `unwrap_used`, `expect_used`, `panic`, `todo`, `unimplemented`, `indexing_slicing`
-- **Never use**: `.unwrap()`, `.expect()`, `panic!`, `todo!`, `unimplemented!`, `panic!`
-- Tests exempt via `clippy.toml`: `allow-unwrap-in-tests = true`
+`build.rs` generates shell completions (bash, zsh, fish) and man pages via clap_complete and clap_mangen. The `SHELL_HELP_DIR` env var controls output directory. This runs automatically during `cargo build`.
 
-### Rust Version
+## Musl Allocator
 
-- Edition: `2024`
-- Toolchain: `stable` (see `rust-toolchain` file)
-
-### Formatting
-
-- 4-space indent for `.rs` files (2-space for others, per `.editorconfig`)
-- Unix newlines
-- `group_imports = "StdExternalCrate"` enforced
-
-## Build System
-
-### Build Script (`build.rs`)
-
-Generates shell completions and man pages at build time:
-- Shell completions: `SHELL_HELP_DIR` or `OUT_DIR/complete/`
-- Man page: `SHELL_HELP_DIR/man/` or `OUT_DIR/man/`
-
-Uses `Cross.toml` to pass `SHELL_HELP_DIR` through cross-compilation.
-
-### Release Profile
-
-- `opt-level = "s"` (size optimized)
-- `lto = true`, `panic = "abort"`, `strip = true`
-
-## Testing
-
-**Status**: Minimal test coverage currently (only 4 test modules found).
-
-Tests exist in:
-- `config.rs`: Config merging
-- `merge_tree.rs`: Tree merging
-- `base64.rs`: Base64 round-trip
-- `crypto.rs`: Crypto operations
-
-Run single test:
-```bash
-cargo test config_merge
-```
-
-## Common Pitfalls
-
-1. **Config file location**: Pack config must be at `{pack_dir}/stow-cm.toml`, NOT in subdirectories
-2. **UNSET_VALUE**: Use `"!"` in config to explicitly unset a value to None
-3. **Env var expansion**: Uses `shellexpand` with default syntax `${VAR:-default}`
-4. **Pack ID**: Hash of pack path, used for state tracking
-5. **Cross-compilation**: Release builds use `cross` for musl targets
-
-## Dependencies to Know
-
-- `tokio` - Async runtime (full features)
-- `clap` - CLI with derive macros
-- `serde` + `toml` - Config serialization
-- `merge` - Custom fork for config merging
-- `ring` - Cryptographic primitives
-- `walkdir` - Directory traversal
-- `anyhow` - Error handling
-
-## CI Workflows
-
-- `ci.yml`: Main CI (check, test, fmt, clippy) on PR/push to main
-- `release.yml`: Multi-platform release builds (linux-musl, macos) on tag push
-- `nightly.yml`: Nightly builds
+For `target_env = "musl"` builds, `main.rs` configures `mimalloc` as the global allocator due to performance concerns with musl's default allocator.
