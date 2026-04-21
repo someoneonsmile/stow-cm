@@ -1,8 +1,8 @@
 name: Nightly
 
 on:
-  # schedule:
-  #   - cron: "5 5 * * *"
+  schedule:
+    - cron: "5 5 * * *"
   workflow_dispatch:
     # inputs:
     #   tag_name:
@@ -22,7 +22,47 @@ defaults:
     shell: bash
 
 jobs:
+  check-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      has_changes: ${{ steps.check.outputs.has_changes }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Check for changes since last nightly
+        id: check
+        run: |
+          # 获取上次 nightly release 的日期
+          last_release_date=$(git log -1 --format=%ct refs/tags/nightly 2>/dev/null || echo "0")
+          
+          # 如果没有 nightly tag，检查是否有任何提交
+          if [ "$last_release_date" = "0" ]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # 转换时间戳为 ISO 格式
+          last_release_iso=$(date -u -d "@$last_release_date" +"%Y-%m-%dT%H:%M:%SZ")
+          echo "Last nightly release: $last_release_iso"
+          
+          # 检查自上次 release 后是否有新提交
+          recent_commits=$(git log --since="$last_release_iso" --oneline -- .)
+          
+          if [ -n "$recent_commits" ]; then
+            echo "New commits since last nightly:"
+            echo "$recent_commits"
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "No changes since last nightly release"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
+
   build:
+    needs: check-changes
+    if: needs.check-changes.outputs.has_changes == 'true'
     runs-on: ${{ matrix.build.os }}
     continue-on-error: false
     strategy:
@@ -153,7 +193,8 @@ jobs:
           if-no-files-found: error
 
   release:
-    needs: build
+    needs: [check-changes, build]
+    if: needs.check-changes.outputs.has_changes == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
