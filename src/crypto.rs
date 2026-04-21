@@ -71,15 +71,11 @@ pub fn decrypt(content: &str, alg_name: &str, key: &[u8]) -> Result<String> {
         _ => Err(anyhow!(
             r"encryption markers do not contain nonce information
         in the format of encrypt_data_base64:nonce_base64
-        content: {}
-        ",
-            content
+        content: {content}
+        "
         )),
     }?;
-    debug!(
-        "encrypted_content={}, nonce={}",
-        encrypted_content_base64, nonce_base64
-    );
+    debug!("encrypted_content={encrypted_content_base64}, nonce={nonce_base64}");
     let mut encrypted_content = base64::decode(encrypted_content_base64)?;
     let nonce = base64::decode(nonce_base64)?;
 

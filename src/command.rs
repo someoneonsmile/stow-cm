@@ -123,7 +123,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
             .merge_add()?;
 
             if let Some(conflicts) = merge_result.conflicts {
-                bail!("check conflict: {:?}", conflicts);
+                bail!("check conflict: {conflicts:?}");
             }
 
             if let Some(expand_symlinks) = merge_result.expand_symlinks {
@@ -534,7 +534,7 @@ pub async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()>
                 .filter(|entry| {
                     let a = entry.path();
                     // matches!(binaryornot::is_binary(a), Ok(b) if !b)
-                    binaryornot::is_binary(a).map(Not::not).unwrap_or(false)
+                    binaryornot::is_binary(a).is_ok_and(Not::not)
                 })
                 .collect();
 
@@ -672,7 +672,7 @@ pub async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()>
                 .filter(|entry| {
                     let a = entry.path();
                     // matches!(binaryornot::is_binary(a), Ok(b) if !b)
-                    binaryornot::is_binary(a).map(Not::not).unwrap_or(false)
+                    binaryornot::is_binary(a).is_ok_and(Not::not)
                 })
                 .collect();
 

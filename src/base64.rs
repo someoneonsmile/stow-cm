@@ -7,19 +7,20 @@ use log::debug;
 
 use crate::error::Result;
 
+#[allow(clippy::non_std_lazy_statics)]
 static BLANK_REPLACER: Lazy<Regex> = lazy_regex!(r"[\s|\n]*");
 
 pub fn decode(data: &str) -> Result<Vec<u8>> {
-    // debug!("decode: {:?}", data);
+    // debug!("decode: {data:?}", data);
     let data_replace = BLANK_REPLACER.replace_all(data, "");
-    debug!("decode: data={:?}, replace={:?}", data, data_replace);
+    debug!("decode: data={data:?}, replace={data_replace:?}");
     general_purpose::STANDARD
         .decode(data_replace.as_bytes())
         .with_context(|| anyhow!("base64 decode error, content={data}"))
 }
 
 pub fn encode(data: &[u8]) -> String {
-    debug!("encode: {:?}", data);
+    debug!("encode: {data:?}");
     general_purpose::STANDARD.encode(data)
 }
 

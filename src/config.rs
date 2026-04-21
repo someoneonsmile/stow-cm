@@ -150,10 +150,7 @@ impl Command {
         V: AsRef<OsStr>,
     {
         let mut command = match self {
-            Self::Bin(path) => {
-                let c = tokio::process::Command::new(path.as_os_str());
-                c
-            }
+            Self::Bin(path) => tokio::process::Command::new(path.as_os_str()),
 
             Self::Make(path) => {
                 let mut c = tokio::process::Command::new("make");

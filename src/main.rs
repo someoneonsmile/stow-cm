@@ -48,7 +48,7 @@ async fn main() -> Result<()> {
         .init();
 
     let opt = Cli::parse();
-    debug!("opt: {:?}", opt);
+    debug!("opt: {opt:?}");
 
     let common_config = Arc::new(Some(Config::global()?));
     debug!("common_config: {common_config:?}");

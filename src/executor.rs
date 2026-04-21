@@ -18,13 +18,13 @@ where
     F: AsyncFn(Arc<Config>, P) -> Result<()>,
     P: AsRef<Path>,
 {
-    futures::stream::iter(packs.into_iter())
+    futures::stream::iter(packs)
         .map(async |pack| {
             let mut pack_config = Config::from_path(pack.as_ref().join(CONFIG_FILE_NAME))?;
             if pack_config.is_none() {
                 warn!(
-                    "{:?}: doesn't have its own config file, will use the common config file",
-                    pack.as_ref()
+                    "{}: doesn't have its own config file, will use the common config file",
+                    pack.as_ref().display()
                 );
                 // error!(
                 //     "{:?} is not the pack_home (which contains {} config file)",
@@ -37,7 +37,7 @@ where
                 .as_ref()
                 .file_name()
                 .and_then(|it| it.to_str())
-                .ok_or_else(|| anyhow::anyhow!("path error: {:?}", pack.as_ref()))?;
+                .ok_or_else(|| anyhow::anyhow!("path error: {}", pack.as_ref().display()))?;
             merge::option::recurse(&mut pack_config, common_config.deref().clone());
             let Some(mut config) = pack_config else {
                 unreachable!("no config")
@@ -89,7 +89,7 @@ where
         .for_each_concurrent(None, async |f| {
             let r = f.await;
             if let Err(e) = r {
-                error!("{:?}", e);
+                error!("{e:?}");
             }
         })
         .await;
