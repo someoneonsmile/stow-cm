@@ -122,7 +122,6 @@ jobs:
           version=$(dasel -f Cargo.toml 'package.version' -w -)-$(date +%Y%m%d)-$(git rev-parse --short HEAD)
           dasel put -f Cargo.toml -t string -v ${version} 'package.version'
 
-
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ matrix.build.rust }}
@@ -145,8 +144,7 @@ jobs:
 
       - name: Build release binary
         # uses: actions-rs/cargo@v1
-        run:
-          ${{ matrix.build.cargo }} build --release --target=${{ matrix.build.target }}
+        run: ${{ matrix.build.cargo }} build --release --target=${{ matrix.build.target }}
 
       - name: Strip release binary (linux and macos)
         if: matrix.build.plat == 'linux' || matrix.build.plat == 'macos'
@@ -206,10 +204,19 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
+      - name: Build Changelog
+        id: build_changelog
+        uses: mikepenz/release-changelog-builder-action@v6
+        with:
+          token: "${{ github.token }}"
+          mode: "COMMIT"
+
       - name: Create nightly release
         uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
+          append_body: true
+          body: ${{steps.build_changelog.outputs.changelog}}
           tag_name: "nightly"
           name: "Release nightly"
           target_commitish: "${{ github.sha }}"
