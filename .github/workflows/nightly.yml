@@ -193,42 +193,21 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - name: Delete exist release
-        run: gh release delete nightly --cleanup-tag
-        continue-on-error: true
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        # uses: actions/github-script@v7
-        # with:
-        #   script: |
-        #     let tagName = "nightly"
-        #     try {
-        #       const { data: { id:release_id } } = await github.rest.repos.getReleaseByTag({
-        #         owner: context.repo.owner,
-        #         repo: context.repo.repo,
-        #         tag: tagName,
-        #       });
-        #       if ( release_id ) {
-        #         await github.rest.repos.deleteRelease({
-        #           owner: context.repo.owner,
-        #           repo: context.repo.repo,
-        #           release_id,
-        #         });
-        #       }
-        #       await github.rest.git.deleteRef({
-        #         owner: context.repo.owner,
-        #         repo: context.repo.repo,
-        #         ref: `tags/${tagName}`,
-        #       });
-        #     } catch (e) {
-        #       console.error(e)
-        #     }
+          fetch-depth: 0
 
-      - name: Download assets
-        uses: actions/download-artifact@v8
-        with:
-          path: artifacts
-          merge-multiple: true
+      - name: Get latest stable tag
+        id: stable_tag
+        run: |
+          # 获取最近的非 nightly 标签（按语义版本排序），作为 changelog 起点
+          latest_stable=$(git tag --list --sort=-v:refname | grep -v '^nightly$' | head -n 1)
+          if [ -n "$latest_stable" ]; then
+            echo "Latest stable tag: $latest_stable"
+            echo "tag=$latest_stable" >> $GITHUB_OUTPUT
+          else
+            root_commit=$(git rev-list --max-parents=0 HEAD)
+            echo "No stable tag found, using root commit: $root_commit"
+            echo "tag=$root_commit" >> $GITHUB_OUTPUT
+          fi
 
       - name: Build Changelog
         id: build_changelog
@@ -236,12 +215,26 @@ jobs:
         with:
           token: "${{ github.token }}"
           mode: "COMMIT"
+          configurationJson: |
+            {
+              "fromTag": "${{ steps.stable_tag.outputs.tag }}"
+            }
+
+      - name: Download assets
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Delete exist release
+        run: gh release delete nightly --cleanup-tag
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Create nightly release
         uses: softprops/action-gh-release@v3
         with:
-          generate_release_notes: true
-          append_body: true
           body: ${{steps.build_changelog.outputs.changelog}}
           tag_name: "nightly"
           name: "Release nightly"
