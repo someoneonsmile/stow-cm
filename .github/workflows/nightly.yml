@@ -35,25 +35,18 @@ jobs:
       - name: Check for changes since last nightly
         id: check
         run: |
-          # 获取上次 nightly release 的日期
-          last_release_date=$(git log -1 --format=%ct refs/tags/nightly 2>/dev/null || echo "0")
-          
-          # 如果没有 nightly tag，检查是否有任何提交
-          if [ "$last_release_date" = "0" ]; then
+          # 检查是否有 nightly tag，如果没有则第一次运行，需要发版
+          if ! git rev-parse -q --verify refs/tags/nightly >/dev/null 2>&1; then
+            echo "No nightly tag found, will create first nightly release"
             echo "has_changes=true" >> $GITHUB_OUTPUT
             exit 0
           fi
-          
-          # 转换时间戳为 ISO 格式
-          last_release_iso=$(date -u -d "@$last_release_date" +"%Y-%m-%dT%H:%M:%SZ")
-          echo "Last nightly release: $last_release_iso"
-          
-          # 检查自上次 release 后是否有新提交
-          recent_commits=$(git log --since="$last_release_iso" --oneline -- .)
-          
-          if [ -n "$recent_commits" ]; then
-            echo "New commits since last nightly:"
-            echo "$recent_commits"
+
+          # 基于 SHA 比较：计算 HEAD 中有多少个 nightly tag 不包含的提交
+          new_commit_count=$(git rev-list --count HEAD ^refs/tags/nightly 2>/dev/null || echo "0")
+          echo "New commits since last nightly: $new_commit_count"
+
+          if [ "$new_commit_count" -gt 0 ]; then
             echo "has_changes=true" >> $GITHUB_OUTPUT
           else
             echo "No changes since last nightly release"
