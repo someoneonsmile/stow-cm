@@ -1,7 +1,6 @@
 use std::ops::Deref;
 use std::path::Path;
 use std::sync::Arc;
-use std::vec::Vec;
 
 use futures::prelude::*;
 use log::{error, warn};
