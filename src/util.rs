@@ -5,7 +5,6 @@ use anyhow::Context;
 use futures::prelude::*;
 use sha3::{Digest, Sha3_256};
 use shellexpand::LookupError;
-use stream::{StreamExt, TryStreamExt};
 use tokio::fs;
 use walkdir::WalkDir;
 
@@ -157,7 +156,9 @@ where
         let content = &content[last_index..];
         r.push_str(&content[..li]);
         let content = &content[li..];
-        if let Some(ri) = content.find(right_boundary) {
+        if let Some(ri) = content.find(right_boundary)
+            && !content[left_boundary.len()..ri].contains(left_boundary)
+        {
             let dec_content = convert(&content[left_boundary.len()..ri])?;
             if !unwrap {
                 r.push_str(left_boundary);
@@ -167,6 +168,10 @@ where
                 r.push_str(right_boundary);
             }
             last_index = last_index + li + ri + right_boundary.len();
+        } else {
+            // 未闭合的分隔符，视为普通文本继续处理
+            r.push_str(left_boundary);
+            last_index = last_index + li + left_boundary.len();
         }
     }
     r.push_str(&content[last_index..]);
@@ -194,4 +199,39 @@ pub fn hash(content: &str) -> String {
     // format!("{result:x}")
     // result.iter().map(|b| format!("{:02x}", b)).collect::<String>()
     hex::encode(result)
+}
+
+#[cfg(test)]
+mod test {
+
+    use super::*;
+
+    /// 未闭合的分隔符应视为普通文本，不会导致无限循环
+    #[test]
+    fn var_inplace_unclosed_left_boundary() {
+        // 没有任何 "}" 的未闭合标记，&{ 应保留原样
+        let content = "prefix &{no_close suffix";
+        let r = var_inplace(
+            content,
+            "&{",
+            "}",
+            true,
+            |s| Ok(s.to_uppercase()),
+        )
+        .unwrap();
+        assert_eq!(r, "prefix &{no_close suffix");
+
+        // 第一个 &{ 未闭合（其内容中包含另一个 &{），应视为普通文本
+        let content = "a &{unclosed b &{inner} c";
+        let r = var_inplace(
+            content,
+            "&{",
+            "}",
+            true,
+            |s| Ok(s.to_uppercase()),
+        )
+        .unwrap();
+        // 第一个 &{ 未闭合保留原样，&{inner} 正常处理为 INNER
+        assert_eq!(r, "a &{unclosed b INNER c");
+    }
 }
