@@ -181,13 +181,16 @@ impl Command {
                 c.current_dir(&wd);
                 c.envs(envs.clone());
                 c.stdin(Stdio::piped());
-                c.spawn()?
+                let mut child = c.spawn()?;
+                child
                     .stdin
                     .take()
                     .ok_or_else(|| anyhow!("open sh error"))?
                     .write_all(content.as_bytes())
                     .await?;
-                c
+                // stdin 句柄在 write_all 完成后自动 drop，EOF 已发送
+                child.wait().await?;
+                return Ok(());
             }
         };
         command.current_dir(wd).envs(envs).status().await?;
