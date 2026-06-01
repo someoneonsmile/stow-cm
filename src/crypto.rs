@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use std::borrow::Cow;
+
 use anyhow::{anyhow, bail};
 use log::debug;
 use ring::aead::{
@@ -25,6 +27,7 @@ pub fn encrypt_inline(
     util::var_inplace(content, left_boundary, right_boundary, unwrap, |content| {
         encrypt(content, alg_name, key)
     })
+    .map(Cow::into_owned)
 }
 
 /// decrypt content
@@ -39,6 +42,7 @@ pub fn decrypt_inline(
     util::var_inplace(content, left_boundary, right_boundary, unwrap, |content| {
         decrypt(content, alg_name, key)
     })
+    .map(Cow::into_owned)
 }
 
 /// decrypt content

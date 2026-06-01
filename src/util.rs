@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::env::VarError;
 use std::path::{Path, PathBuf};
 
@@ -138,44 +139,81 @@ pub fn change_base_path(
     Ok(new_base.as_ref().join(path.as_ref().strip_prefix(base)?))
 }
 
-/// find var and inplace
+/// 扫描字符串中的占位符 `left...right`，对匹配的占位符内容调用 `convert` 进行原地替换。
+///
+/// - `unwrap`: true 表示移除分隔符，只保留替换结果；false 保留分隔符包裹替换结果。
+/// - 嵌套处理：如果当前 `left` 和对应的 `right` 之间出现了新的 `left`，则当前占位符被视为未闭合，
+///   其 `left` 作为普通文本保留，让内层的 `left...right` 成为新的匹配。
+/// - 快速路径：如果字符串中不存在 `left` 分隔符，直接返回 `Cow::Borrowed`，零分配。
+///
+/// 采用位置跟踪式循环，在有效占位符分支中利用已扫描到的 `next_left` 直接跳转，
+/// 避免下一轮循环重复扫描已知位置的 `left`。
 #[allow(clippy::string_slice)]
-pub fn var_inplace<F>(
-    content: &str,
-    left_boundary: &str,
-    right_boundary: &str,
+pub fn var_inplace<'a, F>(
+    content: &'a str,
+    left: &str,
+    right: &str,
     unwrap: bool,
     convert: F,
-) -> Result<String>
+) -> Result<Cow<'a, str>>
 where
     F: Fn(&str) -> Result<String>,
 {
-    let mut r = String::new();
-    let mut last_index = 0;
-    while let Some(li) = content[last_index..].find(left_boundary) {
-        let content = &content[last_index..];
-        r.push_str(&content[..li]);
-        let content = &content[li..];
-        if let Some(ri) = content.find(right_boundary)
-            && !content[left_boundary.len()..ri].contains(left_boundary)
-        {
-            let dec_content = convert(&content[left_boundary.len()..ri])?;
+    if !content.contains(left) {
+        return Ok(Cow::Borrowed(content));
+    }
+
+    let mut result = String::with_capacity(content.len());
+    let mut pos = 0;
+    let mut next_left: Option<usize> =
+        content[pos..].find(left).map(|o| pos + o);
+
+    while let Some(abs_left) = next_left {
+        result.push_str(&content[pos..abs_left]);
+
+        let after_left = abs_left + left.len();
+        let rest = &content[after_left..];
+        let next_right = rest.find(right);
+        let next_left_rel = rest.find(left);
+        next_left = next_left_rel.map(|li| after_left + li);
+
+        // rest 中无 right → 当前 left 及后续所有 left 均无法闭合
+        let Some(ri) = next_right else {
+            result.push_str(&content[abs_left..]);
+            return Ok(Cow::Owned(result));
+        };
+
+        if next_left_rel.is_none_or(|li| ri < li) {
+            // Case 1: 有效占位符 — right 在 next_left 之前（或无 next_left）
+            let inner = &rest[..ri];
+            let replaced = convert(inner)?;
             if !unwrap {
-                r.push_str(left_boundary);
+                result.push_str(left);
             }
-            r.push_str(&dec_content);
+            result.push_str(&replaced);
             if !unwrap {
-                r.push_str(right_boundary);
+                result.push_str(right);
             }
-            last_index = last_index + li + ri + right_boundary.len();
-        } else {
-            // 未闭合的分隔符，视为普通文本继续处理
-            r.push_str(left_boundary);
-            last_index = last_index + li + left_boundary.len();
+
+            if let Some(nl) = next_left {
+                let after_right = after_left + ri + right.len();
+                debug_assert!(after_right <= nl, "left 与 right 重叠，跳转优化不适用");
+                result.push_str(&content[after_right..nl]);
+                pos = nl;
+            } else {
+                result.push_str(&content[after_left + ri + right.len()..]);
+                return Ok(Cow::Owned(result));
+            }
+        } else if let Some(li) = next_left_rel {
+            // Case 2: 嵌套 — 内层 left 先于外层 right 出现 (ri >= li)
+            let nl = after_left + li;
+            result.push_str(&content[abs_left..nl]);
+            pos = nl;
         }
     }
-    r.push_str(&content[last_index..]);
-    Ok(r)
+
+    result.push_str(&content[pos..]);
+    Ok(Cow::Owned(result))
 }
 
 #[inline]
@@ -202,36 +240,103 @@ pub fn hash(content: &str) -> String {
 }
 
 #[cfg(test)]
-mod test {
-
+mod tests {
     use super::*;
 
-    /// 未闭合的分隔符应视为普通文本，不会导致无限循环
-    #[test]
-    fn var_inplace_unclosed_left_boundary() {
-        // 没有任何 "}" 的未闭合标记，&{ 应保留原样
-        let content = "prefix &{no_close suffix";
-        let r = var_inplace(
-            content,
-            "&{",
-            "}",
-            true,
-            |s| Ok(s.to_uppercase()),
-        )
-        .unwrap();
-        assert_eq!(r, "prefix &{no_close suffix");
+    mod var_inplace {
+        use super::*;
 
-        // 第一个 &{ 未闭合（其内容中包含另一个 &{），应视为普通文本
-        let content = "a &{unclosed b &{inner} c";
-        let r = var_inplace(
-            content,
-            "&{",
-            "}",
-            true,
-            |s| Ok(s.to_uppercase()),
-        )
-        .unwrap();
-        // 第一个 &{ 未闭合保留原样，&{inner} 正常处理为 INNER
-        assert_eq!(r, "a &{unclosed b INNER c");
+        #[test]
+        fn nested_inner_wins() {
+            assert_eq!(
+                var_inplace("a &{outer &{inner} c", "&{", "}", true, |s| Ok(
+                    s.to_uppercase()
+                ))
+                .unwrap(),
+                "a &{outer INNER c"
+            );
+        }
+
+        #[test]
+        fn unclosed_left_kept_literal() {
+            assert_eq!(
+                var_inplace("prefix &{no_close suffix", "&{", "}", true, |s| Ok(
+                    s.to_uppercase()
+                ))
+                .unwrap(),
+                "prefix &{no_close suffix"
+            );
+        }
+
+        #[test]
+        fn empty_inner() {
+            assert_eq!(
+                var_inplace("&{}", "&{", "}", true, |_s| Ok("replaced".to_owned()))
+                    .unwrap(),
+                "replaced"
+            );
+        }
+
+        #[test]
+        fn no_markers_unchanged() {
+            assert_eq!(
+                var_inplace("plain text", "&{", "}", true, |_s| unreachable!()).unwrap(),
+                "plain text"
+            );
+        }
+
+        #[test]
+        fn error_propagation() {
+            let r = var_inplace("&{x}", "&{", "}", true, |_s| Err(anyhow::anyhow!("boom")));
+            assert!(r.is_err());
+        }
+
+        #[test]
+        fn triple_open_brace_delimiter() {
+            assert_eq!(
+                var_inplace(
+                    "${{{123}}}",
+                    "${{{",
+                    "}}",
+                    true,
+                    |s: &str| Ok(s.to_uppercase())
+                )
+                .unwrap(),
+                "123}"
+            );
+        }
+
+        #[test]
+        fn large_text() {
+            let content = (0..1000)
+                .map(|i| format!("&{{item{i}}}"))
+                .collect::<String>();
+            let r =
+                var_inplace(&content, "&{", "}", true, |s| Ok(s.to_uppercase())).unwrap();
+            for i in 0..1000 {
+                assert!(r.contains(&format!("ITEM{i}")));
+            }
+            assert!(!r.contains("&{") && !r.contains("}"));
+        }
+
+        #[test]
+        fn unclosed_then_valid() {
+            assert_eq!(
+                var_inplace("&{a &{b} &{c}", "&{", "}", true, |s| Ok(
+                    s.to_uppercase()
+                ))
+                .unwrap(),
+                "&{a B C"
+            );
+        }
+
+        #[test]
+        fn keep_delimiters_with_unclosed() {
+            assert_eq!(
+                var_inplace("&{a &{b}", "&{", "}", false, |s| Ok(s.to_uppercase()))
+                    .unwrap(),
+                "&{a &{B}"
+            );
+        }
     }
 }
