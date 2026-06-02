@@ -226,12 +226,20 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         debug!("{pack_name}: decrypted paths {decrypted_file_map:?}");
         futures::stream::iter(decrypted_file_map.into_iter().map(Ok))
             .try_for_each_concurrent(None, |(origin_file_path, decrypted_file_path)| async move {
-                if decrypted_file_path.try_exists()? {
-                    if decrypted_file_path.is_file() || decrypted_file_path.is_symlink() {
-                        fs::remove_file(&decrypted_file_path).await?;
-                    } else {
-                        fs::remove_dir_all(&decrypted_file_path).await?;
+                // 用 symlink_metadata 一次性获取元数据，避免多次 stat() 调用之间的 TOCTOU 竞态窗口
+                match fs::symlink_metadata(&decrypted_file_path).await {
+                    Ok(meta) => {
+                        let ft = meta.file_type();
+                        if ft.is_file() || ft.is_symlink() {
+                            fs::remove_file(&decrypted_file_path).await?;
+                        } else if ft.is_dir() {
+                            fs::remove_dir_all(&decrypted_file_path).await?;
+                        }
                     }
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                        // 目标不存在，无需清理
+                    }
+                    Err(e) => return Err(e.into()),
                 }
                 info!(
                     "{pack_name}: decrypt {} to {}",

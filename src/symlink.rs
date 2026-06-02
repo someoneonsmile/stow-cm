@@ -49,10 +49,20 @@ impl Symlink {
 
         if force {
             // the dir is empty or override regex matched
-            if self.dst.is_file() || self.dst.is_symlink() {
-                fs::remove_file(&self.dst).await?;
-            } else if self.dst.is_dir() {
-                fs::remove_dir_all(&self.dst).await?;
+            // 用 symlink_metadata 一次性获取元数据，避免多次 stat() 调用之间的 TOCTOU 竞态窗口
+            match fs::symlink_metadata(&self.dst).await {
+                Ok(meta) => {
+                    let ft = meta.file_type();
+                    if ft.is_file() || ft.is_symlink() {
+                        fs::remove_file(&self.dst).await?;
+                    } else if ft.is_dir() {
+                        fs::remove_dir_all(&self.dst).await?;
+                    }
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    // 目标不存在，无需清理
+                }
+                Err(e) => return Err(e.into()),
             }
         }
         self.mode.create(self).await?;
