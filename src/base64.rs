@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use anyhow::{Context, anyhow};
 use base64::{Engine, engine::general_purpose};
 use lazy_regex::{Lazy, Regex, lazy_regex};
