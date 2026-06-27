@@ -229,6 +229,12 @@ pub fn max_concurrent_files() -> usize {
     num_cpus::get() * 4
 }
 
+/// Pack 级并发上限（小于文件级，因为每个 pack 内部还会展开文件级并发）
+#[inline]
+pub fn max_concurrent_packs() -> usize {
+    num_cpus::get() * 2
+}
+
 #[inline]
 pub async fn canonicalize(paths: Vec<PathBuf>) -> Result<Vec<PathBuf>> {
     futures::stream::iter(paths)

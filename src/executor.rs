@@ -3,7 +3,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use futures::prelude::*;
-use log::{error, warn};
+use log::warn;
 use maplit::hashmap;
 
 use crate::config::Config;
@@ -17,7 +17,7 @@ where
     F: AsyncFn(Arc<Config>, P) -> Result<()>,
     P: AsRef<Path>,
 {
-    futures::stream::iter(packs)
+    let results = futures::stream::iter(packs)
         .map(async |pack| {
             let mut pack_config = Config::from_path(pack.as_ref().join(CONFIG_FILE_NAME))?;
             if pack_config.is_none() {
@@ -85,12 +85,23 @@ where
             f(Arc::new(config), pack).await?;
             anyhow::Ok(())
         })
-        .for_each_concurrent(None, async |f| {
-            let r = f.await;
-            if let Err(e) = r {
-                error!("{e:?}");
-            }
-        })
+        .buffer_unordered(util::max_concurrent_packs())
+        .collect::<Vec<Result<()>>>()
         .await;
-    Ok(())
+    // 收集所有错误并统一返回，避免静默吞噬
+    let mut errors = Vec::new();
+    for result in results {
+        if let Err(e) = result {
+            errors.push(e);
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!(
+            "{} pack(s) failed:\n{}",
+            errors.len(),
+            errors.iter().map(std::string::ToString::to_string).collect::<Vec<_>>().join("\n")
+        ))
+    }
 }
