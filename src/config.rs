@@ -116,7 +116,7 @@ impl Config {
         let mut global_xdg_config = Config::from_path(GLOBAL_XDG_CONFIG_FILE)?;
         merge::option::recurse(&mut global_xdg_config, global_config);
         merge::option::recurse(&mut global_xdg_config, Some(Config::default()));
-        global_xdg_config.ok_or_else(|| unreachable!("the global config should always return"))
+        global_xdg_config.ok_or_else(|| anyhow!("failed to load global config"))
     }
 
     /// Normalize config by finalizing and merging system defaults.
