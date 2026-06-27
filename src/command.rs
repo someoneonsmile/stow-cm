@@ -35,10 +35,7 @@ pub async fn reload(config: Arc<Config>, pack: impl AsRef<Path>) -> Result<()> {
 /// install packages
 pub async fn install(config: Arc<Config>, pack: impl AsRef<Path>) -> Result<()> {
     let pack = Arc::new(pack.as_ref().to_path_buf());
-    let pack_name = pack
-        .file_name()
-        .and_then(|it| it.to_str())
-        .ok_or_else(|| anyhow!("path error: {}", pack.display()))?;
+    let pack_name = util::pack_name(&pack)?;
     info!("install pack: {pack_name}");
 
     install_link(&config, &pack).await?;
@@ -57,10 +54,7 @@ pub async fn install(config: Arc<Config>, pack: impl AsRef<Path>) -> Result<()> 
 
 /// install link
 async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
-    let pack_name = pack
-        .file_name()
-        .and_then(|it| it.to_str())
-        .ok_or_else(|| anyhow!("path error: {}", pack.display()))?;
+    let pack_name = util::pack_name(pack)?;
     let Some(target) = config.target.as_ref() else {
         warn!("{pack_name}: target is none, skip install links");
         return Ok(());
@@ -298,10 +292,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 /// clean packages
 pub async fn clean<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
     let pack = Arc::new(pack.as_ref().to_path_buf());
-    let pack_name = pack
-        .file_name()
-        .and_then(|it| it.to_str())
-        .ok_or_else(|| anyhow!("path error: {}", pack.display()))?;
+    let pack_name = util::pack_name(&pack)?;
     info!("clean pack: {pack_name}");
 
     clean_link(&config, &pack).await?;
@@ -320,10 +311,7 @@ pub async fn clean<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
 
 /// clean links
 async fn clean_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
-    let pack_name = pack
-        .file_name()
-        .and_then(|it| it.to_str())
-        .ok_or_else(|| anyhow!("path error: {}", pack.display()))?;
+    let pack_name = util::pack_name(pack)?;
     let Some(target) = config.target.as_ref() else {
         warn!("{pack_name}: target is none, skip clean links");
         return Ok(());
@@ -370,10 +358,7 @@ async fn clean_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 /// remove packages
 pub async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
     let pack = Arc::new(pack.as_ref().to_path_buf());
-    let pack_name = pack
-        .file_name()
-        .and_then(|it| it.to_str())
-        .ok_or_else(|| anyhow!("path error: {}", pack.display()))?;
+    let pack_name = util::pack_name(&pack)?;
     info!("remove pack: {pack_name}");
 
     remove_link(&config, &pack).await?;
@@ -392,10 +377,7 @@ pub async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> 
 
 /// remove links
 async fn remove_link(_config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
-    let pack_name = pack
-        .file_name()
-        .and_then(|it| it.to_str())
-        .ok_or_else(|| anyhow!("path error: {}", pack.display()))?;
+    let pack_name = util::pack_name(pack)?;
     // NOTE: not need because track file move from target dir to $XDG_STATE_HOME
     // let target = match config.target.as_ref() {
     //     None => {
@@ -446,10 +428,7 @@ async fn remove_link(_config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 /// encrypt packages
 pub async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
     let pack = Arc::new(pack.as_ref().to_path_buf());
-    let pack_name = pack
-        .file_name()
-        .and_then(|it| it.to_str())
-        .ok_or_else(|| anyhow!("path error: {}", pack.display()))?;
+    let pack_name = util::pack_name(&pack)?;
     info!("encrypt pack: {pack_name}");
 
     let decrypted = config
@@ -584,10 +563,7 @@ pub async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()>
 /// decrypt packages
 pub async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
     let pack = Arc::new(pack.as_ref().to_path_buf());
-    let pack_name = pack
-        .file_name()
-        .and_then(|it| it.to_str())
-        .ok_or_else(|| anyhow!("path error: {}", pack.display()))?;
+    let pack_name = util::pack_name(&pack)?;
     info!("decrypt pack: {pack_name:?}");
 
     let decrypted = config

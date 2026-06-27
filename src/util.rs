@@ -165,8 +165,7 @@ where
 
     let mut result = String::with_capacity(content.len());
     let mut pos = 0;
-    let mut next_left: Option<usize> =
-        content[pos..].find(left).map(|o| pos + o);
+    let mut next_left: Option<usize> = content[pos..].find(left).map(|o| pos + o);
 
     while let Some(abs_left) = next_left {
         result.push_str(&content[pos..abs_left]);
@@ -214,6 +213,14 @@ where
 
     result.push_str(&content[pos..]);
     Ok(Cow::Owned(result))
+}
+
+/// 从路径中提取包名（最后一级目录名）
+#[inline]
+pub fn pack_name(pack: &Path) -> Result<&str> {
+    pack.file_name()
+        .and_then(|it| it.to_str())
+        .ok_or_else(|| anyhow!("path error: {}", pack.display()))
 }
 
 #[inline]
@@ -271,8 +278,7 @@ mod tests {
         #[test]
         fn empty_inner() {
             assert_eq!(
-                var_inplace("&{}", "&{", "}", true, |_s| Ok("replaced".to_owned()))
-                    .unwrap(),
+                var_inplace("&{}", "&{", "}", true, |_s| Ok("replaced".to_owned())).unwrap(),
                 "replaced"
             );
         }
@@ -294,13 +300,9 @@ mod tests {
         #[test]
         fn triple_open_brace_delimiter() {
             assert_eq!(
-                var_inplace(
-                    "${{{123}}}",
-                    "${{{",
-                    "}}",
-                    true,
-                    |s: &str| Ok(s.to_uppercase())
-                )
+                var_inplace("${{{123}}}", "${{{", "}}", true, |s: &str| Ok(
+                    s.to_uppercase()
+                ))
                 .unwrap(),
                 "123}"
             );
@@ -311,8 +313,7 @@ mod tests {
             let content = (0..1000)
                 .map(|i| format!("&{{item{i}}}"))
                 .collect::<String>();
-            let r =
-                var_inplace(&content, "&{", "}", true, |s| Ok(s.to_uppercase())).unwrap();
+            let r = var_inplace(&content, "&{", "}", true, |s| Ok(s.to_uppercase())).unwrap();
             for i in 0..1000 {
                 assert!(r.contains(&format!("ITEM{i}")));
             }
@@ -322,10 +323,7 @@ mod tests {
         #[test]
         fn unclosed_then_valid() {
             assert_eq!(
-                var_inplace("&{a &{b} &{c}", "&{", "}", true, |s| Ok(
-                    s.to_uppercase()
-                ))
-                .unwrap(),
+                var_inplace("&{a &{b} &{c}", "&{", "}", true, |s| Ok(s.to_uppercase())).unwrap(),
                 "&{a B C"
             );
         }
@@ -333,8 +331,7 @@ mod tests {
         #[test]
         fn keep_delimiters_with_unclosed() {
             assert_eq!(
-                var_inplace("&{a &{b}", "&{", "}", false, |s| Ok(s.to_uppercase()))
-                    .unwrap(),
+                var_inplace("&{a &{b}", "&{", "}", false, |s| Ok(s.to_uppercase())).unwrap(),
                 "&{a &{B}"
             );
         }
