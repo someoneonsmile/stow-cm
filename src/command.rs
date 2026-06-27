@@ -219,52 +219,55 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         // decrypted the file
         debug!("{pack_name}: decrypted paths {decrypted_file_map:?}");
         futures::stream::iter(decrypted_file_map.into_iter().map(Ok))
-            .try_for_each_concurrent(None, |(origin_file_path, decrypted_file_path)| async move {
-                // 用 symlink_metadata 一次性获取元数据，避免多次 stat() 调用之间的 TOCTOU 竞态窗口
-                match fs::symlink_metadata(&decrypted_file_path).await {
-                    Ok(meta) => {
-                        let ft = meta.file_type();
-                        if ft.is_file() || ft.is_symlink() {
-                            fs::remove_file(&decrypted_file_path).await?;
-                        } else if ft.is_dir() {
-                            fs::remove_dir_all(&decrypted_file_path).await?;
+            .try_for_each_concurrent(
+                Some(util::max_concurrent_files()),
+                |(origin_file_path, decrypted_file_path)| async move {
+                    // 用 symlink_metadata 一次性获取元数据，避免多次 stat() 调用之间的 TOCTOU 竞态窗口
+                    match fs::symlink_metadata(&decrypted_file_path).await {
+                        Ok(meta) => {
+                            let ft = meta.file_type();
+                            if ft.is_file() || ft.is_symlink() {
+                                fs::remove_file(&decrypted_file_path).await?;
+                            } else if ft.is_dir() {
+                                fs::remove_dir_all(&decrypted_file_path).await?;
+                            }
                         }
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                            // 目标不存在，无需清理
+                        }
+                        Err(e) => return Err(e.into()),
                     }
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                        // 目标不存在，无需清理
-                    }
-                    Err(e) => return Err(e.into()),
-                }
-                info!(
-                    "{pack_name}: decrypt {} to {}",
-                    origin_file_path.display(),
-                    decrypted_file_path.display()
-                );
-                let content = fs::read_to_string(origin_file_path).await?;
-                let origin_content = crypto::decrypt_inline(
-                    &content,
-                    encrypted_alg,
-                    key,
-                    left_boundary,
-                    right_boundary,
-                    true,
-                )?;
-                fs::write(&decrypted_file_path, origin_content)
-                    .await
-                    .with_context(|| {
-                        format!(
-                            "{pack_name}: failed to write decrypted content to path={}",
-                            decrypted_file_path.display()
-                        )
-                    })?;
-                Result::<(), anyhow::Error>::Ok(())
-            })
+                    info!(
+                        "{pack_name}: decrypt {} to {}",
+                        origin_file_path.display(),
+                        decrypted_file_path.display()
+                    );
+                    let content = fs::read_to_string(origin_file_path).await?;
+                    let origin_content = crypto::decrypt_inline(
+                        &content,
+                        encrypted_alg,
+                        key,
+                        left_boundary,
+                        right_boundary,
+                        true,
+                    )?;
+                    fs::write(&decrypted_file_path, origin_content)
+                        .await
+                        .with_context(|| {
+                            format!(
+                                "{pack_name}: failed to write decrypted content to path={}",
+                                decrypted_file_path.display()
+                            )
+                        })?;
+                    Result::<(), anyhow::Error>::Ok(())
+                },
+            )
             .await?;
     }
 
     debug!("{pack_name}: install paths {symlinks:?}");
     futures::stream::iter(symlinks.clone().into_iter().map(Ok))
-        .try_for_each_concurrent(None, |symlink| async move {
+        .try_for_each_concurrent(Some(util::max_concurrent_files()), |symlink| async move {
             info!("{pack_name}: symlink {symlink}");
             symlink.create(true).await
         })
@@ -324,7 +327,7 @@ async fn clean_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 
     debug!("{pack_name}: clean paths: {symlinks:?}");
     futures::stream::iter(symlinks.into_iter().map(Ok))
-        .try_for_each_concurrent(None, |symlink| async move {
+        .try_for_each_concurrent(Some(util::max_concurrent_files()), |symlink| async move {
             info!("{pack_name}: remove symlink {symlink}");
             symlink.remove().await
         })
@@ -405,7 +408,7 @@ async fn remove_link(_config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 
     debug!("{pack_name}: remove {symlinks:?}");
     futures::stream::iter(symlinks.into_iter().map(Ok))
-        .try_for_each_concurrent(None, |symlink| async move {
+        .try_for_each_concurrent(Some(util::max_concurrent_files()), |symlink| async move {
             info!("{pack_name}: remove symlink {symlink}");
             symlink.remove().await
         })
@@ -532,7 +535,7 @@ pub async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()>
     // encrypt the file
     debug!("{pack_name}: encrypt paths {files:?}");
     futures::stream::iter(files.into_iter().map(Ok))
-        .try_for_each_concurrent(None, |file| async move {
+        .try_for_each_concurrent(Some(util::max_concurrent_files()), |file| async move {
             let path = file.path();
             info!("{pack_name}: encrypt {}", path.display());
             let Ok(content) = fs::read_to_string(path).await else {
@@ -667,7 +670,7 @@ pub async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()>
     // decrypt the file
     debug!("{pack_name}: decrypt paths {files:?}");
     futures::stream::iter(files.into_iter().map(Ok))
-        .try_for_each_concurrent(None, |file| async move {
+        .try_for_each_concurrent(Some(util::max_concurrent_files()), |file| async move {
             let path = file.path();
             info!("{pack_name}: decrypt {}", path.display());
             let Ok(content) = fs::read_to_string(path).await else {

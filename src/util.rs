@@ -223,6 +223,12 @@ pub fn pack_name(pack: &Path) -> Result<&str> {
         .ok_or_else(|| anyhow!("path error: {}", pack.display()))
 }
 
+/// 计算异步文件操作流的最佳并发上限
+#[inline]
+pub fn max_concurrent_files() -> usize {
+    num_cpus::get() * 4
+}
+
 #[inline]
 pub async fn canonicalize(paths: Vec<PathBuf>) -> Result<Vec<PathBuf>> {
     futures::stream::iter(paths)
