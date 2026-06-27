@@ -96,16 +96,21 @@ impl SymlinkMode {
     async fn remove(&self, symlink: &Symlink) -> Result<()> {
         match self {
             SymlinkMode::Symlink => {
-                if !symlink.dst.is_symlink() {
-                    if symlink.dst.exists() {
-                        return Err(anyhow!("{} is not symlink", symlink.dst.to_string_lossy()));
+                // 用 symlink_metadata 一次性获取元数据，避免多次 stat() 调用之间的 TOCTOU 竞态窗口
+                match fs::symlink_metadata(&symlink.dst).await {
+                    Ok(meta) => {
+                        if meta.file_type().is_symlink() {
+                            fs::remove_file(&symlink.dst)
+                                .await
+                                .with_context(|| format!("failed to remove symlink: {symlink}"))?;
+                            Ok(())
+                        } else {
+                            Err(anyhow!("{} is not symlink", symlink.dst.to_string_lossy()))
+                        }
                     }
-                    return Ok(());
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                    Err(e) => Err(e.into()),
                 }
-                fs::remove_file(&symlink.dst)
-                    .await
-                    .with_context(|| format!("failed to remove symlink: {symlink}"))?;
-                Ok(())
             }
             SymlinkMode::Copy => {
                 fs::remove_file(&symlink.dst)
