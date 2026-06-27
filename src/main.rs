@@ -17,6 +17,7 @@ use crate::error::Result;
 
 mod base64;
 mod cli;
+mod cli_types;
 mod command;
 mod config;
 mod constants;

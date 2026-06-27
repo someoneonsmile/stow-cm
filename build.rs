@@ -7,7 +7,7 @@ use clap::{CommandFactory, ValueEnum};
 use clap_complete::{Shell, generate_to};
 use clap_mangen::Man;
 
-include!("src/cli.rs");
+include!("src/cli_types.rs");
 
 fn main() -> Result<(), Box<dyn Error>> {
     let outdir: PathBuf = match env::var_os("SHELL_HELP_DIR").or_else(|| env::var_os("OUT_DIR")) {
