@@ -67,9 +67,11 @@ pub struct EncryptedConfig {
     /// decrypted file path when install, default path is ${`XDG_DATA_HOME`:-~/.local/share}/stow-cm/${pack_name}/decrypted/
     pub decrypted_path: Option<PathBuf>,
     /// left boundary of content to be decrypted
-    pub left_boundry: Option<String>,
+    #[serde(alias = "left_boundry")]
+    pub left_boundary: Option<String>,
     /// right boundary of content to be decrypted
-    pub right_boundry: Option<String>,
+    #[serde(alias = "right_boundry")]
+    pub right_boundary: Option<String>,
     /// the algorithm of encrypted content, default to chacha20poly1305
     pub encrypted_alg: Option<String>,
     /// the algorithm of encrypted content, default to chacha20poly1305
@@ -203,8 +205,8 @@ impl Default for EncryptedConfig {
         EncryptedConfig {
             enable: Some(false),
             decrypted_path: Some(DEFAULT_PACK_DECRYPT.into()),
-            left_boundry: Some(DEFAULT_DECRYPT_LEFT_BOUNDARY.into()),
-            right_boundry: Some(DEFAULT_DECRYPT_RIGHT_BOUNDARY.into()),
+            left_boundary: Some(DEFAULT_DECRYPT_LEFT_BOUNDARY.into()),
+            right_boundary: Some(DEFAULT_DECRYPT_RIGHT_BOUNDARY.into()),
             encrypted_alg: Some(DEFAULT_CRYPT_ALG.into()),
             key_path: None,
         }

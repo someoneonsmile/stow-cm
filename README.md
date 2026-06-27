@@ -119,9 +119,9 @@ enable = false
 # default
 decrypted_path = '${XDG_DATA_HOME:-~/.local/share}/stow-cm/${PACK_ID}/decrypted/'
 # default
-left_boundry = '&{'
+left_boundary = '&{'
 # default
-right_boundry = '}'
+right_boundary = '}'
 # support ChaCha20-Poly1305 | AES-128-GCM | AES-256-GCM
 # default ChaCha20-Poly1305
 encrypted_alg = 'ChaCha20-Poly1305'

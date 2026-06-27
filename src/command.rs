@@ -168,8 +168,8 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
             let s = config
                 .encrypted
                 .as_ref()
-                .and_then(|it| it.left_boundry.as_ref())
-                .ok_or_else(|| anyhow!("{pack_name}: left_boundry is not configured"))?;
+                .and_then(|it| it.left_boundary.as_ref())
+                .ok_or_else(|| anyhow!("{pack_name}: left_boundary is not configured"))?;
             s.as_str()
         };
 
@@ -177,8 +177,8 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
             let s = config
                 .encrypted
                 .as_ref()
-                .and_then(|it| it.right_boundry.as_ref())
-                .ok_or_else(|| anyhow!("{pack_name}: right_boundry is not configured"))?;
+                .and_then(|it| it.right_boundary.as_ref())
+                .ok_or_else(|| anyhow!("{pack_name}: right_boundary is not configured"))?;
             s.as_str()
         };
 
@@ -467,8 +467,8 @@ pub async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()>
         let s = config
             .encrypted
             .as_ref()
-            .and_then(|it| it.left_boundry.as_ref())
-            .ok_or_else(|| anyhow!("{pack_name}: left_boundry is not configured"))?;
+            .and_then(|it| it.left_boundary.as_ref())
+            .ok_or_else(|| anyhow!("{pack_name}: left_boundary is not configured"))?;
         s.as_str()
     };
 
@@ -476,8 +476,8 @@ pub async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()>
         let s = config
             .encrypted
             .as_ref()
-            .and_then(|it| it.right_boundry.as_ref())
-            .ok_or_else(|| anyhow!("{pack_name}: right_boundry is not configured"))?;
+            .and_then(|it| it.right_boundary.as_ref())
+            .ok_or_else(|| anyhow!("{pack_name}: right_boundary is not configured"))?;
         s.as_str()
     };
 
@@ -602,8 +602,8 @@ pub async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()>
         let s = config
             .encrypted
             .as_ref()
-            .and_then(|it| it.left_boundry.as_ref())
-            .ok_or_else(|| anyhow!("{pack_name}: left_boundry is not configured"))?;
+            .and_then(|it| it.left_boundary.as_ref())
+            .ok_or_else(|| anyhow!("{pack_name}: left_boundary is not configured"))?;
         s.as_str()
     };
 
@@ -611,8 +611,8 @@ pub async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()>
         let s = config
             .encrypted
             .as_ref()
-            .and_then(|it| it.right_boundry.as_ref())
-            .ok_or_else(|| anyhow!("{pack_name}: right_boundry is not configured"))?;
+            .and_then(|it| it.right_boundary.as_ref())
+            .ok_or_else(|| anyhow!("{pack_name}: right_boundary is not configured"))?;
         s.as_str()
     };
 
