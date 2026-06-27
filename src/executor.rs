@@ -39,7 +39,7 @@ where
                 .ok_or_else(|| anyhow::anyhow!("path error: {}", pack.as_ref().display()))?;
             merge::option::recurse(&mut pack_config, common_config.deref().clone());
             let Some(mut config) = pack_config else {
-                unreachable!("no config")
+                anyhow::bail!("no config")
             };
             config.normalize();
 
