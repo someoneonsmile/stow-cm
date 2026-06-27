@@ -266,7 +266,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     }
 
     debug!("{pack_name}: install paths {symlinks:?}");
-    futures::stream::iter(symlinks.clone().into_iter().map(Ok))
+    futures::stream::iter(symlinks.iter().map(|s| Ok(s.clone())))
         .try_for_each_concurrent(Some(util::max_concurrent_files()), |symlink| async move {
             info!("{pack_name}: symlink {symlink}");
             symlink.create(true).await
