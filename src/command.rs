@@ -428,18 +428,26 @@ async fn remove_link(_config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     Ok(())
 }
 
-/// encrypt packages
-pub async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
+type CryptoFn = fn(&str, &str, &[u8], &str, &str, bool) -> crate::error::Result<String>;
+
+/// 提取 encrypt/decrypt 共享的加密配置参数，执行文件扫描和流式处理。
+async fn crypto_process<P: AsRef<Path>>(
+    config: Arc<Config>,
+    pack: P,
+    crypto_fn: CryptoFn,
+    op_name: &str,
+    content_label: &str,
+) -> Result<()> {
     let pack = Arc::new(pack.as_ref().to_path_buf());
     let pack_name = util::pack_name(&pack)?;
-    info!("encrypt pack: {pack_name}");
+    info!("{op_name} pack: {pack_name}");
 
-    let decrypted = config
+    let enabled = config
         .encrypted
         .as_ref()
         .is_some_and(|it| it.enable.is_some_and(identity));
 
-    if !decrypted {
+    if !enabled {
         warn!("{pack_name}: pack is not enable encrypted");
         return Ok(());
     }
@@ -532,17 +540,16 @@ pub async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()>
         .await?
     };
 
-    // encrypt the file
-    debug!("{pack_name}: encrypt paths {files:?}");
+    debug!("{pack_name}: {op_name} paths {files:?}");
     futures::stream::iter(files.into_iter().map(Ok))
         .try_for_each_concurrent(Some(util::max_concurrent_files()), |file| async move {
             let path = file.path();
-            info!("{pack_name}: encrypt {}", path.display());
+            info!("{pack_name}: {op_name} {}", path.display());
             let Ok(content) = fs::read_to_string(path).await else {
                 warn!("{pack_name}: {} contains not invalid utf-8", path.display());
                 return Ok(());
             };
-            let encrypted_content = crypto::encrypt_inline(
+            let processed = crypto_fn(
                 &content,
                 encrypted_alg,
                 key,
@@ -550,9 +557,9 @@ pub async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()>
                 right_boundary,
                 false,
             )?;
-            fs::write(path, encrypted_content).await.with_context(|| {
+            fs::write(path, processed).await.with_context(|| {
                 format!(
-                    "{pack_name}: failed to write encrypted_content to path={}",
+                    "{pack_name}: failed to write {content_label} to path={}",
                     path.display()
                 )
             })?;
@@ -563,137 +570,26 @@ pub async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()>
     Ok(())
 }
 
+/// encrypt packages
+pub async fn encrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
+    crypto_process(
+        config,
+        pack,
+        crypto::encrypt_inline,
+        "encrypt",
+        "encrypted_content",
+    )
+    .await
+}
+
 /// decrypt packages
 pub async fn decrypt<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
-    let pack = Arc::new(pack.as_ref().to_path_buf());
-    let pack_name = util::pack_name(&pack)?;
-    info!("decrypt pack: {pack_name:?}");
-
-    let decrypted = config
-        .encrypted
-        .as_ref()
-        .is_some_and(|it| it.enable.is_some_and(identity));
-
-    if !decrypted {
-        warn!("{pack_name}: pack is not enable encrypted");
-        return Ok(());
-    }
-
-    let key = {
-        let key_path = config
-            .encrypted
-            .as_ref()
-            .and_then(|it| it.key_path.as_ref())
-            .ok_or_else(|| anyhow!("{pack_name}: key_path is not configured"))?;
-        if !fs::try_exists(key_path).await? {
-            bail!("{pack_name}: key_path not exist");
-        }
-        let key_base64 = fs::read_to_string(key_path).await.with_context(|| {
-            format!(
-                "{pack_name}: failed to read from key_path={}",
-                key_path.display()
-            )
-        })?;
-        base64::decode(&key_base64)?
-    };
-    let key = key.as_slice();
-
-    let left_boundary = {
-        let s = config
-            .encrypted
-            .as_ref()
-            .and_then(|it| it.left_boundary.as_ref())
-            .ok_or_else(|| anyhow!("{pack_name}: left_boundary is not configured"))?;
-        s.as_str()
-    };
-
-    let right_boundary = {
-        let s = config
-            .encrypted
-            .as_ref()
-            .and_then(|it| it.right_boundary.as_ref())
-            .ok_or_else(|| anyhow!("{pack_name}: right_boundary is not configured"))?;
-        s.as_str()
-    };
-
-    let encrypted_alg = {
-        let s = config
-            .encrypted
-            .as_ref()
-            .and_then(|it| it.encrypted_alg.as_ref())
-            .ok_or_else(|| anyhow!("{pack_name}: encrypted_alg is not configured"))?;
-        s.as_str()
-    };
-
-    let ignore_re = config
-        .ignore
-        .as_ref()
-        .map(RegexSet::new)
-        .transpose()
-        .with_context(|| anyhow!("{:?}", config.ignore))?;
-
-    let files = {
-        let pack = pack.clone();
-        tokio::task::spawn_blocking(move || {
-            // walk file, expect ignore_re, skip binary file
-            let files: Vec<_> = WalkDir::new(&*pack)
-                .into_iter()
-                .filter_map(|entry| {
-                    let entry = entry.ok()?;
-                    let path = entry.path();
-                    let ignore = match ignore_re.as_ref() {
-                        Some(ignore_re) => path
-                            .to_str()
-                            .is_some_and(|path_name| ignore_re.is_match(path_name)),
-                        None => false,
-                    };
-                    if ignore {
-                        return None;
-                    }
-                    if path.is_file() {
-                        return Some(entry);
-                    }
-                    None
-                })
-                .filter(|entry| {
-                    let a = entry.path();
-                    // matches!(binaryornot::is_binary(a), Ok(b) if !b)
-                    binaryornot::is_binary(a).is_ok_and(Not::not)
-                })
-                .collect();
-
-            files
-        })
-        .await?
-    };
-
-    // decrypt the file
-    debug!("{pack_name}: decrypt paths {files:?}");
-    futures::stream::iter(files.into_iter().map(Ok))
-        .try_for_each_concurrent(Some(util::max_concurrent_files()), |file| async move {
-            let path = file.path();
-            info!("{pack_name}: decrypt {}", path.display());
-            let Ok(content) = fs::read_to_string(path).await else {
-                warn!("{pack_name}: {} contains not invalid utf-8", path.display());
-                return Ok(());
-            };
-            let decrypted_content = crypto::decrypt_inline(
-                &content,
-                encrypted_alg,
-                key,
-                left_boundary,
-                right_boundary,
-                false,
-            )?;
-            fs::write(path, decrypted_content).await.with_context(|| {
-                format!(
-                    "{pack_name}: failed to write decrypted_content to path={}",
-                    path.display()
-                )
-            })?;
-            Result::<(), anyhow::Error>::Ok(())
-        })
-        .await?;
-
-    Ok(())
+    crypto_process(
+        config,
+        pack,
+        crypto::decrypt_inline,
+        "decrypt",
+        "decrypted_content",
+    )
+    .await
 }

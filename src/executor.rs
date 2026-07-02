@@ -101,7 +101,11 @@ where
         Err(anyhow::anyhow!(
             "{} pack(s) failed:\n{}",
             errors.len(),
-            errors.iter().map(std::string::ToString::to_string).collect::<Vec<_>>().join("\n")
+            errors
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect::<Vec<_>>()
+                .join("\n")
         ))
     }
 }
