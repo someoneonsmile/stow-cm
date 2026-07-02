@@ -11,9 +11,10 @@ use tokio::io::AsyncWriteExt;
 use stow_cm_macros::Finalize;
 
 use crate::constants::{
-    CONFIG_FILE_NAME, DEFAULT_CRYPT_ALG, DEFAULT_DECRYPT_LEFT_BOUNDARY,
-    DEFAULT_DECRYPT_RIGHT_BOUNDARY, DEFAULT_PACK_DECRYPT, DEFAULT_PACK_TARGET, GLOBAL_CONFIG_FILE,
-    GLOBAL_XDG_CONFIG_FILE,
+    CONFIG_FILE_NAME, DEFAULT_CRYPT_ALG, DEFAULT_DECRYPT_LEFT_BOUNDARY, DEFAULT_DECRYPT_RIGHT_BOUNDARY,
+};
+use crate::paths::{
+    default_pack_decrypt, default_pack_target, global_config_path, global_xdg_config_path,
 };
 use crate::error::Result;
 use crate::merge::{Finalize, Merge, SystemInstance};
@@ -114,8 +115,8 @@ impl Config {
 
     /// get global config
     pub fn global() -> Result<Config> {
-        let global_config = Config::from_path(GLOBAL_CONFIG_FILE)?;
-        let mut global_xdg_config = Config::from_path(GLOBAL_XDG_CONFIG_FILE)?;
+        let global_config = Config::from_path(global_config_path())?;
+        let mut global_xdg_config = Config::from_path(global_xdg_config_path())?;
         merge::option::recurse(&mut global_xdg_config, global_config);
         merge::option::recurse(&mut global_xdg_config, Some(Config::default()));
         global_xdg_config.ok_or_else(|| anyhow!("failed to load global config"))
@@ -133,7 +134,7 @@ impl Default for Config {
     fn default() -> Config {
         Config {
             symlink_mode: Some(SymlinkMode::Symlink),
-            target: Some(DEFAULT_PACK_TARGET.into()),
+            target: Some(default_pack_target().into()),
             ignore: None,
             over: None,
             fold: Some(true),
@@ -204,7 +205,7 @@ impl Default for EncryptedConfig {
     fn default() -> Self {
         EncryptedConfig {
             enable: Some(false),
-            decrypted_path: Some(DEFAULT_PACK_DECRYPT.into()),
+            decrypted_path: Some(default_pack_decrypt().into()),
             left_boundary: Some(DEFAULT_DECRYPT_LEFT_BOUNDARY.into()),
             right_boundary: Some(DEFAULT_DECRYPT_RIGHT_BOUNDARY.into()),
             encrypted_alg: Some(DEFAULT_CRYPT_ALG.into()),

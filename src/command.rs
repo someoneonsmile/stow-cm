@@ -16,7 +16,8 @@ use walkdir::WalkDir;
 
 use crate::base64;
 use crate::config::Config;
-use crate::constants::{PACK_ID_ENV, PACK_NAME_ENV, PACK_TRACK_FILE};
+use crate::constants::{PACK_ID_ENV, PACK_NAME_ENV};
+use crate::paths::pack_track_file;
 use crate::crypto;
 use crate::error::Result;
 use crate::merge_tree;
@@ -66,7 +67,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         PACK_NAME_ENV => pack_name.to_owned(),
     };
     let track_file =
-        util::shell_expand_full_with_context(PACK_TRACK_FILE, |key| context_map.get(key))?;
+        util::shell_expand_full_with_context(pack_track_file(), |key| context_map.get(key))?;
     if track_file.try_exists()? {
         bail!("{pack_name}: pack has been install")
     }
@@ -395,7 +396,7 @@ async fn remove_link(_config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         PACK_NAME_ENV => pack_name.to_owned(),
     };
     let track_file =
-        util::shell_expand_full_with_context(PACK_TRACK_FILE, |key| context_map.get(key))?;
+        util::shell_expand_full_with_context(pack_track_file(), |key| context_map.get(key))?;
 
     if !track_file.try_exists()? {
         warn!("{pack_name}: there is no link is installed");

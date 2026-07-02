@@ -28,6 +28,7 @@ mod error;
 mod executor;
 mod merge;
 mod merge_tree;
+mod paths;
 mod symlink;
 mod track_file;
 mod util;
