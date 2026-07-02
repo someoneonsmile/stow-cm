@@ -1,0 +1,92 @@
+name: Build
+
+on:
+  workflow_call:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            asset: stow-cm-x86_64-linux-gnu
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            asset: stow-cm-x86_64-linux-musl
+            cross: true
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            asset: stow-cm-aarch64-linux-gnu
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            asset: stow-cm-x86_64-macos
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            asset: stow-cm-aarch64-macos
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset: stow-cm-x86_64-windows
+    runs-on: ${{ matrix.os }}
+    env:
+      SHELL_HELP_DIR: shell_help
+      RELEASE_NAME: stow-cm
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross (musl build)
+        if: matrix.cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build (native)
+        if: ${{ !matrix.cross }}
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Build (musl via cross)
+        if: matrix.cross
+        run: cross build --release --target ${{ matrix.target }}
+
+      - name: Strip binary (Unix)
+        if: runner.os != 'Windows'
+        run: strip "target/${{ matrix.target }}/release/${{ env.RELEASE_NAME }}"
+
+      - name: Package artifact (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          staging="${{ env.RELEASE_NAME }}-${{ matrix.target }}"
+          mkdir -p "$staging" artifacts
+          cp "target/${{ matrix.target }}/release/${{ env.RELEASE_NAME }}" "$staging/"
+          cp -r ${SHELL_HELP_DIR}/* "$staging/" 2>/dev/null || true
+          cp README.md LICENSE "$staging/"
+          tar czf "artifacts/$staging.tar.gz" "$staging"
+          shasum -a 256 "artifacts/$staging.tar.gz" > "artifacts/$staging.tar.gz.sha256sum"
+
+      - name: Package artifact (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          $staging="$env:RELEASE_NAME-${{ matrix.target }}"
+          mkdir $staging, artifacts
+          cp "target/${{ matrix.target }}/release/$env:RELEASE_NAME.exe" "$staging/"
+          cp -r $env:SHELL_HELP_DIR/* "$staging/" -ErrorAction SilentlyContinue
+          cp README.md, LICENSE "$staging/"
+          7z a "artifacts/$staging.zip" "$staging"
+          sha256sum "artifacts/$staging.zip" > "artifacts/$staging.zip.sha256sum"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.asset }}
+          path: artifacts/*
+          if-no-files-found: error

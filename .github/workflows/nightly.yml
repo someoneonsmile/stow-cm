@@ -2,226 +2,86 @@ name: Nightly
 
 on:
   schedule:
-    - cron: "5 5 * * *"
+    - cron: "0 0 * * *"
   workflow_dispatch:
-    # inputs:
-    #   tag_name:
-    #     description: "Tag name for release"
-    #     required: false
-    #     default: nightly
 
-env:
-  CARGO_TERM_COLOR: always
-  USE_CROSS: true
-  FETCH_DEPTH: 0
-  RELEASE_NAME: "stow-cm"
-  SHELL_HELP_DIR: shell_help
-
-defaults:
-  run:
-    shell: bash
+permissions:
+  contents: write
 
 jobs:
-  check-changes:
+  check:
     runs-on: ubuntu-latest
     outputs:
-      has_changes: ${{ steps.check.outputs.has_changes }}
+      proceed: ${{ steps.check.outputs.proceed }}
     steps:
       - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-          fetch-depth: 0
 
       - name: Check for changes since last nightly
         id: check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 检查是否有 nightly tag，如果没有则第一次运行，需要发版
-          if ! git rev-parse -q --verify refs/tags/nightly >/dev/null 2>&1; then
-            echo "No nightly tag found, will create first nightly release"
-            echo "has_changes=true" >> $GITHUB_OUTPUT
-            exit 0
-          fi
+          NIGHTLY_SHA=$(gh api repos/${{ github.repository }}/git/ref/tags/nightly \
+            --jq '.object.sha' 2>/dev/null) || true
 
-          # 基于 SHA 比较：计算 HEAD 中有多少个 nightly tag 不包含的提交
-          new_commit_count=$(git rev-list --count HEAD ^refs/tags/nightly 2>/dev/null || echo "0")
-          echo "New commits since last nightly: $new_commit_count"
-
-          if [ "$new_commit_count" -gt 0 ]; then
-            echo "has_changes=true" >> $GITHUB_OUTPUT
+          if [ -n "$NIGHTLY_SHA" ]; then
+            if [ "$NIGHTLY_SHA" = "${{ github.sha }}" ]; then
+              echo "proceed=false" >> "$GITHUB_OUTPUT"
+              echo "No changes since last nightly, skipping."
+            else
+              echo "proceed=true" >> "$GITHUB_OUTPUT"
+            fi
           else
-            echo "No changes since last nightly release"
-            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            echo "First nightly build."
           fi
 
   build:
-    needs: check-changes
-    if: needs.check-changes.outputs.has_changes == 'true'
-    runs-on: ${{ matrix.build.os }}
-    continue-on-error: false
-    strategy:
-      fail-fast: true
-      matrix:
-        # build: [linux, linux-arm, macos, win-msvc, win-gnu, win32-msvc]
-        build: [
-            {
-              plat: linux,
-              os: ubuntu-latest,
-              rust: stable,
-              target: x86_64-unknown-linux-musl,
-              cargo: cross,
-            },
-            {
-              plat: macos,
-              os: macos-latest,
-              rust: stable,
-              target: x86_64-apple-darwin,
-              cargo: cross,
-            },
-            # {
-            #   plat: linux-arm,
-            #   os: ubuntu-latest,
-            #   rust: stable,
-            #   target: arm-unknown-linux-gnueabihf
-            # },
-            # {
-            #   plat: win-msvc,
-            #   os: windows-latest,
-            #   rust: stable,
-            #   target: x86_64-pc-windows-msvc
-            # },
-            # {
-            #   plat: win-gnu,
-            #   os: windows-latest,
-            #   rust: stable-x86_64-gnu,
-            #   target: x86_64-pc-windows-gnu
-            # },
-            # {
-            #   plat: win32-msvc,
-            #   os: windows-latest,
-            #   rust: stable,
-            #   target: i686-pc-windows-msvc
-            # },
-          ]
-
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Setup Dasel
-        # You may pin to the exact commit or the version.
-        # uses: allejo/setup-dasel@46b82a2767c056e889bda5a939e96c63bbe06890
-        uses: allejo/setup-dasel@v1.0.1
-        with:
-          # The version of dasel to install
-          # optional, default is latest
-          version: v2.8.1
-
-      - name: modify the cargo.toml package.version
-        run: |
-          version=$(dasel -f Cargo.toml 'package.version' -w -)-$(date +%Y%m%d)-$(git rev-parse --short HEAD)
-          dasel put -f Cargo.toml -t string -v ${version} 'package.version'
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: ${{ matrix.build.rust }}
-          targets: ${{ matrix.build.target }}
-
-      - name: Install cross
-        if: matrix.build.cargo == 'cross'
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cross
-
-      # - name: Overwrite build command env variable
-      #   if: matrix.build.cargo == 'cross'
-      #   run: echo "BUILD_CMD=cross" >> $GITHUB_ENV
-
-      - name: Show build cmd version
-        run: ${{ matrix.build.cargo }} --version
-
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Build release binary
-        # uses: actions-rs/cargo@v1
-        run: ${{ matrix.build.cargo }} build --release --target=${{ matrix.build.target }}
-
-      - name: Strip release binary (linux and macos)
-        if: matrix.build.plat == 'linux' || matrix.build.plat == 'macos'
-        run: strip "target/${{ matrix.build.target }}/release/${{ env.RELEASE_NAME }}"
-
-      - name: Strip release binary (arm)
-        if: matrix.build.plat == 'linux-arm'
-        run: |
-          docker run --rm -v \
-            "$PWD/target:/target:Z" \
-            rustembedded/cross:arm-unknown-linux-gnueabihf \
-            arm-linux-gnueabihf-strip \
-            /target/arm-unknown-linux-gnueabihf/release/${{ env.RELEASE_NAME }}
-
-      - name: Build archive
-        shell: bash
-        run: |
-          staging="${{ env.RELEASE_NAME }}-${{ matrix.build.target }}"
-          mkdir -p "$staging"
-          mkdir -p "artifacts"
-          cp {README.md,LICENSE} $staging/
-          cp -r ${SHELL_HELP_DIR}/* $staging/
-          if [ "${{ matrix.build.os }}" = "windows-latest" ]; then
-            cp "target/${{ matrix.build.target }}/release/${{ env.RELEASE_NAME }}.exe" "$staging/"
-            7z a "artifacts/$staging.zip" "$staging"
-            sha256sum "artifacts/$staging.zip" > "artifacts/$staging.zip.sha256sum"
-          else
-            cp "target/${{ matrix.build.target }}/release/${{ env.RELEASE_NAME }}" "$staging/"
-            tar czf "artifacts/$staging.tar.gz" "$staging"
-            shasum -a 256 "artifacts/$staging.tar.gz" > "artifacts/$staging.tar.gz.sha256sum"
-          fi
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: artifact-${{ matrix.build.target }}
-          path: artifacts/*
-          if-no-files-found: error
+    needs: check
+    if: needs.check.outputs.proceed == 'true'
+    uses: ./.github/workflows/build.yml
 
   release:
-    needs: [check-changes, build]
-    if: needs.check-changes.outputs.has_changes == 'true'
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
-          persist-credentials: false
+          fetch-depth: 0
 
-      - name: Download assets
-        uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@v8
         with:
-          path: artifacts
+          path: dist
           merge-multiple: true
 
-      - name: Delete exist release
-        run: gh release delete nightly --cleanup-tag
-        continue-on-error: true
+      - name: Get latest stable release tag
+        id: latest
+        run: |
+          TAG=$(gh release list --exclude-pre-releases --limit 1 --json tagName -q '.[0].tagName')
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate changelog
+        id: changelog
+        uses: mikepenz/release-changelog-builder-action@v6
+        with:
+          mode: COMMIT
+          fromTag: ${{ steps.latest.outputs.tag }}
+          toTag: ${{ github.sha }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Delete old nightly rolling release
+        run: gh release delete nightly --cleanup-tag --yes || true
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
-      - name: Build Changelog
-        id: build_changelog
-        uses: mikepenz/release-changelog-builder-action@v6
-        with:
-          token: "${{ github.token }}"
-          mode: "COMMIT"
-
-      - name: Create nightly release
+      - name: Publish nightly rolling release
         uses: softprops/action-gh-release@v3
         with:
-          generate_release_notes: true
-          append_body: true
-          body: ${{steps.build_changelog.outputs.changelog}}
-          tag_name: "nightly"
-          name: "Release nightly"
-          target_commitish: "${{ github.sha }}"
+          tag_name: nightly
+          name: Nightly
+          files: dist/*
           prerelease: true
-          draft: false
-          fail_on_unmatched_files: false
-          files: |
-            artifacts/*
+          body: ${{ steps.changelog.outputs.changelog }}
