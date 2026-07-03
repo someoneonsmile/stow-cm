@@ -10,7 +10,12 @@ MANDIR   := $(DATADIR)/man
 SHELL_HELP_DIR := shell_help
 RELEASE  := target/release
 
-.PHONY: all build build-cross check test install uninstall clean fmt fmt-check lint ci run dev help
+VERSION ?= $(shell grep '^version' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+DATE   ?= $(shell date +%Y%m%d)
+
+.PHONY: all build build-cross check test install uninstall clean fmt fmt-check lint ci run dev help \
+        aur-srcinfo aur-push aur-release \
+        aur-nightly-srcinfo aur-nightly-push aur-nightly-release
 
 all: build
 
@@ -98,3 +103,57 @@ help:
 	@echo "  make && sudo make install PREFIX=/usr/local  Install to /usr/local"
 	@echo "  make install PREFIX=~/.local           Install to user directory"
 	@echo "  make install DESTDIR=/tmp/pkg          Stage install"
+	@echo ""
+	@echo "AUR targets:"
+	@echo "  make aur-srcinfo             Regenerate aur/.SRCINFO"
+	@echo "  make aur-push                Commit and push aur/ to AUR"
+	@echo "  make aur-release             Update version + push to AUR (VERSION=...)"
+	@echo "  make aur-nightly-srcinfo     Regenerate aur-nightly/.SRCINFO"
+	@echo "  make aur-nightly-push        Commit and push aur-nightly/ to AUR"
+	@echo "  make aur-nightly-release     Update date + push to nightly AUR (DATE=...)"
+	@echo ""
+	@echo "AUR variables:"
+	@echo "  VERSION   Version for aur-release    (default: from Cargo.toml)"
+	@echo "  DATE      Date for aur-nightly-release (default: today)"
+
+# --- AUR: Stable ---
+
+# 重新生成 aur/.SRCINFO（手动修改 PKGBUILD 后执行）
+aur-srcinfo:
+	cd aur && makepkg --printsrcinfo > .SRCINFO
+
+# 提交 aur/ 变更并推送到 AUR
+aur-push:
+	git add aur/
+	git commit -m "chore: update AUR package" || true
+	git subtree push --prefix=aur aur master
+
+# 发布新版本到 AUR（用法: make aur-release VERSION=0.18.0）
+aur-release:
+	sed -i 's/^pkgver=.*/pkgver=$(VERSION)/' aur/PKGBUILD
+	sed -i 's/^pkgrel=.*/pkgrel=1/' aur/PKGBUILD
+	cd aur && makepkg --printsrcinfo > .SRCINFO
+	git add aur/
+	git commit -m "chore: update AUR to $(VERSION)" || true
+	git subtree push --prefix=aur aur master
+
+# --- AUR: Nightly ---
+
+# 重新生成 aur-nightly/.SRCINFO
+aur-nightly-srcinfo:
+	cd aur-nightly && makepkg --printsrcinfo > .SRCINFO
+
+# 提交 aur-nightly/ 变更并推送到 Nightly AUR
+aur-nightly-push:
+	git add aur-nightly/
+	git commit -m "chore: update nightly AUR package" || true
+	git subtree push --prefix=aur-nightly aur-nightly master
+
+# 发布 Nightly AUR（用法: make aur-nightly-release DATE=20260703）
+aur-nightly-release:
+	sed -i 's/^pkgver=.*/pkgver=$(DATE)/' aur-nightly/PKGBUILD
+	sed -i 's/^pkgrel=.*/pkgrel=1/' aur-nightly/PKGBUILD
+	cd aur-nightly && makepkg --printsrcinfo > .SRCINFO
+	git add aur-nightly/
+	git commit -m "chore: update nightly AUR to $(DATE)" || true
+	git subtree push --prefix=aur-nightly aur-nightly master

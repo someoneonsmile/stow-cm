@@ -44,16 +44,50 @@ jobs:
           files: dist/*
           body: ${{ steps.changelog.outputs.changelog }}
 
-      - name: Delete old stable rolling release
-        run: gh release delete stable --cleanup-tag --yes || true
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-
-      - name: Publish stable rolling release
-        uses: softprops/action-gh-release@v3
+  aur:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
         with:
-          tag_name: stable
-          name: Stable
-          files: dist/*
-          body: ${{ steps.changelog.outputs.changelog }}
-          make_latest: false
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+      - name: Update PKGBUILD version
+        run: |
+          VERSION="${{ github.ref_name }}"
+          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" aur/PKGBUILD
+          sed -i 's/^pkgrel=.*/pkgrel=1/' aur/PKGBUILD
+
+      - name: Regenerate .SRCINFO
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v "${{ github.workspace }}/aur:/work" \
+            -w /work \
+            archlinux:latest \
+            makepkg --printsrcinfo > aur/.SRCINFO
+
+      - name: Configure SSH for AUR
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.AUR_SSH_PRIVATE_KEY }}" > ~/.ssh/aur_key
+          chmod 600 ~/.ssh/aur_key
+          cat >> ~/.ssh/config << 'EOF'
+          Host aur.archlinux.org
+            IdentityFile ~/.ssh/aur_key
+            StrictHostKeyChecking accept-new
+          EOF
+          chmod 600 ~/.ssh/config
+
+      - name: Push to AUR
+        run: |
+          VERSION="${{ github.ref_name }}"
+          git add aur/
+          git commit -m "chore: update AUR to ${VERSION}" || echo "No changes to commit"
+          git remote add aur ssh://aur@aur.archlinux.org/stow-cm-bin.git
+          git subtree push --prefix=aur aur master

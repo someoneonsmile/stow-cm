@@ -85,3 +85,51 @@ jobs:
           files: dist/*
           prerelease: true
           body: ${{ steps.changelog.outputs.changelog }}
+
+  aur:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+      - name: Update PKGBUILD version
+        run: |
+          DATE="$(date +%Y%m%d)"
+          sed -i "s/^pkgver=.*/pkgver=${DATE}/" aur-nightly/PKGBUILD
+          sed -i 's/^pkgrel=.*/pkgrel=1/' aur-nightly/PKGBUILD
+
+      - name: Regenerate .SRCINFO
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v "${{ github.workspace }}/aur-nightly:/work" \
+            -w /work \
+            archlinux:latest \
+            makepkg --printsrcinfo > aur-nightly/.SRCINFO
+
+      - name: Configure SSH for AUR
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.AUR_SSH_PRIVATE_KEY }}" > ~/.ssh/aur_key
+          chmod 600 ~/.ssh/aur_key
+          cat >> ~/.ssh/config << 'EOF'
+          Host aur.archlinux.org
+            IdentityFile ~/.ssh/aur_key
+            StrictHostKeyChecking accept-new
+          EOF
+          chmod 600 ~/.ssh/config
+
+      - name: Push to AUR nightly
+        run: |
+          DATE="$(date +%Y%m%d)"
+          git add aur-nightly/
+          git commit -m "chore: update nightly AUR to ${DATE}" || echo "No changes to commit"
+          git remote add aur-nightly ssh://aur@aur.archlinux.org/stow-cm-nightly-bin.git
+          git subtree push --prefix=aur-nightly aur-nightly master
