@@ -15,11 +15,7 @@ pub fn global_xdg_config_path() -> PathBuf {
 
 /// 全局系统配置文件路径（运行时解析）
 pub fn global_config_path() -> PathBuf {
-    if let Ok(pd) = std::env::var("PROGRAMDATA") {
-        PathBuf::from(pd).join("stow-cm").join("config.toml")
-    } else {
-        PathBuf::from("/etc/stow-cm/config.toml")
-    }
+    PathBuf::from("/etc/stow-cm/config.toml")
 }
 
 /// pack 状态目录模板，含 `${PACK_ID}` 占位符

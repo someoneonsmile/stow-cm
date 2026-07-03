@@ -25,9 +25,6 @@ jobs:
           - os: macos-latest
             target: aarch64-apple-darwin
             asset: stow-cm-aarch64-macos
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            asset: stow-cm-x86_64-windows
     runs-on: ${{ matrix.os }}
     env:
       SHELL_HELP_DIR: shell_help
@@ -59,12 +56,10 @@ jobs:
         if: matrix.cross
         run: cross build --release --target ${{ matrix.target }}
 
-      - name: Strip binary (Unix)
-        if: runner.os != 'Windows'
+      - name: Strip binary
         run: strip "target/${{ matrix.target }}/release/${{ env.RELEASE_NAME }}"
 
-      - name: Package artifact (Unix)
-        if: runner.os != 'Windows'
+      - name: Package artifact
         run: |
           staging="${{ env.RELEASE_NAME }}-${{ matrix.target }}"
           mkdir -p "$staging" artifacts
@@ -73,17 +68,6 @@ jobs:
           cp README.md LICENSE "$staging/"
           tar czf "artifacts/$staging.tar.gz" "$staging"
           shasum -a 256 "artifacts/$staging.tar.gz" > "artifacts/$staging.tar.gz.sha256sum"
-
-      - name: Package artifact (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          $staging="$env:RELEASE_NAME-${{ matrix.target }}"
-          mkdir $staging, artifacts
-          cp "target/${{ matrix.target }}/release/$env:RELEASE_NAME.exe" "$staging/"
-          cp -r $env:SHELL_HELP_DIR/* "$staging/" -ErrorAction SilentlyContinue
-          cp README.md, LICENSE "$staging/"
-          7z a "artifacts/$staging.zip" "$staging"
-          sha256sum "artifacts/$staging.zip" > "artifacts/$staging.zip.sha256sum"
 
       - uses: actions/upload-artifact@v7
         with:
