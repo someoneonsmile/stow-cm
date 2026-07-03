@@ -34,7 +34,7 @@ pub enum Commands {
         #[arg(name = "PACK_PATH")]
         paths: Vec<PathBuf>,
     },
-    /// Scan and clean all symbol that link to pack from pack target
+    /// Scan and clean all symlinks that link from pack to pack target
     #[command(arg_required_else_help = true)]
     Clean {
         #[arg(name = "PACK_PATH")]
