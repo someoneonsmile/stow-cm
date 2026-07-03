@@ -5,17 +5,17 @@ A gnu-stow-like config manager written in Rust. Single binary crate.
 ## Build & Test Commands
 
 ```bash
-make              # Build release binary + shell completions/man pages
-make test         # cargo test
-make ci           # check + test + fmt-check + clippy (full CI pipeline)
-make lint         # cargo clippy --all-features
-make fmt          # cargo fmt --all
-make run          # cargo run --
-make dev          # RUST_LOG=debug cargo run --   # with debug logging
-make clean        # cargo clean + rm shell_help/
+just              # Build release binary + shell completions/man pages
+just test         # cargo test
+just ci           # check + test + fmt-check + clippy (full CI pipeline)
+just lint         # cargo clippy --all-features
+just fmt          # cargo fmt --all
+just run          # cargo run --
+just dev          # RUST_LOG=debug cargo run --   # with debug logging
+just clean        # cargo clean + rm shell_help/
 ```
 
-**Important**: `make build-completions` (called by `make`) runs `cargo build --release` with `SHELL_HELP_DIR=shell_help` to generate shell completions and man pages into `shell_help/`. This directory is gitignored.
+**Important**: `just build` runs `cargo build --release` with `SHELL_HELP_DIR=shell_help` to generate shell completions and man pages into `shell_help/`. This directory is gitignored.
 
 ## Rust Toolchain
 
