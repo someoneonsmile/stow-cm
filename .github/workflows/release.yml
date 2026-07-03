@@ -60,6 +60,8 @@ jobs:
       - name: Update PKGBUILD version
         run: |
           VERSION="${{ github.ref_name }}"
+          # Strip 'v' prefix for Arch Linux pkgver (e.g., v0.17.3 → 0.17.3)
+          VERSION="${VERSION#v}"
           sed -i "s/^pkgver=.*/pkgver=${VERSION}/" aur/PKGBUILD
           sed -i 's/^pkgrel=.*/pkgrel=1/' aur/PKGBUILD
 
@@ -89,6 +91,7 @@ jobs:
           AUR_REPO: ssh://aur@aur.archlinux.org/stow-cm-bin.git
         run: |
           VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
           # Commit changes in main repo
           git add aur/
           git commit -m "chore: update AUR to ${VERSION}" || echo "No changes to commit"
