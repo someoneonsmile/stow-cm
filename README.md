@@ -11,7 +11,7 @@ Commands:
   install  Install packs
   remove   Remove packs
   reload   Reload packs (remove and install)
-  clean    Scan and clean all symbol that link to pack from pack target
+  clean    Scan and clean all symlinks that link from pack to pack target
   encrypt  Scan files in the given pack for replacement variables, encrypt them, and replace them back to the original files
   decrypt  Scan files in the given pack for replacement variables, decrypt them, and replace them back to the original files
   help     Print this message or the help of the given subcommand(s)
@@ -37,8 +37,11 @@ stow-cm install ./*
 ### Arch
 
 ```sh
-paru -S stow-cm
+paru -S stow-cm-bin
 paru -S stow-cm-nightly-bin
+# or with yay
+yay -S stow-cm-bin
+yay -S stow-cm-nightly-bin
 ```
 
 ## CONFIG
@@ -55,11 +58,11 @@ paru -S stow-cm-nightly-bin
 ```toml
 # toml format
 
-# The follow environment variable will be injected
+# The following environment variables will be injected
 # PACK_ID: hash of the package path.
 # PACK_NAME: represents the last level of the package path.
 
-# when targe is none both in pack_config and common_config, it will skip link the dir_tree
+# when target is none both in pack_config and common_config, it will skip link the dir_tree
 # env var support the default value: ${env:-default}
 # target = '~'
 
@@ -102,8 +105,8 @@ content = 'pack_sub_path/to'
 
 [clear]
 type = '[Bin/Python/Make/Lua/Shell/ShellStr]'
-# Bin/Shell/Python/Make: file path relate on the pack
-# Script: string
+# Bin/Shell/Python/Make/Lua: file path relate on the pack
+# ShellStr: string
 # content = 'pack_sub_path/to'
 content = '''
 echo ${PACK_ID}
@@ -117,7 +120,7 @@ fi
 # default
 enable = false
 # default
-decrypted_path = '${XDG_DATA_HOME:-~/.local/share}/stow-cm/${PACK_ID}/decrypted/'
+decrypted_path = '${XDG_STATE_HOME:-~/.local/state}/stow-cm/${PACK_ID}/decrypted/'
 # default
 left_boundary = '&{'
 # default
