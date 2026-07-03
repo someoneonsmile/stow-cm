@@ -111,19 +111,36 @@ aur-srcinfo:
     cd aur && makepkg --printsrcinfo > .SRCINFO
 
 # Commit aur/ changes and push to AUR
+# AUR 禁止 force push，使用 clone → 更新文件 → commit → push 的可靠方式
 aur-push:
+    #!/usr/bin/env bash
+    set -euo pipefail
     git add aur/
     git commit -m "chore: update AUR package" || true
-    git subtree push --prefix=aur aur master
+    TMP=$(mktemp -d)
+    trap 'rm -rf "$TMP"' EXIT
+    git clone ssh://aur@aur.archlinux.org/stow-cm-bin.git "$TMP"
+    cp aur/PKGBUILD aur/.SRCINFO "$TMP/"
+    git -C "$TMP" add -A
+    git -C "$TMP" commit -m "chore: update AUR package" || true
+    git -C "$TMP" push origin master
 
 # Publish new version to AUR (usage: just aur-release VERSION=0.18.0)
 aur-release:
+    #!/usr/bin/env bash
+    set -euo pipefail
     sed -i 's/^pkgver=.*/pkgver={{ VERSION }}/' aur/PKGBUILD
     sed -i 's/^pkgrel=.*/pkgrel=1/' aur/PKGBUILD
     cd aur && makepkg --printsrcinfo > .SRCINFO
     git add aur/
     git commit -m "chore: update AUR to {{ VERSION }}" || true
-    git subtree push --prefix=aur aur master
+    TMP=$(mktemp -d)
+    trap 'rm -rf "$TMP"' EXIT
+    git clone ssh://aur@aur.archlinux.org/stow-cm-bin.git "$TMP"
+    cp aur/PKGBUILD aur/.SRCINFO "$TMP/"
+    git -C "$TMP" add -A
+    git -C "$TMP" commit -m "chore: update AUR to {{ VERSION }}" || true
+    git -C "$TMP" push origin master
 
 # ---- AUR: Nightly ----
 
@@ -132,10 +149,19 @@ aur-nightly-srcinfo:
     cd aur-nightly && makepkg --printsrcinfo > .SRCINFO
 
 # Commit aur-nightly/ changes and push to Nightly AUR
+# AUR 禁止 force push，使用 clone → 更新文件 → commit → push 的可靠方式
 aur-nightly-push:
+    #!/usr/bin/env bash
+    set -euo pipefail
     git add aur-nightly/
     git commit -m "chore: update nightly AUR package" || true
-    git subtree push --prefix=aur-nightly aur-nightly master
+    TMP=$(mktemp -d)
+    trap 'rm -rf "$TMP"' EXIT
+    git clone ssh://aur@aur.archlinux.org/stow-cm-nightly-bin.git "$TMP"
+    cp aur-nightly/PKGBUILD aur-nightly/.SRCINFO "$TMP/"
+    git -C "$TMP" add -A
+    git -C "$TMP" commit -m "chore: update nightly AUR package" || true
+    git -C "$TMP" push origin master
 
 # Publish Nightly AUR
 aur-nightly-release:
@@ -147,4 +173,10 @@ aur-nightly-release:
     cd aur-nightly && makepkg --printsrcinfo > .SRCINFO
     git add aur-nightly/
     git commit -m "chore: update nightly AUR to ${DATE}" || true
-    git subtree push --prefix=aur-nightly aur-nightly master
+    TMP=$(mktemp -d)
+    trap 'rm -rf "$TMP"' EXIT
+    git clone ssh://aur@aur.archlinux.org/stow-cm-nightly-bin.git "$TMP"
+    cp aur-nightly/PKGBUILD aur-nightly/.SRCINFO "$TMP/"
+    git -C "$TMP" add -A
+    git -C "$TMP" commit -m "chore: update nightly AUR to ${DATE}" || true
+    git -C "$TMP" push origin master
