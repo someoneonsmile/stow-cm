@@ -108,7 +108,7 @@ dev:
 
 # Regenerate aur/.SRCINFO (run after manually editing PKGBUILD)
 aur-srcinfo:
-    cd aur && makepkg --printsrcinfo > .SRCINFO
+    (cd aur && makepkg --printsrcinfo > .SRCINFO)
 
 # Commit aur/ changes and push to AUR
 # AUR 禁止 force push，使用 clone → 更新文件 → commit → push 的可靠方式
@@ -131,7 +131,7 @@ aur-release:
     set -euo pipefail
     sed -i 's/^pkgver=.*/pkgver={{ VERSION }}/' aur/PKGBUILD
     sed -i 's/^pkgrel=.*/pkgrel=1/' aur/PKGBUILD
-    cd aur && makepkg --printsrcinfo > .SRCINFO
+    (cd aur && makepkg --printsrcinfo > .SRCINFO)
     git add aur/
     git commit -m "chore: update AUR to {{ VERSION }}" || true
     TMP=$(mktemp -d)
@@ -146,7 +146,7 @@ aur-release:
 
 # Regenerate aur-nightly/.SRCINFO
 aur-nightly-srcinfo:
-    cd aur-nightly && makepkg --printsrcinfo > .SRCINFO
+    (cd aur-nightly && makepkg --printsrcinfo > .SRCINFO)
 
 # Commit aur-nightly/ changes and push to Nightly AUR
 # AUR 禁止 force push，使用 clone → 更新文件 → commit → push 的可靠方式
@@ -170,7 +170,7 @@ aur-nightly-release:
     DATE=$(date +%Y%m%d)
     sed -i "s/^pkgver=.*/pkgver=${DATE}/" aur-nightly/PKGBUILD
     sed -i 's/^pkgrel=.*/pkgrel=1/' aur-nightly/PKGBUILD
-    cd aur-nightly && makepkg --printsrcinfo > .SRCINFO
+    (cd aur-nightly && makepkg --printsrcinfo > .SRCINFO)
     git add aur-nightly/
     git commit -m "chore: update nightly AUR to ${DATE}" || true
     TMP=$(mktemp -d)
