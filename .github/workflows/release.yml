@@ -85,9 +85,19 @@ jobs:
           chmod 600 ~/.ssh/config
 
       - name: Push to AUR
+        env:
+          AUR_REPO: ssh://aur@aur.archlinux.org/stow-cm-bin.git
         run: |
           VERSION="${{ github.ref_name }}"
+          # Commit changes in main repo
           git add aur/
           git commit -m "chore: update AUR to ${VERSION}" || echo "No changes to commit"
-          git remote add aur ssh://aur@aur.archlinux.org/stow-cm-bin.git
-          git subtree push --prefix=aur aur master
+
+          # Clone AUR repo, copy files, commit and push
+          TMP=$(mktemp -d)
+          git clone "${AUR_REPO}" "$TMP"
+          cp aur/PKGBUILD aur/.SRCINFO "$TMP/"
+          git -C "$TMP" add -A
+          git -C "$TMP" commit -m "chore: update to ${VERSION}" || echo "No changes"
+          git -C "$TMP" push origin master
+          rm -rf "$TMP"

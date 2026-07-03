@@ -127,9 +127,19 @@ jobs:
           chmod 600 ~/.ssh/config
 
       - name: Push to AUR nightly
+        env:
+          AUR_REPO: ssh://aur@aur.archlinux.org/stow-cm-nightly-bin.git
         run: |
           DATE="$(date +%Y%m%d)"
+          # Commit changes in main repo
           git add aur-nightly/
           git commit -m "chore: update nightly AUR to ${DATE}" || echo "No changes to commit"
-          git remote add aur-nightly ssh://aur@aur.archlinux.org/stow-cm-nightly-bin.git
-          git subtree push --prefix=aur-nightly aur-nightly master
+
+          # Clone AUR repo, copy files, commit and push
+          TMP=$(mktemp -d)
+          git clone "${AUR_REPO}" "$TMP"
+          cp aur-nightly/PKGBUILD aur-nightly/.SRCINFO "$TMP/"
+          git -C "$TMP" add -A
+          git -C "$TMP" commit -m "chore: update to ${DATE}" || echo "No changes"
+          git -C "$TMP" push origin master
+          rm -rf "$TMP"
