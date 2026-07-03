@@ -140,6 +140,8 @@ jobs:
           git clone "${AUR_REPO}" "$TMP"
           cp aur-nightly/PKGBUILD aur-nightly/.SRCINFO "$TMP/"
           git -C "$TMP" add -A
+          git -C "$TMP" config user.name "GitHub Actions"
+          git -C "$TMP" config user.email "actions@github.com"
           git -C "$TMP" commit -m "chore: update to ${DATE}" || echo "No changes"
           git -C "$TMP" push origin master
           rm -rf "$TMP"

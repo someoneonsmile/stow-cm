@@ -98,6 +98,8 @@ jobs:
           git clone "${AUR_REPO}" "$TMP"
           cp aur/PKGBUILD aur/.SRCINFO "$TMP/"
           git -C "$TMP" add -A
+          git -C "$TMP" config user.name "GitHub Actions"
+          git -C "$TMP" config user.email "actions@github.com"
           git -C "$TMP" commit -m "chore: update to ${VERSION}" || echo "No changes"
           git -C "$TMP" push origin master
           rm -rf "$TMP"
