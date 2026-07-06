@@ -38,6 +38,14 @@ jobs:
                   "on_property": "title",
                   "target": "$1"
                 }
+              ],
+              "categories": [
+                { "title": "## 🚀 新功能", "labels": ["feat", "feature"] },
+                { "title": "## 🐛 修复", "labels": ["fix", "bugfix", "bug"] },
+                { "title": "## 📚 文档", "labels": ["docs", "documentation"] },
+                { "title": "## ⚡ 性能", "labels": ["perf", "performance"] },
+                { "title": "## 🔧 维护", "labels": ["chore", "refactor", "ci", "test", "build", "revert", "style", "deps"] },
+                { "title": "## 其他变更", "labels": ["*"] }
               ]
             }
         env:
