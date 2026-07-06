@@ -61,7 +61,7 @@ jobs:
 
       - name: Package artifact
         run: |
-          staging="${{ env.RELEASE_NAME }}-${{ matrix.target }}"
+          staging="${{ matrix.asset }}"
           mkdir -p "$staging" artifacts
           cp "target/${{ matrix.target }}/release/${{ env.RELEASE_NAME }}" "$staging/"
           cp -r ${SHELL_HELP_DIR}/* "$staging/" 2>/dev/null || true
