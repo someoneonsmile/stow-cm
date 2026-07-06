@@ -69,6 +69,16 @@ jobs:
           mode: COMMIT
           fromTag: ${{ steps.latest.outputs.tag }}
           toTag: ${{ github.sha }}
+          configurationJson: |
+            {
+              "label_extractor": [
+                {
+                  "pattern": "^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test){1}(\\([\\w\\-\\.]+\\))?(!)?: (.+)",
+                  "on_property": "title",
+                  "target": "$1"
+                }
+              ]
+            }
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
