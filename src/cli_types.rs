@@ -10,6 +10,14 @@ use clap::{Parser, Subcommand};
 #[command(version, about, name = "stow-cm")]
 #[command(arg_required_else_help = true)]
 pub struct Cli {
+    /// 增加日志详细程度（-v debug 级别，-vv trace 级别）
+    #[arg(short = 'v', long = "verbose", action = clap::ArgAction::Count, global = true)]
+    pub verbose: u8,
+
+    /// 静默模式，仅输出错误信息
+    #[arg(short = 'q', long = "quiet", action = clap::ArgAction::SetTrue, global = true, conflicts_with = "verbose")]
+    pub quiet: bool,
+
     #[command(subcommand)]
     pub command: Commands,
 }

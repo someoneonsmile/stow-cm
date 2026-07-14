@@ -48,7 +48,19 @@ macro_rules! dispatch {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    env_logger::Builder::from_env(Env::default().default_filter_or("info"))
+    let opt = Cli::parse();
+
+    let default_log_level = if opt.quiet {
+        "error"
+    } else {
+        match opt.verbose {
+            0 => "info",
+            1 => "debug",
+            _ => "trace",
+        }
+    };
+
+    env_logger::Builder::from_env(Env::default().default_filter_or(default_log_level))
         .default_format()
         .format_level(true)
         .format_target(false)
@@ -56,7 +68,6 @@ async fn main() -> Result<()> {
         .format_timestamp(None)
         .init();
 
-    let opt = Cli::parse();
     debug!("opt: {opt:?}");
 
     let common_config = Arc::new(Some(Config::global()?));
