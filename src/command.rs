@@ -10,7 +10,6 @@ use anyhow::bail;
 use futures::prelude::*;
 use log::{debug, info, warn};
 use maplit::hashmap;
-use regex::RegexSet;
 use tokio::fs;
 use walkdir::WalkDir;
 
@@ -24,6 +23,15 @@ use crate::paths::pack_track_file;
 use crate::symlink::Symlink;
 use crate::track_file::Track;
 use crate::util;
+
+/// 构造 pack 操作的环境变量 `[(PACK_ID_ENV, hash), (PACK_NAME_ENV, pack_name)]`，
+/// 消除 `install`/`clean`/`remove` 中的重复注入逻辑。
+fn pack_envs(pack: &Path, pack_name: &str) -> [(&'static str, String); 2] {
+    [
+        (PACK_ID_ENV, util::hash(&pack.to_string_lossy())),
+        (PACK_NAME_ENV, pack_name.to_owned()),
+    ]
+}
 
 /// reload packages
 pub async fn reload(config: Arc<Config>, pack: impl AsRef<Path>) -> Result<()> {
@@ -42,11 +50,9 @@ pub async fn install(config: Arc<Config>, pack: impl AsRef<Path>) -> Result<()> 
 
     // execute the init script
     if let Some(command) = &config.init {
-        let envs = [
-            (PACK_ID_ENV, util::hash(&pack.to_string_lossy())),
-            (PACK_NAME_ENV, pack_name.to_owned()),
-        ];
-        command.exec_async(&*pack, envs).await?;
+        command
+            .exec_async(&*pack, pack_envs(&pack, pack_name))
+            .await?;
     }
 
     Ok(())
@@ -60,7 +66,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         return Ok(());
     };
 
-    // if trace file has exists, then then pack has been installed
+    // if track file already exists, then the pack has been installed
     let context_map = hashmap! {
         PACK_ID_ENV => util::hash(&pack.as_ref().to_string_lossy()),
         PACK_NAME_ENV => pack_name.to_owned(),
@@ -84,19 +90,8 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         )
     })?;
 
-    let ignore_re = config
-        .ignore
-        .as_ref()
-        .map(RegexSet::new)
-        .transpose()
-        .with_context(|| anyhow!("{:?}", config.ignore))?;
-
-    let over_re = config
-        .over
-        .as_ref()
-        .map(RegexSet::new)
-        .transpose()
-        .with_context(|| anyhow!("{:?}", config.over))?;
+    let ignore_re = config.ignore_regex()?;
+    let over_re = config.over_regex()?;
 
     let mut symlinks = {
         let pack = pack.clone();
@@ -162,8 +157,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         if !fs::try_exists(decrypted_path).await? {
             fs::create_dir_all(decrypted_path).await.with_context(|| {
                 format!(
-                    // FIX: tip track file?
-                    "{pack_name}: failed to create track file dir, {}",
+                    "{pack_name}: failed to create decrypted dir, {}",
                     decrypted_path.display()
                 )
             })?;
@@ -270,11 +264,9 @@ pub async fn clean<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
 
     // execute the clear script
     if let Some(command) = &config.clear {
-        let envs = [
-            (PACK_ID_ENV, util::hash(&pack.to_string_lossy())),
-            (PACK_NAME_ENV, pack_name.to_owned()),
-        ];
-        command.exec_async(&*pack, envs).await?;
+        command
+            .exec_async(&*pack, pack_envs(&pack, pack_name))
+            .await?;
     }
 
     Ok(())
@@ -323,6 +315,18 @@ async fn clean_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         }
     }
 
+    // 清理完成后删除残留的 track 文件，保持状态一致
+    let context_map = hashmap! {
+        PACK_ID_ENV => util::hash(&pack.as_ref().to_string_lossy()),
+        PACK_NAME_ENV => pack_name.to_owned(),
+    };
+    let track_file =
+        util::shell_expand_full_with_context(pack_track_file(), |key| context_map.get(key))?;
+    if track_file.try_exists()? {
+        debug!("{pack_name}: clean track file, {}", track_file.display());
+        fs::remove_file(track_file).await?;
+    }
+
     Ok(())
 }
 
@@ -336,11 +340,9 @@ pub async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> 
 
     // execute the clear script
     if let Some(command) = &config.clear {
-        let envs = [
-            (PACK_ID_ENV, util::hash(&pack.to_string_lossy())),
-            (PACK_NAME_ENV, pack_name.to_owned()),
-        ];
-        command.exec_async(&*pack, envs).await?;
+        command
+            .exec_async(&*pack, pack_envs(&pack, pack_name))
+            .await?;
     }
 
     Ok(())
@@ -426,12 +428,7 @@ async fn crypto_process<P: AsRef<Path>>(
     } = params;
     let key = key.as_slice();
 
-    let ignore_re = config
-        .ignore
-        .as_ref()
-        .map(RegexSet::new)
-        .transpose()
-        .with_context(|| anyhow!("{:?}", config.ignore))?;
+    let ignore_re = config.ignore_regex()?;
 
     let files = {
         let pack = pack.clone();

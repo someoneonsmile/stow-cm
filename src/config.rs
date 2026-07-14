@@ -5,6 +5,7 @@ use std::process::Stdio;
 
 use anyhow::{Context, anyhow, bail};
 use merge::option::with_recurse_strategy;
+use regex::RegexSet;
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 
@@ -137,6 +138,24 @@ impl Config {
     pub fn normalize(&mut self) {
         self.finalize();
         self.merge(Config::system());
+    }
+
+    /// 从 `self.ignore` 构造 `RegexSet`，消除 `command.rs` 和 `crypto_process` 中的重复构造逻辑。
+    pub fn ignore_regex(&self) -> crate::error::Result<Option<RegexSet>> {
+        self.ignore
+            .as_ref()
+            .map(RegexSet::new)
+            .transpose()
+            .with_context(|| anyhow!("{:?}", self.ignore))
+    }
+
+    /// 从 `self.over` 构造 `RegexSet`，消除 `command.rs` 中的重复构造逻辑。
+    pub fn over_regex(&self) -> crate::error::Result<Option<RegexSet>> {
+        self.over
+            .as_ref()
+            .map(RegexSet::new)
+            .transpose()
+            .with_context(|| anyhow!("{:?}", self.over))
     }
 }
 
