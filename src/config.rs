@@ -1,10 +1,13 @@
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use anyhow::{Context, anyhow, bail};
+use log::warn;
+use maplit::hashmap;
 use merge::option::with_recurse_strategy;
 use regex::RegexSet;
 use serde::{Deserialize, Serialize};
@@ -15,7 +18,7 @@ use stow_cm_macros::Finalize;
 use crate::base64;
 use crate::constants::{
     CONFIG_FILE_NAME, DEFAULT_CRYPT_ALG, DEFAULT_DECRYPT_LEFT_BOUNDARY,
-    DEFAULT_DECRYPT_RIGHT_BOUNDARY,
+    DEFAULT_DECRYPT_RIGHT_BOUNDARY, PACK_ID_ENV, PACK_NAME_ENV,
 };
 use crate::error::Result;
 use crate::merge::{Finalize, Merge, SystemInstance};
@@ -154,6 +157,39 @@ impl Config {
         }
     }
 
+    /// 加载 pack 配置并合并全局配置、normalize、shell 展开路径，返回就绪的运行时配置。
+    pub fn for_pack(pack: &Path, global: &Config) -> Result<Config> {
+        let mut pack_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
+        if pack_config.is_none() {
+            warn!(
+                "{}: doesn't have its own config file, will use the common config file",
+                pack.display()
+            );
+        }
+        merge::option::recurse(&mut pack_config, Some(global.clone()));
+        let Some(mut config) = pack_config else {
+            anyhow::bail!("no config")
+        };
+        config.normalize();
+
+        let pack_name = config.resolve_pack_name(pack)?;
+        let context_map = hashmap! {
+            PACK_ID_ENV => util::hash(&pack.to_string_lossy()),
+            PACK_NAME_ENV => pack_name.to_string(),
+        };
+        config.target = expand_path(config.target, &context_map)?;
+        config.encrypted = config
+            .encrypted
+            .map(|mut encrypted| {
+                encrypted.key_path = expand_path(encrypted.key_path, &context_map)?;
+                encrypted.decrypted_path = expand_path(encrypted.decrypted_path, &context_map)?;
+                anyhow::Ok(encrypted)
+            })
+            .transpose()?;
+
+        Ok(config)
+    }
+
     /// 从 `self.ignore` 构造 `RegexSet`，消除 `command.rs` 和 `crypto_process` 中的重复构造逻辑。
     pub fn ignore_regex(&self) -> crate::error::Result<Option<RegexSet>> {
         self.ignore
@@ -171,6 +207,11 @@ impl Config {
             .transpose()
             .with_context(|| anyhow!("{:?}", self.over))
     }
+}
+
+fn expand_path(path: Option<PathBuf>, context: &HashMap<&str, String>) -> Result<Option<PathBuf>> {
+    path.map(|p| util::shell_expand_full_with_context(p, |key| context.get(key)))
+        .transpose()
 }
 
 impl Default for Config {
