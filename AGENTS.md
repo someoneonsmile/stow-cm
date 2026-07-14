@@ -37,9 +37,16 @@ Exceptions in `clippy.toml`: `allow-unwrap-in-tests` and `allow-expect-in-tests`
 
 - **Entry point**: `src/main.rs` - async main using tokio
 - **CLI**: `src/cli.rs` - clap derive, commands: `install`, `remove`, `reload`, `clean`, `encrypt`, `decrypt`
-- **Command dispatch**: `src/command.rs` - maps CLI commands to implementation
+- **Command dispatch**: `src/command/` - maps CLI commands to implementation
+  - `mod.rs` — 模块入口，re-export 所有公开命令 + 公共 helper（`pack_envs`, `resolve_track_file`, `reload`）
+  - `install.rs` — `install()` + `install_link()`
+  - `remove.rs` — `remove()` + `remove_link()`
+  - `clean.rs` — `clean()` + `clean_link()`
+  - `crypto.rs` — `encrypt()` + `decrypt()` + `crypto_process()`
+  - 新增命令（`status`, `adopt`, `list`, `init`, `doctor`, `export` 等）按此模式各放独立文件，在 `mod.rs` 中声明 `mod xyz;` 并 `pub use`
 - **Execution**: `src/executor.rs` - parallel execution of pack operations
 - **Key modules**: `config`, `crypto`, `merge_tree`, `symlink`, `track_file`, `util`
+- **功能规划**: `.omo/stow-cm-feature-roadmap.md`
 
 ## Config File Locations
 
