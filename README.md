@@ -49,9 +49,9 @@ yay -S stow-cm-nightly-bin
 ### Location
 
 - `$XDG_CONFIG_HOME/stow-cm/config.toml`: common config
-- `{stow pack dir}/stow-cm.toml`: pack config
+- `{stow pack dir}/stow-cm.toml`: pack config (required — directory without this file is not considered a valid pack)
 
-> note: it not uses the pack/pack_sub_path/stow-cm.toml
+> note: subdirectories under pack are not searched for stow-cm.toml
 
 ### Format
 
