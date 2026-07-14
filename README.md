@@ -25,7 +25,7 @@ Options:
 stow-cm install ./nvim /path/to/pack
 stow-cm remove ./nvim /path/to/pack
 stow-cm reload ./nvim /path/to/pack
-stow-cm clean ./nvim /path/to/pack
+stow-cm clean ./nvim /path/to/pack   # only works for symlink-mode packs
 stow-cm encrypt ./nvim /path/to/pack
 stow-cm decrypt ./nvim /path/to/pack
 
@@ -95,6 +95,8 @@ ignore = [
 fold = true
 
 # default, use symlink, another mode is 'copy'
+# NOTE: copy mode is incompatible with the `clean` command (clean only scans symlinks).
+#       Use `remove` to uninstall copy-mode packs.
 mode = 'symlink'
 
 [init]
