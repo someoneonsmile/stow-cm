@@ -39,6 +39,13 @@ mod util;
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
+macro_rules! dispatch {
+    ($common_config:expr, $paths:expr, $cmd:ident) => {{
+        let paths = util::canonicalize($paths).await?;
+        executor::exec_all($common_config, paths, $cmd).await?;
+    }};
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or("info"))
@@ -56,31 +63,12 @@ async fn main() -> Result<()> {
     debug!("common_config: {common_config:?}");
 
     match opt.command {
-        Commands::Install { paths } => {
-            // let common_config = common_config.clone();
-            let paths = util::canonicalize(paths).await?;
-            executor::exec_all(common_config, paths, install).await?;
-        }
-        Commands::Remove { paths } => {
-            let paths = util::canonicalize(paths).await?;
-            executor::exec_all(common_config, paths, remove).await?;
-        }
-        Commands::Reload { paths } => {
-            let paths = util::canonicalize(paths).await?;
-            executor::exec_all(common_config, paths, reload).await?;
-        }
-        Commands::Clean { paths } => {
-            let paths = util::canonicalize(paths).await?;
-            executor::exec_all(common_config, paths, clean).await?;
-        }
-        Commands::Encrypt { paths } => {
-            let paths = util::canonicalize(paths).await?;
-            executor::exec_all(common_config, paths, encrypt).await?;
-        }
-        Commands::Decrypt { paths } => {
-            let paths = util::canonicalize(paths).await?;
-            executor::exec_all(common_config, paths, decrypt).await?;
-        }
+        Commands::Install { paths } => dispatch!(common_config, paths, install),
+        Commands::Remove { paths } => dispatch!(common_config, paths, remove),
+        Commands::Reload { paths } => dispatch!(common_config, paths, reload),
+        Commands::Clean { paths } => dispatch!(common_config, paths, clean),
+        Commands::Encrypt { paths } => dispatch!(common_config, paths, encrypt),
+        Commands::Decrypt { paths } => dispatch!(common_config, paths, decrypt),
     }
 
     Ok(())
