@@ -41,3 +41,9 @@ pub fn default_pack_decrypt() -> String {
 pub fn default_pack_target() -> String {
     format!("{}/${{PACK_NAME}}/", config_home().display())
 }
+
+/// stow-cm 状态数据根目录（`$XDG_STATE_HOME/stow-cm/`），
+/// `list` 命令扫描此目录下的所有 track file
+pub fn stow_cm_state_dir() -> PathBuf {
+    state_home().join("stow-cm")
+}

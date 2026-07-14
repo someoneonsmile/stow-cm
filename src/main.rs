@@ -10,6 +10,7 @@ use crate::command::clean;
 use crate::command::decrypt;
 use crate::command::encrypt;
 use crate::command::install;
+use crate::command::list;
 use crate::command::reload;
 use crate::command::remove;
 use crate::config::Config;
@@ -80,6 +81,7 @@ async fn main() -> Result<()> {
         Commands::Clean { paths } => dispatch!(common_config, paths, clean),
         Commands::Encrypt { paths } => dispatch!(common_config, paths, encrypt),
         Commands::Decrypt { paths } => dispatch!(common_config, paths, decrypt),
+        Commands::List { json } => list(json).await?,
     }
 
     Ok(())

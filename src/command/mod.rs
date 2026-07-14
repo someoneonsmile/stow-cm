@@ -1,11 +1,13 @@
 mod clean;
 mod crypto;
 mod install;
+mod list;
 mod remove;
 
 pub use clean::clean;
 pub use crypto::{decrypt, encrypt};
 pub use install::install;
+pub use list::list;
 pub use remove::remove;
 
 use std::path::{Path, PathBuf};

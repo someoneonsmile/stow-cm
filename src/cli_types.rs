@@ -62,4 +62,10 @@ pub enum Commands {
         #[arg(name = "PACK_PATH")]
         paths: Vec<PathBuf>,
     },
+    /// List all installed packs and their status
+    List {
+        /// Output in JSON format
+        #[arg(long = "json")]
+        json: bool,
+    },
 }

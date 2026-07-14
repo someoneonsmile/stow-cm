@@ -221,6 +221,8 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
                 None
             },
             links: symlinks,
+            pack_path: Some((**pack).clone()),
+            target: Some(target.clone()),
         })?,
     )
     .await?;
