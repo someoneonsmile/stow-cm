@@ -3,12 +3,14 @@ mod crypto;
 mod install;
 mod list;
 mod remove;
+mod status;
 
 pub use clean::clean;
 pub use crypto::{decrypt, encrypt};
 pub use install::install;
 pub use list::list;
 pub use remove::remove;
+pub use status::status;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

@@ -68,4 +68,16 @@ pub enum Commands {
         #[arg(long = "json")]
         json: bool,
     },
+    /// 检查已安装 pack 的状态一致性
+    Status {
+        /// 可选 pack 路径，不传则检查所有已安装 pack
+        #[arg(name = "PACK_PATH")]
+        paths: Vec<PathBuf>,
+        /// 自动修复可修复的问题（重新创建缺失的链接）
+        #[arg(long = "fix")]
+        fix: bool,
+        /// 以 JSON 格式输出
+        #[arg(long = "json")]
+        json: bool,
+    },
 }

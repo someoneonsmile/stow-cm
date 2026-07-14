@@ -12,11 +12,15 @@ Commands:
   remove   Remove packs
   reload   Reload packs (remove and install)
   clean    Scan and clean all symlinks that link from pack to pack target
+  status   Check consistency between installed links and the filesystem
+  list     List all installed packs and their status
   encrypt  Scan files in the given pack for replacement variables, encrypt them, and replace them back to the original files
   decrypt  Scan files in the given pack for replacement variables, decrypt them, and replace them back to the original files
   help     Print this message or the help of the given subcommand(s)
 
 Options:
+  -v, --verbose  Increase log verbosity (-v debug, -vv trace)
+  -q, --quiet    Quiet mode, only output errors
   -h, --help     Print help
   -V, --version  Print version
 ```
@@ -26,11 +30,32 @@ stow-cm install ./nvim /path/to/pack
 stow-cm remove ./nvim /path/to/pack
 stow-cm reload ./nvim /path/to/pack
 stow-cm clean ./nvim /path/to/pack   # only works for symlink-mode packs
+stow-cm status ./nvim                # check pack consistency
+stow-cm status                       # check all installed packs
+stow-cm status --fix                 # auto-fix missing links
+stow-cm status --json                # machine-readable output
+stow-cm list                         # list all installed packs
+stow-cm list --json                  # list as JSON
 stow-cm encrypt ./nvim /path/to/pack
 stow-cm decrypt ./nvim /path/to/pack
 
 stow-cm install ./*
 ```
+
+### Status Codes
+
+`stow-cm status` reports one of the following per link:
+
+| Status       | Meaning                                                      |
+|-------------|--------------------------------------------------------------|
+| `OK`        | Link on disk matches the track file record                   |
+| `MISSING`   | Recorded link does not exist on the filesystem               |
+| `DANGLING`  | Link exists but the source file it points to is gone         |
+| `OVERWRITTEN` | Target path is occupied by a non-link file (manually replaced) |
+| `DRIFT`     | Symlink points to a different target than what was recorded  |
+
+Use `stow-cm status --fix` to automatically repair `MISSING` links by recreating them.
+`OVERWRITTEN` and `DRIFT` are never auto-fixed — they require manual review.
 
 ## INSTALL
 
@@ -154,7 +179,9 @@ key_path = '/path/to/key'
 - [x] refactor: clear cli command
 - [x] pack unset global or default target value
 
-- [ ] log level from cli args
+- [x] log level from cli args
+
+- [x] status command
 
 - [ ] split override, bak file
 

@@ -13,6 +13,7 @@ use crate::command::install;
 use crate::command::list;
 use crate::command::reload;
 use crate::command::remove;
+use crate::command::status;
 use crate::config::Config;
 use crate::error::Result;
 
@@ -82,6 +83,13 @@ async fn main() -> Result<()> {
         Commands::Encrypt { paths } => dispatch!(common_config, paths, encrypt),
         Commands::Decrypt { paths } => dispatch!(common_config, paths, decrypt),
         Commands::List { json } => list(json).await?,
+        Commands::Status { paths, fix, json } => {
+            let global = common_config
+                .as_ref()
+                .as_ref()
+                .ok_or_else(|| crate::error::anyhow!("global config not loaded"))?;
+            status(global, paths, fix, json).await?;
+        }
     }
 
     Ok(())
