@@ -3,7 +3,7 @@ members = ["stow-cm-macros"]
 
 [package]
 name = "stow-cm"
-version = "0.19.0"
+version = "0.20.0"
 authors = ["someone"]
 edition = "2024"
 
