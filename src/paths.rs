@@ -1,7 +1,9 @@
 use std::path::PathBuf;
 
 fn config_home() -> PathBuf {
-    dirs::config_dir().unwrap_or_default()
+    dirs::config_dir()
+        .or_else(|| dirs::home_dir().map(|h| h.join(".config")))
+        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 fn state_home() -> PathBuf {

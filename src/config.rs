@@ -11,13 +11,14 @@ use tokio::io::AsyncWriteExt;
 use stow_cm_macros::Finalize;
 
 use crate::constants::{
-    CONFIG_FILE_NAME, DEFAULT_CRYPT_ALG, DEFAULT_DECRYPT_LEFT_BOUNDARY, DEFAULT_DECRYPT_RIGHT_BOUNDARY,
-};
-use crate::paths::{
-    default_pack_decrypt, default_pack_target, global_config_path, global_xdg_config_path,
+    CONFIG_FILE_NAME, DEFAULT_CRYPT_ALG, DEFAULT_DECRYPT_LEFT_BOUNDARY,
+    DEFAULT_DECRYPT_RIGHT_BOUNDARY,
 };
 use crate::error::Result;
 use crate::merge::{Finalize, Merge, SystemInstance};
+use crate::paths::{
+    default_pack_decrypt, default_pack_target, global_config_path, global_xdg_config_path,
+};
 use crate::symlink::SymlinkMode;
 use crate::util;
 

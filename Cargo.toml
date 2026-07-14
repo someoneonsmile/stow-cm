@@ -19,14 +19,12 @@ log = { version = "0" }
 env_logger = "0"
 futures = "0"
 walkdir = "2"
-const_format = { version = "0" }
 # merge = "0"
 # merge = { git = "https://git.sr.ht/~ireas/merge-rs", branch = "master" }
 merge = { git = "https://github.com/someoneonsmile/merge-rs", branch = "main" }
 ring = { version = "0", features = ["std"] }
 base64 = "0"
 clap = { version = "4", features = ["derive"] }
-num_cpus = "1"
 sha3 = "0"
 maplit = "1"
 lazy-regex = "3"
