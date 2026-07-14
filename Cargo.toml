@@ -49,8 +49,9 @@ clap_complete = "4"
 clap_mangen = "0"
 
 [profile.release]
-opt-level = "s"
+opt-level = 3
 lto = true
+codegen-units = 1
 panic = "abort"
 # options["none", "debuginfo", "symbols", true, false]
 # the default is "none", true = "symbols", false = "none"
