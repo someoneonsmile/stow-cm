@@ -14,8 +14,7 @@ use regex::RegexSet;
 use tokio::fs;
 use walkdir::WalkDir;
 
-use crate::base64;
-use crate::config::Config;
+use crate::config::{Config, EncryptedParams};
 use crate::constants::{PACK_ID_ENV, PACK_NAME_ENV};
 use crate::crypto;
 use crate::error::Result;
@@ -146,51 +145,19 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         let decrypted_path = decrypted_path
             .ok_or_else(|| anyhow!("{pack_name}: decrypted path is not configured"))?;
 
-        let key = {
-            let key_path = config
-                .encrypted
-                .as_ref()
-                .and_then(|it| it.key_path.as_ref())
-                .ok_or_else(|| anyhow!("{pack_name}: key_path is not configured"))?;
-            if !fs::try_exists(key_path).await? {
-                bail!("{pack_name}: key_path not exist");
-            }
-            let key_base64 = fs::read_to_string(key_path).await.with_context(|| {
-                format!(
-                    "{pack_name}: failed to read from key_path={}",
-                    key_path.display()
-                )
-            })?;
-            base64::decode(&key_base64)?
-        };
+        let params = config
+            .encrypted
+            .as_ref()
+            .ok_or_else(|| anyhow!("{pack_name}: encrypted config not found"))?
+            .resolve(pack_name)
+            .await?;
+        let EncryptedParams {
+            key,
+            left_boundary,
+            right_boundary,
+            encrypted_alg,
+        } = params;
         let key = key.as_slice();
-
-        let left_boundary = {
-            let s = config
-                .encrypted
-                .as_ref()
-                .and_then(|it| it.left_boundary.as_ref())
-                .ok_or_else(|| anyhow!("{pack_name}: left_boundary is not configured"))?;
-            s.as_str()
-        };
-
-        let right_boundary = {
-            let s = config
-                .encrypted
-                .as_ref()
-                .and_then(|it| it.right_boundary.as_ref())
-                .ok_or_else(|| anyhow!("{pack_name}: right_boundary is not configured"))?;
-            s.as_str()
-        };
-
-        let encrypted_alg = {
-            let s = config
-                .encrypted
-                .as_ref()
-                .and_then(|it| it.encrypted_alg.as_ref())
-                .ok_or_else(|| anyhow!("{pack_name}: encrypted_alg is not configured"))?;
-            s.as_str()
-        };
 
         if !fs::try_exists(decrypted_path).await? {
             fs::create_dir_all(decrypted_path).await.with_context(|| {
@@ -453,51 +420,19 @@ async fn crypto_process<P: AsRef<Path>>(
         return Ok(());
     }
 
-    let key = {
-        let key_path = config
-            .encrypted
-            .as_ref()
-            .and_then(|it| it.key_path.as_ref())
-            .ok_or_else(|| anyhow!("{pack_name}: key_path is not configured"))?;
-        if !fs::try_exists(key_path).await? {
-            bail!("{pack_name}: key_path not exist");
-        }
-        let key_base64 = fs::read_to_string(key_path).await.with_context(|| {
-            format!(
-                "{pack_name}: failed to read from key_path={}",
-                key_path.display()
-            )
-        })?;
-        base64::decode(&key_base64)?
-    };
+    let params = config
+        .encrypted
+        .as_ref()
+        .ok_or_else(|| anyhow!("{pack_name}: encrypted config not found"))?
+        .resolve(pack_name)
+        .await?;
+    let EncryptedParams {
+        key,
+        left_boundary,
+        right_boundary,
+        encrypted_alg,
+    } = params;
     let key = key.as_slice();
-
-    let left_boundary = {
-        let s = config
-            .encrypted
-            .as_ref()
-            .and_then(|it| it.left_boundary.as_ref())
-            .ok_or_else(|| anyhow!("{pack_name}: left_boundary is not configured"))?;
-        s.as_str()
-    };
-
-    let right_boundary = {
-        let s = config
-            .encrypted
-            .as_ref()
-            .and_then(|it| it.right_boundary.as_ref())
-            .ok_or_else(|| anyhow!("{pack_name}: right_boundary is not configured"))?;
-        s.as_str()
-    };
-
-    let encrypted_alg = {
-        let s = config
-            .encrypted
-            .as_ref()
-            .and_then(|it| it.encrypted_alg.as_ref())
-            .ok_or_else(|| anyhow!("{pack_name}: encrypted_alg is not configured"))?;
-        s.as_str()
-    };
 
     let ignore_re = config
         .ignore

@@ -3,13 +3,14 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
-use anyhow::anyhow;
+use anyhow::{Context, anyhow, bail};
 use merge::option::with_recurse_strategy;
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 
 use stow_cm_macros::Finalize;
 
+use crate::base64;
 use crate::constants::{
     CONFIG_FILE_NAME, DEFAULT_CRYPT_ALG, DEFAULT_DECRYPT_LEFT_BOUNDARY,
     DEFAULT_DECRYPT_RIGHT_BOUNDARY,
@@ -78,6 +79,14 @@ pub struct EncryptedConfig {
     pub encrypted_alg: Option<String>,
     /// the algorithm of encrypted content, default to chacha20poly1305
     pub key_path: Option<PathBuf>,
+}
+
+/// 解析后的加密参数，由 [`EncryptedConfig::resolve`] 一次性生成
+pub struct EncryptedParams<'a> {
+    pub key: Vec<u8>,
+    pub left_boundary: &'a str,
+    pub right_boundary: &'a str,
+    pub encrypted_alg: &'a str,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -199,6 +208,51 @@ impl Command {
         };
         command.current_dir(wd).envs(envs).status().await?;
         Ok(())
+    }
+}
+
+impl EncryptedConfig {
+    /// 一次性解析所有加密参数（含密钥文件读取），消除 `command.rs` 中的重复提取逻辑
+    pub async fn resolve(&self, pack_name: &str) -> Result<EncryptedParams<'_>> {
+        let key_path = self
+            .key_path
+            .as_ref()
+            .ok_or_else(|| anyhow!("{pack_name}: key_path is not configured"))?;
+        if !tokio::fs::try_exists(key_path).await? {
+            bail!("{pack_name}: key_path not exist");
+        }
+        let key_base64 = tokio::fs::read_to_string(key_path).await.with_context(|| {
+            format!(
+                "{pack_name}: failed to read from key_path={}",
+                key_path.display()
+            )
+        })?;
+        let key = base64::decode(&key_base64)?;
+
+        let left_boundary = self
+            .left_boundary
+            .as_ref()
+            .ok_or_else(|| anyhow!("{pack_name}: left_boundary is not configured"))?
+            .as_str();
+
+        let right_boundary = self
+            .right_boundary
+            .as_ref()
+            .ok_or_else(|| anyhow!("{pack_name}: right_boundary is not configured"))?
+            .as_str();
+
+        let encrypted_alg = self
+            .encrypted_alg
+            .as_ref()
+            .ok_or_else(|| anyhow!("{pack_name}: encrypted_alg is not configured"))?
+            .as_str();
+
+        Ok(EncryptedParams {
+            key,
+            left_boundary,
+            right_boundary,
+            encrypted_alg,
+        })
     }
 }
 
