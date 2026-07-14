@@ -349,14 +349,6 @@ pub async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> 
 /// remove links
 async fn remove_link(_config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     let pack_name = util::pack_name(pack)?;
-    // NOTE: not need because track file move from target dir to $XDG_STATE_HOME
-    // let target = match config.target.as_ref() {
-    //     None => {
-    //         warn!("{pack_name}: target is none, skip remove links");
-    //         return Ok(());
-    //     }
-    //     Some(target) => target,
-    // };
 
     let context_map = hashmap! {
         PACK_ID_ENV => util::hash(&pack.as_ref().to_string_lossy()),
