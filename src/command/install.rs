@@ -21,7 +21,7 @@ use super::{pack_envs, resolve_track_file};
 /// install packages
 pub async fn install(config: Arc<Config>, pack: impl AsRef<Path>) -> Result<()> {
     let pack = Arc::new(pack.as_ref().to_path_buf());
-    let pack_name = util::pack_name(&pack)?;
+    let pack_name = config.resolve_pack_name(&pack)?.into_owned();
     info!("install pack: {pack_name}");
 
     install_link(&config, &pack).await?;
@@ -29,7 +29,7 @@ pub async fn install(config: Arc<Config>, pack: impl AsRef<Path>) -> Result<()> 
     // execute the init script
     if let Some(command) = &config.init {
         command
-            .exec_async(&*pack, pack_envs(&pack, pack_name))
+            .exec_async(&*pack, pack_envs(&pack, &pack_name))
             .await?;
     }
 
@@ -38,14 +38,14 @@ pub async fn install(config: Arc<Config>, pack: impl AsRef<Path>) -> Result<()> 
 
 /// install link
 async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
-    let pack_name = util::pack_name(pack)?;
+    let pack_name = config.resolve_pack_name(pack.as_ref())?.into_owned();
     let Some(target) = config.target.as_ref() else {
         warn!("{pack_name}: target is none, skip install links");
         return Ok(());
     };
 
     // if track file already exists, then the pack has been installed
-    let track_file = resolve_track_file(pack, pack_name)?;
+    let track_file = resolve_track_file(pack, &pack_name)?;
     if track_file.try_exists()? {
         bail!("{pack_name}: pack has been install")
     }
@@ -117,7 +117,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
             .encrypted
             .as_ref()
             .ok_or_else(|| anyhow!("{pack_name}: encrypted config not found"))?
-            .resolve(pack_name)
+            .resolve(&pack_name)
             .await?;
         let EncryptedParams {
             key,
@@ -156,45 +156,48 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         futures::stream::iter(decrypted_file_map.into_iter().map(Ok))
             .try_for_each_concurrent(
                 Some(util::max_concurrent_files()),
-                |(origin_file_path, decrypted_file_path)| async move {
-                    // 用 symlink_metadata 一次性获取元数据，避免多次 stat() 调用之间的 TOCTOU 竞态窗口
-                    match fs::symlink_metadata(&decrypted_file_path).await {
-                        Ok(meta) => {
-                            let ft = meta.file_type();
-                            if ft.is_file() || ft.is_symlink() {
-                                fs::remove_file(&decrypted_file_path).await?;
-                            } else if ft.is_dir() {
-                                fs::remove_dir_all(&decrypted_file_path).await?;
+                |(origin_file_path, decrypted_file_path)| {
+                    let pack_name = pack_name.clone();
+                    async move {
+                        // 用 symlink_metadata 一次性获取元数据，避免多次 stat() 调用之间的 TOCTOU 竞态窗口
+                        match fs::symlink_metadata(&decrypted_file_path).await {
+                            Ok(meta) => {
+                                let ft = meta.file_type();
+                                if ft.is_file() || ft.is_symlink() {
+                                    fs::remove_file(&decrypted_file_path).await?;
+                                } else if ft.is_dir() {
+                                    fs::remove_dir_all(&decrypted_file_path).await?;
+                                }
                             }
+                            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                                // 目标不存在，无需清理
+                            }
+                            Err(e) => return Err(e.into()),
                         }
-                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                            // 目标不存在，无需清理
-                        }
-                        Err(e) => return Err(e.into()),
+                        info!(
+                            "{pack_name}: decrypt {} to {}",
+                            origin_file_path.display(),
+                            decrypted_file_path.display()
+                        );
+                        let content = fs::read_to_string(origin_file_path).await?;
+                        let origin_content = crypto::decrypt_inline(
+                            &content,
+                            encrypted_alg,
+                            key,
+                            left_boundary,
+                            right_boundary,
+                            true,
+                        )?;
+                        fs::write(&decrypted_file_path, origin_content)
+                            .await
+                            .with_context(|| {
+                                format!(
+                                    "{pack_name}: failed to write decrypted content to path={}",
+                                    decrypted_file_path.display()
+                                )
+                            })?;
+                        Result::<(), anyhow::Error>::Ok(())
                     }
-                    info!(
-                        "{pack_name}: decrypt {} to {}",
-                        origin_file_path.display(),
-                        decrypted_file_path.display()
-                    );
-                    let content = fs::read_to_string(origin_file_path).await?;
-                    let origin_content = crypto::decrypt_inline(
-                        &content,
-                        encrypted_alg,
-                        key,
-                        left_boundary,
-                        right_boundary,
-                        true,
-                    )?;
-                    fs::write(&decrypted_file_path, origin_content)
-                        .await
-                        .with_context(|| {
-                            format!(
-                                "{pack_name}: failed to write decrypted content to path={}",
-                                decrypted_file_path.display()
-                            )
-                        })?;
-                    Result::<(), anyhow::Error>::Ok(())
                 },
             )
             .await?;
@@ -202,9 +205,12 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 
     debug!("{pack_name}: install paths {symlinks:?}");
     futures::stream::iter(symlinks.iter().map(|s| Ok(s.clone())))
-        .try_for_each_concurrent(Some(util::max_concurrent_files()), |symlink| async move {
-            info!("{pack_name}: symlink {symlink}");
-            symlink.create(true).await
+        .try_for_each_concurrent(Some(util::max_concurrent_files()), |symlink| {
+            let pack_name = pack_name.clone();
+            async move {
+                info!("{pack_name}: symlink {symlink}");
+                symlink.create(true).await
+            }
         })
         .await?;
 
@@ -221,6 +227,7 @@ async fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
                 None
             },
             links: symlinks,
+            pack_name: Some(pack_name.clone()),
             pack_path: Some((**pack).clone()),
             target: Some(target.clone()),
         })?,

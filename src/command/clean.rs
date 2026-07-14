@@ -16,7 +16,7 @@ use super::{pack_envs, resolve_track_file};
 /// clean packages
 pub async fn clean<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
     let pack = Arc::new(pack.as_ref().to_path_buf());
-    let pack_name = util::pack_name(&pack)?;
+    let pack_name = config.resolve_pack_name(&pack)?.into_owned();
     info!("clean pack: {pack_name}");
 
     clean_link(&config, &pack).await?;
@@ -24,7 +24,7 @@ pub async fn clean<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
     // execute the clear script
     if let Some(command) = &config.clear {
         command
-            .exec_async(&*pack, pack_envs(&pack, pack_name))
+            .exec_async(&*pack, pack_envs(&pack, &pack_name))
             .await?;
     }
 
@@ -33,7 +33,7 @@ pub async fn clean<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
 
 /// clean links
 async fn clean_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
-    let pack_name = util::pack_name(pack)?;
+    let pack_name = config.resolve_pack_name(pack.as_ref())?.into_owned();
     let Some(target) = config.target.as_ref() else {
         warn!("{pack_name}: target is none, skip clean links");
         return Ok(());
@@ -46,9 +46,12 @@ async fn clean_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 
     debug!("{pack_name}: clean paths: {symlinks:?}");
     futures::stream::iter(symlinks.into_iter().map(Ok))
-        .try_for_each_concurrent(Some(util::max_concurrent_files()), |symlink| async move {
-            info!("{pack_name}: remove symlink {symlink}");
-            symlink.remove().await
+        .try_for_each_concurrent(Some(util::max_concurrent_files()), |symlink| {
+            let pack_name = pack_name.clone();
+            async move {
+                info!("{pack_name}: remove symlink {symlink}");
+                symlink.remove().await
+            }
         })
         .await?;
 
@@ -75,7 +78,7 @@ async fn clean_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     }
 
     // 清理完成后删除残留的 track 文件，保持状态一致
-    let track_file = resolve_track_file(pack, pack_name)?;
+    let track_file = resolve_track_file(pack, &pack_name)?;
     if track_file.try_exists()? {
         debug!("{pack_name}: clean track file, {}", track_file.display());
         fs::remove_file(track_file).await?;

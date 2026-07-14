@@ -24,7 +24,7 @@ async fn crypto_process<P: AsRef<Path>>(
     content_label: &str,
 ) -> Result<()> {
     let pack = Arc::new(pack.as_ref().to_path_buf());
-    let pack_name = util::pack_name(&pack)?;
+    let pack_name = config.resolve_pack_name(&pack)?.into_owned();
     info!("{op_name} pack: {pack_name}");
 
     let enabled = config
@@ -41,7 +41,7 @@ async fn crypto_process<P: AsRef<Path>>(
         .encrypted
         .as_ref()
         .ok_or_else(|| anyhow!("{pack_name}: encrypted config not found"))?
-        .resolve(pack_name)
+        .resolve(&pack_name)
         .await?;
     let EncryptedParams {
         key,
@@ -89,28 +89,31 @@ async fn crypto_process<P: AsRef<Path>>(
 
     debug!("{pack_name}: {op_name} paths {files:?}");
     futures::stream::iter(files.into_iter().map(Ok))
-        .try_for_each_concurrent(Some(util::max_concurrent_files()), |file| async move {
-            let path = file.path();
-            info!("{pack_name}: {op_name} {}", path.display());
-            let Ok(content) = fs::read_to_string(path).await else {
-                warn!("{pack_name}: {} contains not invalid utf-8", path.display());
-                return Ok(());
-            };
-            let processed = crypto_fn(
-                &content,
-                encrypted_alg,
-                key,
-                left_boundary,
-                right_boundary,
-                false,
-            )?;
-            fs::write(path, processed).await.with_context(|| {
-                format!(
-                    "{pack_name}: failed to write {content_label} to path={}",
-                    path.display()
-                )
-            })?;
-            Result::<(), anyhow::Error>::Ok(())
+        .try_for_each_concurrent(Some(util::max_concurrent_files()), |file| {
+            let pack_name = pack_name.clone();
+            async move {
+                let path = file.path();
+                info!("{pack_name}: {op_name} {}", path.display());
+                let Ok(content) = fs::read_to_string(path).await else {
+                    warn!("{pack_name}: {} contains not invalid utf-8", path.display());
+                    return Ok(());
+                };
+                let processed = crypto_fn(
+                    &content,
+                    encrypted_alg,
+                    key,
+                    left_boundary,
+                    right_boundary,
+                    false,
+                )?;
+                fs::write(path, processed).await.with_context(|| {
+                    format!(
+                        "{pack_name}: failed to write {content_label} to path={}",
+                        path.display()
+                    )
+                })?;
+                Result::<(), anyhow::Error>::Ok(())
+            }
         })
         .await?;
 

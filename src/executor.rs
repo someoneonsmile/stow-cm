@@ -32,16 +32,13 @@ where
                 // );
                 // return Ok(None);
             }
-            let pack_name = pack
-                .as_ref()
-                .file_name()
-                .and_then(|it| it.to_str())
-                .ok_or_else(|| anyhow::anyhow!("path error: {}", pack.as_ref().display()))?;
             merge::option::recurse(&mut pack_config, common_config.deref().clone());
             let Some(mut config) = pack_config else {
                 anyhow::bail!("no config")
             };
             config.normalize();
+
+            let pack_name = config.resolve_pack_name(pack.as_ref())?;
 
             // let mut config = match pack_config.merge_with(|| common_config.deref().clone()) {
             //     Some(config) => config,
@@ -50,7 +47,7 @@ where
 
             let context_map = hashmap! {
                 PACK_ID_ENV => util::hash(&pack.as_ref().to_string_lossy()),
-                PACK_NAME_ENV => pack_name.to_owned(),
+                PACK_NAME_ENV => pack_name.to_string(),
             };
             config.target = config
                 .target

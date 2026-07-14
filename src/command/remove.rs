@@ -15,7 +15,7 @@ use super::{pack_envs, resolve_track_file};
 /// remove packages
 pub async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> {
     let pack = Arc::new(pack.as_ref().to_path_buf());
-    let pack_name = util::pack_name(&pack)?;
+    let pack_name = config.resolve_pack_name(&pack)?.into_owned();
     info!("remove pack: {pack_name}");
 
     remove_link(&config, &pack).await?;
@@ -23,7 +23,7 @@ pub async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> 
     // execute the clear script
     if let Some(command) = &config.clear {
         command
-            .exec_async(&*pack, pack_envs(&pack, pack_name))
+            .exec_async(&*pack, pack_envs(&pack, &pack_name))
             .await?;
     }
 
@@ -31,10 +31,10 @@ pub async fn remove<P: AsRef<Path>>(config: Arc<Config>, pack: P) -> Result<()> 
 }
 
 /// remove links
-async fn remove_link(_config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
-    let pack_name = util::pack_name(pack)?;
+async fn remove_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
+    let pack_name = config.resolve_pack_name(pack.as_ref())?.into_owned();
 
-    let track_file = resolve_track_file(pack, pack_name)?;
+    let track_file = resolve_track_file(pack, &pack_name)?;
 
     if !track_file.try_exists()? {
         warn!("{pack_name}: there is no link is installed");
@@ -47,9 +47,12 @@ async fn remove_link(_config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 
     debug!("{pack_name}: remove {symlinks:?}");
     futures::stream::iter(symlinks.into_iter().map(Ok))
-        .try_for_each_concurrent(Some(util::max_concurrent_files()), |symlink| async move {
-            info!("{pack_name}: remove symlink {symlink}");
-            symlink.remove().await
+        .try_for_each_concurrent(Some(util::max_concurrent_files()), |symlink| {
+            let pack_name = pack_name.clone();
+            async move {
+                info!("{pack_name}: remove symlink {symlink}");
+                symlink.remove().await
+            }
         })
         .await?;
 

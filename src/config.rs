@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -28,6 +29,10 @@ use crate::util;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Merge, Finalize)]
 #[merge(strategy = merge::option::overwrite_none)]
 pub struct Config {
+    /// 自定义包名，取代目录名作为 `PACK_NAME` 的值
+    #[finalize(skip)]
+    pub name: Option<String>,
+
     /// symlink mode
     #[serde(rename = "mode")]
     #[finalize(skip)]
@@ -140,6 +145,15 @@ impl Config {
         self.merge(Config::system());
     }
 
+    /// 解析 `pack_name`：优先取 `self.name`（stow-cm.toml 中自定义），回退到 pack 路径的最后一级目录名。
+    pub fn resolve_pack_name<'a>(&'a self, pack: &'a Path) -> Result<Cow<'a, str>> {
+        if let Some(ref name) = self.name {
+            Ok(Cow::Borrowed(name.as_str()))
+        } else {
+            Ok(Cow::Borrowed(util::pack_name(pack)?))
+        }
+    }
+
     /// 从 `self.ignore` 构造 `RegexSet`，消除 `command.rs` 和 `crypto_process` 中的重复构造逻辑。
     pub fn ignore_regex(&self) -> crate::error::Result<Option<RegexSet>> {
         self.ignore
@@ -162,6 +176,7 @@ impl Config {
 impl Default for Config {
     fn default() -> Config {
         Config {
+            name: None,
             symlink_mode: Some(SymlinkMode::Symlink),
             target: Some(default_pack_target().into()),
             ignore: None,
@@ -291,6 +306,7 @@ impl Default for EncryptedConfig {
 impl SystemInstance for Config {
     fn system() -> Self {
         Config {
+            name: None,
             symlink_mode: None,
             target: None,
             ignore: Some(vec![CONFIG_FILE_NAME.to_string()]),
@@ -314,6 +330,7 @@ mod test {
     #[test]
     fn config_merge() {
         let mut left = Config {
+            name: None,
             symlink_mode: Some(SymlinkMode::Symlink),
             target: Some("temp_a".into()),
             ignore: Some(vec!["a".to_owned()]),
@@ -324,6 +341,7 @@ mod test {
             encrypted: None,
         };
         let right = Config {
+            name: None,
             symlink_mode: Some(SymlinkMode::Copy),
             target: Some("temp_b".into()),
             ignore: Some(vec!["b".to_owned()]),
@@ -337,6 +355,7 @@ mod test {
         left.merge(right);
         assert_eq!(
             Config {
+                name: None,
                 symlink_mode: Some(SymlinkMode::Symlink),
                 target: Some("temp_a".into()),
                 ignore: Some(vec!["a".to_owned(), "b".to_owned()]),
@@ -352,6 +371,7 @@ mod test {
 
     fn make_config(target: Option<&str>, ignore: Option<Vec<&str>>) -> Config {
         Config {
+            name: None,
             symlink_mode: None,
             target: target.map(Into::into),
             ignore: ignore.map(|v| v.into_iter().map(String::from).collect()),

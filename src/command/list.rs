@@ -57,12 +57,14 @@ pub async fn list(json: bool) -> Result<()> {
             }
         };
 
-        let pack_name = track
-            .pack_path
-            .as_ref()
-            .and_then(|p| p.file_name())
-            .and_then(|n| n.to_str())
-            .map_or_else(|| pack_id.to_string(), String::from);
+        let pack_name = track.pack_name.unwrap_or_else(|| {
+            track
+                .pack_path
+                .as_ref()
+                .and_then(|p| p.file_name())
+                .and_then(|n| n.to_str())
+                .map_or_else(|| pack_id.to_string(), String::from)
+        });
 
         let target = track
             .target

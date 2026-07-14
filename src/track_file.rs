@@ -11,6 +11,9 @@ pub struct Track {
     pub links: Vec<Symlink>,
     /// decrypted file path
     pub decrypted_path: Option<PathBuf>,
+    /// pack 名称（安装时记录，供 `list` 等命令使用）
+    #[serde(default)]
+    pub pack_name: Option<String>,
     /// pack 原始路径（安装时记录，供 `list` 等命令使用）
     #[serde(default)]
     pub pack_path: Option<PathBuf>,
