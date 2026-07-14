@@ -1,8 +1,9 @@
 # Justfile for stow-cm
 #
 # Usage:
-#   just                  Build release binary
-#   sudo just install     Install to system directory
+#   just                  List available commands
+#   just build            Build release binary
+#   just install          Build + install to system directory
 #   just uninstall        Remove installed files
 #   just clean            Remove build artifacts
 #   just fmt              Format code
@@ -10,14 +11,14 @@
 #   just ci               Run all CI checks
 #
 # Variables:
-#   PREFIX    Install prefix (default: /usr)
+#   PREFIX    Install prefix (default: /usr/local)
 #   DESTDIR   Staging directory (for packaging)
 #
 # Examples:
-#   just && sudo just install               Build and install to /usr
-#   just && sudo just install PREFIX=/usr/local  Install to /usr/local
-#   just install PREFIX=~/.local            Install to user directory
-#   just install DESTDIR=/tmp/pkg           Stage install
+#   just install                              Build and install to /usr/local
+#   just install PREFIX=/usr                  Install to /usr
+#   just install PREFIX=~/.local              Install to user directory
+#   just install DESTDIR=/tmp/pkg             Stage install
 #
 # AUR targets:
 #   just aur-srcinfo             Regenerate aur/.SRCINFO
@@ -32,7 +33,7 @@
 
 # ---- Variables ----
 
-PREFIX := "/usr"
+PREFIX := "/usr/local"
 BINDIR := PREFIX / "bin"
 DATADIR := PREFIX / "share"
 MANDIR := DATADIR / "man"
@@ -61,23 +62,26 @@ test:
 
 # ---- Install ----
 
-install: build
+install:
     #!/usr/bin/env bash
     set -euo pipefail
-    install -Dm755 {{ RELEASE }}/{{ BINARY }} {{ DESTDIR }}{{ BINDIR }}/{{ BINARY }}
-    install -Dm644 {{ SHELL_HELP_DIR }}/complete/{{ BINARY }}.bash {{ DESTDIR }}{{ DATADIR }}/bash-completion/completions/{{ BINARY }}
-    install -Dm644 {{ SHELL_HELP_DIR }}/complete/_{{ BINARY }} {{ DESTDIR }}{{ DATADIR }}/zsh/site-functions/_{{ BINARY }}
-    install -Dm644 {{ SHELL_HELP_DIR }}/complete/{{ BINARY }}.fish {{ DESTDIR }}{{ DATADIR }}/fish/vendor_completions.d/{{ BINARY }}.fish
-    install -Dm644 {{ SHELL_HELP_DIR }}/man/{{ BINARY }}.1 {{ DESTDIR }}{{ MANDIR }}/man1/{{ BINARY }}.1
+    SHELL_HELP_DIR={{ SHELL_HELP_DIR }} cargo build --release
+    sudo install -Dm755 {{ RELEASE }}/{{ BINARY }} "{{ DESTDIR }}{{ BINDIR }}/{{ BINARY }}"
+    sudo install -Dm644 {{ SHELL_HELP_DIR }}/complete/{{ BINARY }}.bash "{{ DESTDIR }}{{ DATADIR }}/bash-completion/completions/{{ BINARY }}"
+    sudo install -Dm644 {{ SHELL_HELP_DIR }}/complete/_{{ BINARY }} "{{ DESTDIR }}{{ DATADIR }}/zsh/site-functions/_{{ BINARY }}"
+    sudo install -Dm644 {{ SHELL_HELP_DIR }}/complete/{{ BINARY }}.fish "{{ DESTDIR }}{{ DATADIR }}/fish/vendor_completions.d/{{ BINARY }}.fish"
+    sudo install -Dm644 {{ SHELL_HELP_DIR }}/man/{{ BINARY }}.1 "{{ DESTDIR }}{{ MANDIR }}/man1/{{ BINARY }}.1"
 
 # ---- Uninstall ----
 
 uninstall:
-    rm -f {{ DESTDIR }}{{ BINDIR }}/{{ BINARY }}
-    rm -f {{ DESTDIR }}{{ DATADIR }}/bash-completion/completions/{{ BINARY }}
-    rm -f {{ DESTDIR }}{{ DATADIR }}/zsh/site-functions/_{{ BINARY }}
-    rm -f {{ DESTDIR }}{{ DATADIR }}/fish/vendor_completions.d/{{ BINARY }}.fish
-    rm -f {{ DESTDIR }}{{ MANDIR }}/man1/{{ BINARY }}.1
+    #!/usr/bin/env bash
+    set -euo pipefail
+    sudo rm -f "{{ DESTDIR }}{{ BINDIR }}/{{ BINARY }}"
+    sudo rm -f "{{ DESTDIR }}{{ DATADIR }}/bash-completion/completions/{{ BINARY }}"
+    sudo rm -f "{{ DESTDIR }}{{ DATADIR }}/zsh/site-functions/_{{ BINARY }}"
+    sudo rm -f "{{ DESTDIR }}{{ DATADIR }}/fish/vendor_completions.d/{{ BINARY }}.fish"
+    sudo rm -f "{{ DESTDIR }}{{ MANDIR }}/man1/{{ BINARY }}.1"
 
 # ---- Maintenance ----
 
