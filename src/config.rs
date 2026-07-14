@@ -6,7 +6,6 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use anyhow::{Context, anyhow, bail};
-use log::warn;
 use maplit::hashmap;
 use merge::option::with_recurse_strategy;
 use regex::RegexSet;
@@ -159,17 +158,14 @@ impl Config {
 
     /// 加载 pack 配置并合并全局配置、normalize、shell 展开路径，返回就绪的运行时配置。
     pub fn for_pack(pack: &Path, global: &Config) -> Result<Config> {
-        let mut pack_config = Config::from_path(pack.join(CONFIG_FILE_NAME))?;
-        if pack_config.is_none() {
-            warn!(
-                "{}: doesn't have its own config file, will use the common config file",
-                pack.display()
-            );
-        }
-        merge::option::recurse(&mut pack_config, Some(global.clone()));
-        let Some(mut config) = pack_config else {
-            anyhow::bail!("no config")
-        };
+        let mut config = Config::from_path(pack.join(CONFIG_FILE_NAME))?.ok_or_else(|| {
+            anyhow!(
+                "{}: not a pack (missing {})",
+                pack.display(),
+                CONFIG_FILE_NAME
+            )
+        })?;
+        config.merge(global.clone());
         config.normalize();
 
         let pack_name = config.resolve_pack_name(pack)?;
