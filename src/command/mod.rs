@@ -1,3 +1,4 @@
+mod adopt;
 mod clean;
 mod crypto;
 mod install;
@@ -5,6 +6,7 @@ mod list;
 mod remove;
 mod status;
 
+pub use adopt::adopt;
 pub use clean::clean;
 pub use crypto::{decrypt, encrypt};
 pub use install::install;

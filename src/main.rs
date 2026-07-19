@@ -1,11 +1,13 @@
 use std::sync::Arc;
 
+use anyhow::Context;
 use clap::Parser;
 use env_logger::Env;
 use log::debug;
 
 use crate::cli::Cli;
 use crate::cli::Commands;
+use crate::command::adopt;
 use crate::command::clean;
 use crate::command::decrypt;
 use crate::command::encrypt;
@@ -82,6 +84,21 @@ async fn main() -> Result<()> {
         Commands::Clean { paths } => dispatch!(common_config, paths, clean),
         Commands::Encrypt { paths } => dispatch!(common_config, paths, encrypt),
         Commands::Decrypt { paths } => dispatch!(common_config, paths, decrypt),
+        Commands::Adopt { sources, to } => {
+            let global = common_config
+                .as_ref()
+                .as_ref()
+                .ok_or_else(|| crate::error::anyhow!("global config not loaded"))?;
+            let sources = util::canonicalize(sources).await?;
+            let to = if tokio::fs::try_exists(&to).await.unwrap_or(false) {
+                tokio::fs::canonicalize(&to)
+                    .await
+                    .with_context(|| format!("path: {}", to.display()))?
+            } else {
+                to
+            };
+            adopt(global, sources, &to).await?;
+        }
         Commands::List { json } => list(json).await?,
         Commands::Status { paths, fix, json } => {
             let global = common_config

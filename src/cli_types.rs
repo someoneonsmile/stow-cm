@@ -10,11 +10,11 @@ use clap::{Parser, Subcommand};
 #[command(version, about, name = "stow-cm")]
 #[command(arg_required_else_help = true)]
 pub struct Cli {
-    /// 增加日志详细程度（-v debug 级别，-vv trace 级别）
+    /// Increase log verbosity (-v debug, -vv trace)
     #[arg(short = 'v', long = "verbose", action = clap::ArgAction::Count, global = true)]
     pub verbose: u8,
 
-    /// 静默模式，仅输出错误信息
+    /// Quiet mode, only output errors
     #[arg(short = 'q', long = "quiet", action = clap::ArgAction::SetTrue, global = true, conflicts_with = "verbose")]
     pub quiet: bool,
 
@@ -68,15 +68,25 @@ pub enum Commands {
         #[arg(long = "json")]
         json: bool,
     },
-    /// 检查已安装 pack 的状态一致性
+    /// Adopt existing config directories into stow management (reverse takeover)
+    #[command(arg_required_else_help = true)]
+    Adopt {
+        /// Source directories to adopt (e.g. ~/.config/fish ~/.config/nvim)
+        #[arg(name = "SOURCE_DIR", required = true)]
+        sources: Vec<PathBuf>,
+        /// Stow repository directory (packs will be created here)
+        #[arg(short = 't', long = "to", value_name = "STOW_DIR")]
+        to: PathBuf,
+    },
+    /// Check consistency between installed links and the filesystem
     Status {
-        /// 可选 pack 路径，不传则检查所有已安装 pack
+        /// Optional pack paths; if omitted, check all installed packs
         #[arg(name = "PACK_PATH")]
         paths: Vec<PathBuf>,
-        /// 自动修复可修复的问题（重新创建缺失的链接）
+        /// Auto-fix repairable issues (recreate missing links)
         #[arg(long = "fix")]
         fix: bool,
-        /// 以 JSON 格式输出
+        /// Output in JSON format
         #[arg(long = "json")]
         json: bool,
     },

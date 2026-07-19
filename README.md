@@ -12,17 +12,18 @@ Commands:
   remove   Remove packs
   reload   Reload packs (remove and install)
   clean    Scan and clean all symlinks that link from pack to pack target
-  status   Check consistency between installed links and the filesystem
-  list     List all installed packs and their status
   encrypt  Scan files in the given pack for replacement variables, encrypt them, and replace them back to the original files
   decrypt  Scan files in the given pack for replacement variables, decrypt them, and replace them back to the original files
+  list     List all installed packs and their status
+  adopt    Adopt existing config directories into stow management (reverse takeover)
+  status   Check consistency between installed links and the filesystem
   help     Print this message or the help of the given subcommand(s)
 
 Options:
-  -v, --verbose  Increase log verbosity (-v debug, -vv trace)
-  -q, --quiet    Quiet mode, only output errors
-  -h, --help     Print help
-  -V, --version  Print version
+  -v, --verbose...  Increase log verbosity (-v debug, -vv trace)
+  -q, --quiet       Quiet mode, only output errors
+  -h, --help        Print help
+  -V, --version     Print version
 ```
 
 ```sh
@@ -36,6 +37,8 @@ stow-cm status --fix                 # auto-fix missing links
 stow-cm status --json                # machine-readable output
 stow-cm list                         # list all installed packs
 stow-cm list --json                  # list as JSON
+stow-cm adopt ~/.config/fish -t ~/my-dotfiles         # adopt single config dir
+stow-cm adopt ~/.config/fish ~/.config/nvim -t ~/stow # adopt multiple dirs
 stow-cm encrypt ./nvim /path/to/pack
 stow-cm decrypt ./nvim /path/to/pack
 
