@@ -150,17 +150,21 @@ fi
 '''
 
 [encrypted]
-# default
-enable = false
-# default
-decrypted_path = '${XDG_STATE_HOME:-~/.local/state}/stow-cm/${PACK_ID}/decrypted/'
-# default
-left_boundary = '&{'
-# default
-right_boundary = '}'
-# support ChaCha20-Poly1305 | AES-128-GCM | AES-256-GCM
-# default ChaCha20-Poly1305
-encrypted_alg = 'ChaCha20-Poly1305'
+# Enable inline encryption/decryption (default: false)
+enable = true
+
+# ── The following have sensible defaults — uncomment only if needed ──
+
+# Directory for decrypted files during install (supports ${PACK_ID} / ${PACK_NAME})
+# decrypted_path = '${XDG_STATE_HOME:-~/.local/state}/stow-cm/${PACK_ID}/decrypted/'
+# Left delimiter marking encrypted content — matches &{...} blocks in files
+# left_boundary = '&{'
+# Right delimiter marking encrypted content — matches &{...} blocks in files
+# right_boundary = '}'
+# Encryption algorithm: ChaCha20-Poly1305 | AES-128-GCM | AES-256-GCM
+# encrypted_alg = 'ChaCha20-Poly1305'
+
+# Path to the key file (required — file must contain base64-encoded key bytes)
 key_path = '/path/to/key'
 ```
 

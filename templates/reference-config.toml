@@ -20,6 +20,9 @@
 # content = "cleanup.sh"
 
 # [encrypted]                     # inline encryption
-# enable = true
-# key_path = "/path/to/key"
-# encrypted_alg = "ChaCha20-Poly1305"
+# enable = true                   # must be true to activate
+# key_path = "/path/to/key"       # required: path to base64-encoded key file
+# encrypted_alg = "ChaCha20-Poly1305"  # ChaCha20-Poly1305 | AES-128-GCM | AES-256-GCM
+# decrypted_path = "${XDG_STATE_HOME:-~/.local/state}/stow-cm/${PACK_ID}/decrypted/"
+# left_boundary = "&{"            # left delimiter for encrypted content blocks
+# right_boundary = "}"            # right delimiter for encrypted content blocks
