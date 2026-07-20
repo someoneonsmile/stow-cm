@@ -1,3 +1,5 @@
+use crate::constants::TRACK_FILE_NAME;
+
 use std::path::PathBuf;
 
 fn config_home() -> PathBuf {
@@ -28,7 +30,7 @@ pub fn pack_state_home() -> String {
 /// pack track 文件路径模板，含 `${PACK_ID}` 占位符
 pub fn pack_track_file() -> String {
     let state_home = pack_state_home();
-    format!("{state_home}/track.toml")
+    format!("{state_home}/{TRACK_FILE_NAME}")
 }
 
 /// pack 解密文件目录模板，含 `${PACK_ID}` 占位符

@@ -4,6 +4,8 @@ pub const PACK_NAME_ENV: &str = "PACK_NAME";
 
 pub const CONFIG_FILE_NAME: &str = "stow-cm.toml";
 
+pub const TRACK_FILE_NAME: &str = "track.toml";
+
 /// if the value of Some(value) is !, it is equivalent to None.
 pub const UNSET_VALUE: &str = "!";
 

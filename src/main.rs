@@ -15,6 +15,7 @@ use crate::command::install;
 use crate::command::list;
 use crate::command::reload;
 use crate::command::remove;
+use crate::command::resolve_pack_ids;
 use crate::command::status;
 use crate::config::Config;
 use crate::error::Result;
@@ -79,9 +80,27 @@ async fn main() -> Result<()> {
 
     match opt.command {
         Commands::Install { paths } => dispatch!(common_config, paths, install),
-        Commands::Remove { paths } => dispatch!(common_config, paths, remove),
-        Commands::Reload { paths } => dispatch!(common_config, paths, reload),
-        Commands::Clean { paths } => dispatch!(common_config, paths, clean),
+        Commands::Remove { paths, ids } => {
+            let mut all_paths = paths;
+            if !ids.is_empty() {
+                all_paths.extend(resolve_pack_ids(&ids)?);
+            }
+            dispatch!(common_config, all_paths, remove);
+        }
+        Commands::Reload { paths, ids } => {
+            let mut all_paths = paths;
+            if !ids.is_empty() {
+                all_paths.extend(resolve_pack_ids(&ids)?);
+            }
+            dispatch!(common_config, all_paths, reload);
+        }
+        Commands::Clean { paths, ids } => {
+            let mut all_paths = paths;
+            if !ids.is_empty() {
+                all_paths.extend(resolve_pack_ids(&ids)?);
+            }
+            dispatch!(common_config, all_paths, clean);
+        }
         Commands::Encrypt { paths } => dispatch!(common_config, paths, encrypt),
         Commands::Decrypt { paths } => dispatch!(common_config, paths, decrypt),
         Commands::Adopt { sources, to } => {

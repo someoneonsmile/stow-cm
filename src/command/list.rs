@@ -4,6 +4,7 @@ use log::debug;
 use serde::Serialize;
 use tokio::fs;
 
+use crate::constants::TRACK_FILE_NAME;
 use crate::error::Result;
 use crate::paths::stow_cm_state_dir;
 use crate::symlink::SymlinkMode;
@@ -38,7 +39,7 @@ pub async fn list(json: bool) -> Result<()> {
         if !entry_path.is_dir() {
             continue;
         }
-        let track_path = entry_path.join("track.toml");
+        let track_path = entry_path.join(TRACK_FILE_NAME);
         if !track_path.try_exists()? {
             continue;
         }

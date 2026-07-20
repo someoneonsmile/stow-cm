@@ -7,6 +7,7 @@ use tokio::fs;
 
 use crate::command::resolve_track_file;
 use crate::config::Config;
+use crate::constants::TRACK_FILE_NAME;
 use crate::error::Result;
 use crate::paths::stow_cm_state_dir;
 use crate::symlink::{Symlink, SymlinkMode};
@@ -162,7 +163,7 @@ async fn status_all(fix: bool, json: bool) -> Result<()> {
         if !entry_path.is_dir() {
             continue;
         }
-        let track_path = entry_path.join("track.toml");
+        let track_path = entry_path.join(TRACK_FILE_NAME);
         if !track_path.try_exists()? {
             continue;
         }

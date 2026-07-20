@@ -35,18 +35,27 @@ pub enum Commands {
     Remove {
         #[arg(name = "PACK_PATH")]
         paths: Vec<PathBuf>,
+        /// Remove by `PACK_ID` instead of filesystem path
+        #[arg(long = "id", value_name = "PACK_ID")]
+        ids: Vec<String>,
     },
     /// Reload packs (remove and install)
     #[command(arg_required_else_help = true)]
     Reload {
         #[arg(name = "PACK_PATH")]
         paths: Vec<PathBuf>,
+        /// Reload by `PACK_ID` instead of filesystem path
+        #[arg(long = "id", value_name = "PACK_ID")]
+        ids: Vec<String>,
     },
     /// Scan and clean all symlinks that link from pack to pack target
     #[command(arg_required_else_help = true)]
     Clean {
         #[arg(name = "PACK_PATH")]
         paths: Vec<PathBuf>,
+        /// Clean by `PACK_ID` instead of filesystem path
+        #[arg(long = "id", value_name = "PACK_ID")]
+        ids: Vec<String>,
     },
     /// Scan files in the given pack for replacement variables, encrypt them,
     /// and replace them back to the original files
