@@ -29,8 +29,11 @@ Options:
 ```sh
 stow-cm install ./nvim /path/to/pack
 stow-cm remove ./nvim /path/to/pack
+stow-cm remove --id a1b2c3d4               # remove by PACK_ID (supports prefix)
 stow-cm reload ./nvim /path/to/pack
+stow-cm reload --id a1b2c3d4               # reload by PACK_ID
 stow-cm clean ./nvim /path/to/pack   # only works for symlink-mode packs
+stow-cm clean --id a1b2c3d4                # clean by PACK_ID
 stow-cm status ./nvim                # check pack consistency
 stow-cm status                       # check all installed packs
 stow-cm status --fix                 # auto-fix missing links
