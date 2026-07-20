@@ -29,19 +29,19 @@ Options:
 ```sh
 stow-cm install ./nvim /path/to/pack
 stow-cm remove ./nvim /path/to/pack
-stow-cm remove --id a1b2c3d4               # remove by PACK_ID (supports prefix)
+stow-cm remove --id a1b2c3d4                              # remove by PACK_ID (supports prefix)
 stow-cm reload ./nvim /path/to/pack
-stow-cm reload --id a1b2c3d4               # reload by PACK_ID
-stow-cm clean ./nvim /path/to/pack   # only works for symlink-mode packs
-stow-cm clean --id a1b2c3d4                # clean by PACK_ID
-stow-cm status ./nvim                # check pack consistency
-stow-cm status                       # check all installed packs
-stow-cm status --fix                 # auto-fix missing links
-stow-cm status --json                # machine-readable output
-stow-cm list                         # list all installed packs
-stow-cm list --json                  # list as JSON
-stow-cm adopt ~/.config/fish -t ~/my-dotfiles         # adopt single config dir
-stow-cm adopt ~/.config/fish ~/.config/nvim -t ~/stow # adopt multiple dirs
+stow-cm reload --id a1b2c3d4                              # reload by PACK_ID
+stow-cm clean ./nvim /path/to/pack                        # only works for symlink-mode packs
+stow-cm clean --id a1b2c3d4                               # clean by PACK_ID
+stow-cm status ./nvim                                     # check pack consistency
+stow-cm status                                            # check all installed packs
+stow-cm status --fix                                      # auto-fix missing links
+stow-cm status --json                                     # machine-readable output
+stow-cm list                                              # list all installed packs
+stow-cm list --json                                       # list as JSON
+stow-cm adopt ~/.config/fish -t ~/my-dotfiles             # adopt single config dir
+stow-cm adopt ~/.config/fish ~/.config/nvim -t ~/stow     # adopt multiple dirs
 stow-cm encrypt ./nvim /path/to/pack
 stow-cm decrypt ./nvim /path/to/pack
 
