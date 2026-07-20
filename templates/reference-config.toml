@@ -1,0 +1,25 @@
+
+# ── Optional Settings ──
+
+# fold = true                     # create a single symlink for the entire directory (default: on)
+# ignore = [                      # files matching these regex patterns are skipped
+#     '.*\.md',
+#     '.*\.lock',
+# ]
+# override = [                    # files matching these regex patterns override existing files
+#     '.*\.lua',
+#     '.*\.conf',
+# ]
+
+# [init]                          # run after install
+# type = "Shell"
+# content = "setup.sh"
+
+# [clear]                         # run after removal
+# type = "Shell"
+# content = "cleanup.sh"
+
+# [encrypted]                     # inline encryption
+# enable = true
+# key_path = "/path/to/key"
+# encrypted_alg = "ChaCha20-Poly1305"

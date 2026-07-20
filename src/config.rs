@@ -157,18 +157,39 @@ impl Config {
     }
 
     /// 加载 pack 配置并合并全局配置、normalize、shell 展开路径，返回就绪的运行时配置。
-    pub fn for_pack(pack: &Path, global: &Config) -> Result<Config> {
-        let mut config = Config::from_path(pack.join(CONFIG_FILE_NAME))?.ok_or_else(|| {
-            anyhow!(
-                "{}: not a pack (missing {})",
-                pack.display(),
-                CONFIG_FILE_NAME
-            )
-        })?;
-        config.merge(global.clone());
+    /// `override_pack_name` 传入时优先使用（如交互式 init 中用户自定义了 pack name）。
+    /// `allow_missing_config` 为 `true` 时，若 pack 目录下缺少 `stow-cm.toml` 则回退到全局配置；
+    /// 为 `false` 时则报错 "not a pack"。
+    pub fn for_pack(
+        pack: &Path,
+        global: &Config,
+        override_pack_name: Option<&str>,
+        allow_missing_config: bool,
+    ) -> Result<Config> {
+        let mut config = match Config::from_path(pack.join(CONFIG_FILE_NAME))? {
+            Some(c) => {
+                let mut merged = c;
+                merged.merge(global.clone());
+                merged
+            }
+            None => {
+                if allow_missing_config {
+                    global.clone()
+                } else {
+                    bail!(
+                        "{}: not a pack (missing {})",
+                        pack.display(),
+                        CONFIG_FILE_NAME
+                    );
+                }
+            }
+        };
         config.normalize();
 
-        let pack_name = config.resolve_pack_name(pack)?;
+        let pack_name = match override_pack_name {
+            Some(name) => Cow::Borrowed(name),
+            None => config.resolve_pack_name(pack)?,
+        };
         let context_map = hashmap! {
             PACK_ID_ENV => util::hash(&pack.to_string_lossy()),
             PACK_NAME_ENV => pack_name.to_string(),

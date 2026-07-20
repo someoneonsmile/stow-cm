@@ -32,6 +32,7 @@ binaryornot = "1"
 dirs = "6"
 hex = "0"
 serde_json = "1"
+inquire = "0"
 
 # ignore = "0"
 # xattr = "0"

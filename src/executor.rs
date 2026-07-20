@@ -19,7 +19,7 @@ where
         .ok_or_else(|| anyhow::anyhow!("global config not loaded"))?;
     let results = futures::stream::iter(packs)
         .map(async |pack| {
-            let config = Config::for_pack(pack.as_ref(), global)?;
+            let config = Config::for_pack(pack.as_ref(), global, None, false)?;
             f(Arc::new(config), pack).await?;
             anyhow::Ok(())
         })

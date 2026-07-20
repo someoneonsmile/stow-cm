@@ -194,7 +194,7 @@ async fn status_packs(
     let mut all_entries: Vec<LinkEntry> = Vec::new();
 
     for pack in &paths {
-        let config = Config::for_pack(pack, global_config)?;
+        let config = Config::for_pack(pack, global_config, None, false)?;
         let pack_name = config.resolve_pack_name(pack)?.into_owned();
         let track_file = resolve_track_file(pack, &pack_name)?;
 

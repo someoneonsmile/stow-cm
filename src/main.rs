@@ -11,6 +11,7 @@ use crate::command::adopt;
 use crate::command::clean;
 use crate::command::decrypt;
 use crate::command::encrypt;
+use crate::command::init;
 use crate::command::install;
 use crate::command::list;
 use crate::command::reload;
@@ -125,6 +126,10 @@ async fn main() -> Result<()> {
                 .as_ref()
                 .ok_or_else(|| crate::error::anyhow!("global config not loaded"))?;
             status(global, paths, fix, json).await?;
+        }
+        Commands::Init { path, use_defaults } => {
+            let global = common_config.as_ref().as_ref();
+            init(&path, global, use_defaults).await?;
         }
     }
 

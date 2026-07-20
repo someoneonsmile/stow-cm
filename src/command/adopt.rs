@@ -62,7 +62,7 @@ pub async fn adopt(
             info!("{pack_name}: generated stow-cm.toml");
         }
 
-        let config = Config::for_pack(&pack_dir, global)?;
+        let config = Config::for_pack(&pack_dir, global, None, false)?;
         let target = config
             .target
             .as_ref()

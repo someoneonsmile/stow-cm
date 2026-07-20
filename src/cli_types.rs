@@ -99,4 +99,14 @@ pub enum Commands {
         #[arg(long = "json")]
         json: bool,
     },
+    /// Initialize a new pack directory with stow-cm.toml
+    #[command(arg_required_else_help = true)]
+    Init {
+        /// Path for the new pack directory
+        #[arg(name = "PACK_PATH")]
+        path: PathBuf,
+        /// Skip interactive prompts and generate with defaults
+        #[arg(long = "default")]
+        use_defaults: bool,
+    },
 }

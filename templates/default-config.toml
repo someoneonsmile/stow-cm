@@ -1,0 +1,28 @@
+# stow-cm config for __PACK_NAME__
+
+# target inherits from global config (default: __TARGET_RAW__)
+# target = "__TARGET__"
+mode = "symlink"
+fold = true                      # create a single symlink for the entire directory (default: on)
+
+# ignore = [                      # files matching these regex patterns are skipped
+#     '.*\.md',
+#     '.*\.lock',
+# ]
+# override = [                    # files matching these regex patterns override existing files
+#     '.*\.lua',
+#     '.*\.conf',
+# ]
+
+# [init]                          # run after install
+# type = "Shell"
+# content = "setup.sh"
+
+# [clear]                         # run after removal
+# type = "Shell"
+# content = "cleanup.sh"
+
+[encrypted]
+enable = false                    # set to true to enable inline encryption
+# key_path = "/path/to/key"
+# encrypted_alg = "ChaCha20-Poly1305"
