@@ -2,7 +2,6 @@ use std::env;
 
 use log::debug;
 use serde::Serialize;
-use tokio::fs;
 
 use crate::constants::TRACK_FILE_NAME;
 use crate::error::Result;
@@ -24,7 +23,7 @@ struct PackEntry {
 }
 
 /// 扫描 `$XDG_STATE_HOME/stow-cm/` 下所有 track file，输出已安装 pack 列表
-pub async fn list(json: bool) -> Result<()> {
+pub fn list(json: bool) -> Result<()> {
     let state_dir = stow_cm_state_dir();
 
     if !state_dir.try_exists()? {
@@ -33,8 +32,8 @@ pub async fn list(json: bool) -> Result<()> {
     }
 
     let mut entries: Vec<PackEntry> = Vec::new();
-    let mut dir_reader = fs::read_dir(&state_dir).await?;
-    while let Some(entry) = dir_reader.next_entry().await? {
+    for entry in std::fs::read_dir(&state_dir)? {
+        let entry = entry?;
         let entry_path = entry.path();
         if !entry_path.is_dir() {
             continue;
@@ -48,7 +47,7 @@ pub async fn list(json: bool) -> Result<()> {
             .and_then(|n| n.to_str())
             .unwrap_or("unknown");
 
-        let content = match fs::read_to_string(&track_path).await {
+        let content = match std::fs::read_to_string(&track_path) {
             Ok(c) => c,
             Err(e) => {
                 debug!("Failed to read track file {}: {e}", track_path.display());

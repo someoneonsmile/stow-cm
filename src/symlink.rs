@@ -5,7 +5,6 @@ use std::{
 
 use anyhow::{Context, anyhow};
 use serde::{Deserialize, Serialize};
-use tokio::fs;
 
 use crate::error::Result;
 
@@ -42,21 +41,21 @@ impl Display for Symlink {
 }
 
 impl Symlink {
-    pub async fn create(&self, force: bool) -> Result<()> {
+    pub fn create(&self, force: bool) -> Result<()> {
         if let Some(parent) = self.dst.parent() {
-            fs::create_dir_all(parent).await?;
+            std::fs::create_dir_all(parent)?;
         }
 
         if force {
             // the dir is empty or override regex matched
             // 用 symlink_metadata 一次性获取元数据，避免多次 stat() 调用之间的 TOCTOU 竞态窗口
-            match fs::symlink_metadata(&self.dst).await {
+            match std::fs::symlink_metadata(&self.dst) {
                 Ok(meta) => {
                     let ft = meta.file_type();
                     if ft.is_file() || ft.is_symlink() {
-                        fs::remove_file(&self.dst).await?;
+                        std::fs::remove_file(&self.dst)?;
                     } else if ft.is_dir() {
-                        fs::remove_dir_all(&self.dst).await?;
+                        std::fs::remove_dir_all(&self.dst)?;
                     }
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -65,43 +64,40 @@ impl Symlink {
                 Err(e) => return Err(e.into()),
             }
         }
-        self.mode.create(self).await?;
+        self.mode.create(self)?;
         Ok(())
     }
 
-    pub async fn remove(&self) -> Result<()> {
-        self.mode.remove(self).await?;
+    pub fn remove(&self) -> Result<()> {
+        self.mode.remove(self)?;
         Ok(())
     }
 }
 
 impl SymlinkMode {
-    async fn create(&self, symlink: &Symlink) -> Result<()> {
+    fn create(&self, symlink: &Symlink) -> Result<()> {
         match self {
             SymlinkMode::Symlink => {
-                fs::symlink(&symlink.src, &symlink.dst)
-                    .await
+                std::os::unix::fs::symlink(&symlink.src, &symlink.dst)
                     .with_context(|| format!("failed to create symlink: {symlink}"))?;
                 Ok(())
             }
             SymlinkMode::Copy => {
-                fs::copy(&symlink.src, &symlink.dst)
-                    .await
+                std::fs::copy(&symlink.src, &symlink.dst)
                     .with_context(|| format!("failed to create symlink: {symlink}"))?;
                 Ok(())
             }
         }
     }
 
-    async fn remove(&self, symlink: &Symlink) -> Result<()> {
+    fn remove(&self, symlink: &Symlink) -> Result<()> {
         match self {
             SymlinkMode::Symlink => {
                 // 用 symlink_metadata 一次性获取元数据，避免多次 stat() 调用之间的 TOCTOU 竞态窗口
-                match fs::symlink_metadata(&symlink.dst).await {
+                match std::fs::symlink_metadata(&symlink.dst) {
                     Ok(meta) => {
                         if meta.file_type().is_symlink() {
-                            fs::remove_file(&symlink.dst)
-                                .await
+                            std::fs::remove_file(&symlink.dst)
                                 .with_context(|| format!("failed to remove symlink: {symlink}"))?;
                             Ok(())
                         } else {
@@ -113,8 +109,7 @@ impl SymlinkMode {
                 }
             }
             SymlinkMode::Copy => {
-                fs::remove_file(&symlink.dst)
-                    .await
+                std::fs::remove_file(&symlink.dst)
                     .with_context(|| format!("failed to remove symlink: {symlink}"))?;
                 Ok(())
             }

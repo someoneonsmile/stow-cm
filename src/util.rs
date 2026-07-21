@@ -3,10 +3,8 @@ use std::env::VarError;
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
-use futures::prelude::*;
 use sha3::{Digest, Sha3_256};
 use shellexpand::LookupError;
-use tokio::fs;
 use walkdir::WalkDir;
 
 use crate::error::{Result, anyhow};
@@ -236,35 +234,14 @@ pub fn pack_name(pack: &Path) -> Result<String> {
         .ok_or_else(|| anyhow!("path error: {}", pack.display()))
 }
 
-/// 获取逻辑 CPU 数量，解析失败时回退到 4
 #[inline]
-pub fn cpu_count() -> usize {
-    std::thread::available_parallelism().map_or(4, usize::from)
-}
-
-/// 计算异步文件操作流的最佳并发上限
-#[inline]
-pub fn max_concurrent_files() -> usize {
-    cpu_count() * 4
-}
-
-/// Pack 级并发上限（小于文件级，因为每个 pack 内部还会展开文件级并发）
-#[inline]
-pub fn max_concurrent_packs() -> usize {
-    cpu_count() * 2
-}
-
-#[inline]
-pub async fn canonicalize(paths: Vec<PathBuf>) -> Result<Vec<PathBuf>> {
-    futures::stream::iter(paths)
-        .map(|path| async move {
-            fs::canonicalize(&path)
-                .await
-                .with_context(|| format!("path: {}", path.display()))
+pub fn canonicalize(paths: Vec<PathBuf>) -> Result<Vec<PathBuf>> {
+    paths
+        .into_iter()
+        .map(|path| {
+            std::fs::canonicalize(&path).with_context(|| format!("path: {}", path.display()))
         })
-        .buffer_unordered(max_concurrent_files())
-        .try_collect()
-        .await
+        .collect()
 }
 
 #[inline]

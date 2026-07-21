@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 
 use log::{info, warn};
 use serde::Serialize;
-use tokio::fs;
 
 use crate::command::resolve_track_file;
 use crate::config::Config;
@@ -50,8 +49,8 @@ struct LinkEntry {
 }
 
 /// 检查单个链接的实际状态
-async fn check_symlink(link: &Symlink) -> LinkStatus {
-    let metadata = fs::symlink_metadata(&link.dst).await;
+fn check_symlink(link: &Symlink) -> LinkStatus {
+    let metadata = std::fs::symlink_metadata(&link.dst);
     match metadata {
         Err(_) => LinkStatus::Missing,
         Ok(meta) => match link.mode {
@@ -59,13 +58,13 @@ async fn check_symlink(link: &Symlink) -> LinkStatus {
                 if !meta.file_type().is_symlink() {
                     return LinkStatus::Overwritten;
                 }
-                let Ok(target) = fs::read_link(&link.dst).await else {
+                let Ok(target) = std::fs::read_link(&link.dst) else {
                     return LinkStatus::Missing;
                 };
                 if target != link.src {
                     return LinkStatus::Drift;
                 }
-                match fs::symlink_metadata(&link.src).await {
+                match std::fs::symlink_metadata(&link.src) {
                     Ok(_) => LinkStatus::Ok,
                     Err(_) => LinkStatus::Dangling,
                 }
@@ -74,7 +73,7 @@ async fn check_symlink(link: &Symlink) -> LinkStatus {
                 if !meta.file_type().is_file() && !meta.file_type().is_symlink() {
                     return LinkStatus::Overwritten;
                 }
-                match fs::metadata(&link.src).await {
+                match std::fs::metadata(&link.src) {
                     Ok(_) => LinkStatus::Ok,
                     Err(_) => LinkStatus::Dangling,
                 }
@@ -84,25 +83,25 @@ async fn check_symlink(link: &Symlink) -> LinkStatus {
 }
 
 /// 尝试修复缺失的链接
-async fn fix_missing(link: &Symlink) -> Result<()> {
+fn fix_missing(link: &Symlink) -> Result<()> {
     info!(
         "fixing missing: {} -> {}",
         link.dst.display(),
         link.src.display()
     );
-    link.create(true).await
+    link.create(true)
 }
 
 /// 读取 track.toml 并检查所有链接状态
-async fn check_pack_links(pack_name: &str, track: &Track, fix: bool) -> Result<Vec<LinkEntry>> {
+fn check_pack_links(pack_name: &str, track: &Track, fix: bool) -> Vec<LinkEntry> {
     let mut entries = Vec::new();
 
     for link in &track.links {
-        let status = check_symlink(link).await;
+        let status = check_symlink(link);
         let mut fixed = false;
 
         if status == LinkStatus::Missing && fix {
-            if let Err(e) = fix_missing(link).await {
+            if let Err(e) = fix_missing(link) {
                 warn!("failed to fix {}: {e}", link.dst.display());
             } else {
                 fixed = true;
@@ -119,12 +118,12 @@ async fn check_pack_links(pack_name: &str, track: &Track, fix: bool) -> Result<V
         });
     }
 
-    Ok(entries)
+    entries
 }
 
 /// 从 track.toml 路径解析 pack 名称和 Track 记录
-async fn read_track_from_path(track_path: &Path) -> Option<(String, Track)> {
-    let content = fs::read_to_string(track_path).await.ok()?;
+fn read_track_from_path(track_path: &Path) -> Option<(String, Track)> {
+    let content = std::fs::read_to_string(track_path).ok()?;
     let track: Track = toml::from_str(&content).ok()?;
     let pack_name = track.pack_name.clone().unwrap_or_else(|| {
         track
@@ -148,7 +147,7 @@ async fn read_track_from_path(track_path: &Path) -> Option<(String, Track)> {
 }
 
 /// 扫描 `state_dir` 下所有已安装 pack
-async fn status_all(fix: bool, json: bool) -> Result<()> {
+fn status_all(fix: bool, json: bool) -> Result<()> {
     let state_dir = stow_cm_state_dir();
 
     if !state_dir.try_exists()? {
@@ -157,8 +156,8 @@ async fn status_all(fix: bool, json: bool) -> Result<()> {
     }
 
     let mut all_entries: Vec<LinkEntry> = Vec::new();
-    let mut dir_reader = fs::read_dir(&state_dir).await?;
-    while let Some(entry) = dir_reader.next_entry().await? {
+    for entry in std::fs::read_dir(&state_dir)? {
+        let entry = entry?;
         let entry_path = entry.path();
         if !entry_path.is_dir() {
             continue;
@@ -167,10 +166,10 @@ async fn status_all(fix: bool, json: bool) -> Result<()> {
         if !track_path.try_exists()? {
             continue;
         }
-        let Some((pack_name, track)) = read_track_from_path(&track_path).await else {
+        let Some((pack_name, track)) = read_track_from_path(&track_path) else {
             continue;
         };
-        let entries = check_pack_links(&pack_name, &track, fix).await?;
+        let entries = check_pack_links(&pack_name, &track, fix);
         all_entries.extend(entries);
     }
 
@@ -184,13 +183,8 @@ async fn status_all(fix: bool, json: bool) -> Result<()> {
 }
 
 /// 检查指定 pack 路径的状态
-async fn status_packs(
-    global_config: &Config,
-    paths: Vec<PathBuf>,
-    fix: bool,
-    json: bool,
-) -> Result<()> {
-    let paths = util::canonicalize(paths).await?;
+fn status_packs(global_config: &Config, paths: Vec<PathBuf>, fix: bool, json: bool) -> Result<()> {
+    let paths = util::canonicalize(paths)?;
     let mut all_entries: Vec<LinkEntry> = Vec::new();
 
     for pack in &paths {
@@ -203,9 +197,9 @@ async fn status_packs(
             continue;
         }
 
-        let content = fs::read_to_string(&track_file).await?;
+        let content = std::fs::read_to_string(&track_file)?;
         let track: Track = toml::from_str(&content)?;
-        let entries = check_pack_links(&pack_name, &track, fix).await?;
+        let entries = check_pack_links(&pack_name, &track, fix);
         all_entries.extend(entries);
     }
 
@@ -295,15 +289,10 @@ fn count_statuses(entries: &[&LinkEntry]) -> (usize, usize, usize, usize, usize)
 ///
 /// 不传 `paths` 则扫描 `state_dir` 下所有已安装 pack；
 /// 传入 `paths` 则仅检查指定 pack。
-pub async fn status(
-    global_config: &Config,
-    paths: Vec<PathBuf>,
-    fix: bool,
-    json: bool,
-) -> Result<()> {
+pub fn status(global_config: &Config, paths: Vec<PathBuf>, fix: bool, json: bool) -> Result<()> {
     if paths.is_empty() {
-        status_all(fix, json).await
+        status_all(fix, json)
     } else {
-        status_packs(global_config, paths, fix, json).await
+        status_packs(global_config, paths, fix, json)
     }
 }

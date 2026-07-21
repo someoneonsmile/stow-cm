@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
@@ -10,7 +11,6 @@ use maplit::hashmap;
 use merge::option::with_recurse_strategy;
 use regex::RegexSet;
 use serde::{Deserialize, Serialize};
-use tokio::io::AsyncWriteExt;
 
 use stow_cm_macros::Finalize;
 
@@ -248,41 +248,41 @@ impl Default for Config {
 }
 
 impl Command {
-    pub async fn exec_async<I, K, V>(&self, wd: impl AsRef<Path>, envs: I) -> Result<()>
+    pub fn execute<I, K, V>(&self, wd: impl AsRef<Path>, envs: I) -> Result<()>
     where
         I: IntoIterator<Item = (K, V)> + Clone,
         K: AsRef<OsStr>,
         V: AsRef<OsStr>,
     {
         let mut command = match self {
-            Self::Bin(path) => tokio::process::Command::new(path.as_os_str()),
+            Self::Bin(path) => std::process::Command::new(path.as_os_str()),
 
             Self::Make(path) => {
-                let mut c = tokio::process::Command::new("make");
+                let mut c = std::process::Command::new("make");
                 c.arg(path.as_os_str());
                 c
             }
 
             Self::Shell(path) => {
-                let mut c = tokio::process::Command::new("sh");
+                let mut c = std::process::Command::new("sh");
                 c.arg(path.as_os_str());
                 c
             }
 
             Self::Python(path) => {
-                let mut c = tokio::process::Command::new("python");
+                let mut c = std::process::Command::new("python");
                 c.arg(path.as_os_str());
                 c
             }
 
             Self::Lua(path) => {
-                let mut c = tokio::process::Command::new("lua");
+                let mut c = std::process::Command::new("lua");
                 c.arg(path.as_os_str());
                 c
             }
 
             Self::ShellStr(content) => {
-                let mut c = tokio::process::Command::new("sh");
+                let mut c = std::process::Command::new("sh");
                 c.current_dir(&wd);
                 c.envs(envs.clone());
                 c.stdin(Stdio::piped());
@@ -291,29 +291,28 @@ impl Command {
                     .stdin
                     .take()
                     .ok_or_else(|| anyhow!("open sh error"))?
-                    .write_all(content.as_bytes())
-                    .await?;
+                    .write_all(content.as_bytes())?;
                 // stdin 句柄在 write_all 完成后自动 drop，EOF 已发送
-                child.wait().await?;
+                child.wait()?;
                 return Ok(());
             }
         };
-        command.current_dir(wd).envs(envs).status().await?;
+        command.current_dir(wd).envs(envs).status()?;
         Ok(())
     }
 }
 
 impl EncryptedConfig {
     /// 一次性解析所有加密参数（含密钥文件读取），消除 `command.rs` 中的重复提取逻辑
-    pub async fn resolve(&self, pack_name: &str) -> Result<EncryptedParams<'_>> {
+    pub fn resolve(&self, pack_name: &str) -> Result<EncryptedParams<'_>> {
         let key_path = self
             .key_path
             .as_ref()
             .ok_or_else(|| anyhow!("{pack_name}: key_path is not configured"))?;
-        if !tokio::fs::try_exists(key_path).await? {
+        if !key_path.try_exists()? {
             bail!("{pack_name}: key_path not exist");
         }
-        let key_base64 = tokio::fs::read_to_string(key_path).await.with_context(|| {
+        let key_base64 = std::fs::read_to_string(key_path).with_context(|| {
             format!(
                 "{pack_name}: failed to read from key_path={}",
                 key_path.display()

@@ -38,7 +38,7 @@ struct Gathered {
     encryption: bool,
 }
 
-pub async fn init(pack_path: &Path, global: Option<&Config>, use_defaults: bool) -> Result<()> {
+pub fn init(pack_path: &Path, global: Option<&Config>, use_defaults: bool) -> Result<()> {
     let default_name = util::pack_name(pack_path)?;
     let config_path = pack_path.join(CONFIG_FILE_NAME);
 
@@ -51,19 +51,19 @@ pub async fn init(pack_path: &Path, global: Option<&Config>, use_defaults: bool)
 
     if use_defaults {
         let global = global.ok_or_else(|| anyhow!("global config not loaded"))?;
-        tokio::fs::create_dir_all(pack_path).await.map_err(|e| {
+        std::fs::create_dir_all(pack_path).map_err(|e| {
             anyhow!(
                 "{default_name}: failed to create directory '{}': {e}",
                 pack_path.display()
             )
         })?;
-        write_default_config(&config_path, global, pack_path, &default_name).await?;
+        write_default_config(&config_path, global, pack_path, &default_name)?;
         info!("{default_name}: created {}", config_path.display());
     } else {
         let global = global.ok_or_else(|| anyhow!("global config not loaded"))?;
         let gathered = gather_interactive(global, pack_path, &default_name)?;
 
-        tokio::fs::create_dir_all(pack_path).await.map_err(|e| {
+        std::fs::create_dir_all(pack_path).map_err(|e| {
             anyhow!(
                 "{}: failed to create directory '{}': {e}",
                 gathered.pack_name,
@@ -82,14 +82,14 @@ pub async fn init(pack_path: &Path, global: Option<&Config>, use_defaults: bool)
             fold: gathered.fold,
             encryption: gathered.encryption,
         };
-        write_config(&config_path, &meta).await?;
+        write_config(&config_path, &meta)?;
         info!("{}: created {}", gathered.pack_name, config_path.display());
     }
 
     Ok(())
 }
 
-async fn write_default_config(
+fn write_default_config(
     config_path: &Path,
     global: &Config,
     pack_path: &Path,
@@ -111,8 +111,7 @@ async fn write_default_config(
         .replace("__TARGET_RAW__", &raw_target)
         .replace("__TARGET__", &resolved_target);
 
-    tokio::fs::write(config_path, &content)
-        .await
+    std::fs::write(config_path, &content)
         .map_err(|e| anyhow!("{pack_name}: failed to write {CONFIG_FILE_NAME}: {e}"))?;
     Ok(())
 }
@@ -203,7 +202,7 @@ fn escape_toml_string(s: &str) -> String {
     }
 }
 
-async fn write_config(config_path: &Path, meta: &PackMeta<'_>) -> Result<()> {
+fn write_config(config_path: &Path, meta: &PackMeta<'_>) -> Result<()> {
     let mut content = String::new();
 
     let _ = writeln!(content, "# stow-cm config for {}", meta.pack_name);
@@ -253,7 +252,7 @@ async fn write_config(config_path: &Path, meta: &PackMeta<'_>) -> Result<()> {
     };
     content.push_str(&template);
 
-    tokio::fs::write(config_path, &content).await.map_err(|e| {
+    std::fs::write(config_path, &content).map_err(|e| {
         anyhow!(
             "{}: failed to write {CONFIG_FILE_NAME}: {e}",
             meta.pack_name

@@ -138,8 +138,8 @@ pub fn resolve_pack_ids(ids: &[String]) -> Result<Vec<PathBuf>> {
 }
 
 /// reload packages
-pub async fn reload(config: Arc<Config>, pack: impl AsRef<Path>) -> Result<()> {
-    remove::remove(config.clone(), &pack).await?;
-    install::install(config, &pack).await?;
+pub fn reload(config: &Arc<Config>, pack: impl AsRef<Path>) -> Result<()> {
+    remove::remove(config, &pack)?;
+    install::install(config, &pack)?;
     Ok(())
 }

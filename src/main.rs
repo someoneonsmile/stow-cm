@@ -47,13 +47,12 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 macro_rules! dispatch {
     ($common_config:expr, $paths:expr, $cmd:ident) => {{
-        let paths = util::canonicalize($paths).await?;
-        executor::exec_all($common_config, paths, $cmd).await?;
+        let paths = util::canonicalize($paths)?;
+        executor::exec_all(&$common_config, paths, $cmd)?;
     }};
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     let opt = Cli::parse();
 
     let default_log_level = if opt.quiet {
@@ -109,25 +108,25 @@ async fn main() -> Result<()> {
                 .as_ref()
                 .as_ref()
                 .ok_or_else(|| crate::error::anyhow!("global config not loaded"))?;
-            let sources = util::canonicalize(sources).await?;
-            let to = match tokio::fs::canonicalize(&to).await {
+            let sources = util::canonicalize(sources)?;
+            let to = match std::fs::canonicalize(&to) {
                 Ok(resolved) => resolved,
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => to,
                 Err(e) => return Err(e).with_context(|| format!("path: {}", to.display())),
             };
-            adopt(global, sources, &to).await?;
+            adopt(global, &sources, &to)?;
         }
-        Commands::List { json } => list(json).await?,
+        Commands::List { json } => list(json)?,
         Commands::Status { paths, fix, json } => {
             let global = common_config
                 .as_ref()
                 .as_ref()
                 .ok_or_else(|| crate::error::anyhow!("global config not loaded"))?;
-            status(global, paths, fix, json).await?;
+            status(global, paths, fix, json)?;
         }
         Commands::Init { path, use_defaults } => {
             let global = common_config.as_ref().as_ref();
-            init(&path, global, use_defaults).await?;
+            init(&path, global, use_defaults)?;
         }
     }
 
