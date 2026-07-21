@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::env::VarError;
 use std::path::{Path, PathBuf};
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 
 use anyhow::Context;
 use sha3::{Digest, Sha3_256};
@@ -257,27 +257,35 @@ pub fn hash(content: &str) -> String {
 }
 
 thread_local! {
-    static LOG_PREFIX: RefCell<Option<String>> = const { RefCell::new(None) };
+    static LOG_PREFIX: RefCell<Vec<(String, u8)>> = const { RefCell::new(Vec::new()) };
+    static COLOR_NEXT: Cell<u8> = const { Cell::new(0) };
 }
 
-/// 在 `f` 作用域内设置日志前缀，支持嵌套，作用域结束时恢复旧值。
+/// 在 `f` 作用域内设置日志前缀，支持嵌套并以堆栈形式全部展示。
 ///
-/// 所有 `info!` / `warn!` / `debug!` 日志将自动在消息前附加高亮前缀。
+/// 每次进入新作用域自动轮换颜色，作用域结束时弹出栈顶，
 /// 使用 Drop 守卫确保 panic 时也能正确恢复。
 pub fn scoped_log_prefix<R>(prefix: &str, f: impl FnOnce() -> R) -> R {
-    struct RestoreOnDrop(Option<String>);
-    impl Drop for RestoreOnDrop {
+    struct PopOnDrop;
+    impl Drop for PopOnDrop {
         fn drop(&mut self) {
-            LOG_PREFIX.with(|cell| *cell.borrow_mut() = self.0.take());
+            LOG_PREFIX.with(|cell| {
+                cell.borrow_mut().pop();
+            });
         }
     }
-    let old = LOG_PREFIX.with(|cell| cell.borrow_mut().replace(prefix.to_owned()));
-    let _guard = RestoreOnDrop(old);
+    let color_idx = COLOR_NEXT.with(|c| {
+        let v = c.get();
+        c.set(v.wrapping_add(1));
+        v
+    });
+    LOG_PREFIX.with(|cell| cell.borrow_mut().push((prefix.to_owned(), color_idx)));
+    let _guard = PopOnDrop;
     f()
 }
 
-/// 读取当前日志前缀（在 `env_logger` 自定义 format 中使用）。
-pub(crate) fn get_log_prefix() -> Option<String> {
+/// 读取当前日志前缀堆栈（在 `env_logger` 自定义 format 中使用）。
+pub(crate) fn get_log_prefixes() -> Vec<(String, u8)> {
     LOG_PREFIX.with(|cell| cell.borrow().clone())
 }
 

@@ -1,3 +1,4 @@
+use std::fmt::Write as FmtWrite;
 use std::io::{IsTerminal, Write};
 use std::sync::Arc;
 
@@ -70,28 +71,31 @@ fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or(default_log_level))
         .format(move |buf, record| {
             let msg = format!("{}", record.args());
-            let styled = if let Some(ref prefix) = crate::util::get_log_prefix() {
-                if use_color {
-                    format!("\x1b[1;36m{prefix}\x1b[0m: {msg}")
-                } else {
-                    format!("{prefix}: {msg}")
-                }
-            } else {
+            let prefixes = crate::util::get_log_prefixes();
+            let styled = if prefixes.is_empty() {
                 msg
+            } else if use_color {
+                let mut parts = String::new();
+                for (name, color_idx) in &prefixes {
+                    let c = match color_idx % 6 {
+                        0 => "\x1b[1;36m", // bold cyan
+                        1 => "\x1b[1;33m", // bold yellow
+                        2 => "\x1b[1;35m", // bold magenta
+                        3 => "\x1b[1;32m", // bold green
+                        4 => "\x1b[1;34m", // bold blue
+                        _ => "\x1b[1;37m", // bold white
+                    };
+                    let _ = write!(parts, "{c}{name}\x1b[0m: ");
+                }
+                parts.push_str(&msg);
+                parts
+            } else {
+                let prefix_str: Vec<&str> = prefixes.iter().map(|(n, _)| n.as_str()).collect();
+                format!("{}: {msg}", prefix_str.join(": "))
             };
             let level = record.level();
-            if use_color {
-                let level_color = match level {
-                    log::Level::Error => "\x1b[1;31m",
-                    log::Level::Warn => "\x1b[33m",
-                    log::Level::Info => "\x1b[32m",
-                    log::Level::Debug => "\x1b[34m",
-                    log::Level::Trace => "\x1b[35m",
-                };
-                writeln!(buf, "{level_color}{level:<5}\x1b[0m  {styled}")
-            } else {
-                writeln!(buf, "{level:<5}  {styled}")
-            }
+            let level_style = buf.default_level_style(level);
+            writeln!(buf, "{level_style}[{level}]{level_style:#}  {styled}")
         })
         .init();
 
