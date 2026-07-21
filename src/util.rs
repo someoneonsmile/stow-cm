@@ -227,7 +227,8 @@ pub fn pack_name(pack: &Path) -> Result<String> {
     }
     // 回退：对 ".", "./", "..", "../" 等特殊路径，先解析再提取
     let resolved = std::fs::canonicalize(pack).or_else(|_| std::path::absolute(pack));
-    let resolved = resolved.map_err(|e| anyhow!("path error: {} ({e})", pack.display()))?;
+    let resolved =
+        resolved.map_err(|e| anyhow!("failed to resolve path '{}': {e}", pack.display()))?;
     resolved
         .file_name()
         .and_then(std::ffi::OsStr::to_str)
@@ -261,7 +262,7 @@ pub async fn canonicalize(paths: Vec<PathBuf>) -> Result<Vec<PathBuf>> {
                 .await
                 .with_context(|| format!("path: {}", path.display()))
         })
-        .buffer_unordered(cpu_count())
+        .buffer_unordered(max_concurrent_files())
         .try_collect()
         .await
 }

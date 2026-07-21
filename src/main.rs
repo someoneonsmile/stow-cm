@@ -110,12 +110,10 @@ async fn main() -> Result<()> {
                 .as_ref()
                 .ok_or_else(|| crate::error::anyhow!("global config not loaded"))?;
             let sources = util::canonicalize(sources).await?;
-            let to = if tokio::fs::try_exists(&to).await.unwrap_or(false) {
-                tokio::fs::canonicalize(&to)
-                    .await
-                    .with_context(|| format!("path: {}", to.display()))?
-            } else {
-                to
+            let to = match tokio::fs::canonicalize(&to).await {
+                Ok(resolved) => resolved,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => to,
+                Err(e) => return Err(e).with_context(|| format!("path: {}", to.display())),
             };
             adopt(global, sources, &to).await?;
         }

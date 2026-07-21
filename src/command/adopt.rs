@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{anyhow, bail};
+use tokio::fs;
 use log::{info, warn};
 
 use crate::config::Config;
@@ -67,7 +68,11 @@ pub async fn adopt(
             .target
             .as_ref()
             .ok_or_else(|| anyhow!("{pack_name}: target is not configured"))?;
-        let target_matches = match (target.canonicalize(), source.canonicalize()) {
+        let (tc, sc) = tokio::join!(
+            fs::canonicalize(target),
+            fs::canonicalize(source),
+        );
+        let target_matches = match (tc, sc) {
             (Ok(tc), Ok(sc)) => tc == sc,
             _ => false,
         };
