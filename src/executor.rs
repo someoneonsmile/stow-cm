@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use crate::config::Config;
 use crate::error::Result;
+use crate::util;
 
 pub fn exec_all<F, P>(common_config: &Arc<Option<Config>>, packs: Vec<P>, f: F) -> Result<()>
 where
@@ -23,7 +24,9 @@ where
                 continue;
             }
         };
-        if let Err(e) = f(&Arc::new(config), pack) {
+        let pack_name = config.resolve_pack_name(pack.as_ref())?.into_owned();
+        let result = util::scoped_log_prefix(&pack_name, || f(&Arc::new(config), pack));
+        if let Err(e) = result {
             errors.push(e);
         }
     }

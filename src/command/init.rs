@@ -57,8 +57,11 @@ pub fn init(pack_path: &Path, global: Option<&Config>, use_defaults: bool) -> Re
                 pack_path.display()
             )
         })?;
-        write_default_config(&config_path, global, pack_path, &default_name)?;
-        info!("{default_name}: created {}", config_path.display());
+        util::scoped_log_prefix(&default_name, || -> Result<()> {
+            write_default_config(&config_path, global, pack_path, &default_name)?;
+            info!("created {}", config_path.display());
+            Ok(())
+        })?;
     } else {
         let global = global.ok_or_else(|| anyhow!("global config not loaded"))?;
         let gathered = gather_interactive(global, pack_path, &default_name)?;
@@ -82,8 +85,11 @@ pub fn init(pack_path: &Path, global: Option<&Config>, use_defaults: bool) -> Re
             fold: gathered.fold,
             encryption: gathered.encryption,
         };
-        write_config(&config_path, &meta)?;
-        info!("{}: created {}", gathered.pack_name, config_path.display());
+        util::scoped_log_prefix(&gathered.pack_name, || -> Result<()> {
+            write_config(&config_path, &meta)?;
+            info!("created {}", config_path.display());
+            Ok(())
+        })?;
     }
 
     Ok(())

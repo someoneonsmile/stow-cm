@@ -13,13 +13,15 @@ use super::{pack_envs, resolve_track_file};
 pub fn remove<P: AsRef<Path>>(config: &Arc<Config>, pack: P) -> Result<()> {
     let pack = Arc::new(pack.as_ref().to_path_buf());
     let pack_name = config.resolve_pack_name(&pack)?.into_owned();
-    info!("remove pack: {pack_name}");
+    info!("removing");
 
     remove_link(config, &pack)?;
 
     // execute the clear script
     if let Some(command) = &config.clear {
+        info!("running clear script");
         command.execute(&*pack, pack_envs(&pack, &pack_name))?;
+        info!("clear script done");
     }
 
     Ok(())
@@ -32,7 +34,7 @@ fn remove_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     let track_file = resolve_track_file(pack, &pack_name)?;
 
     if !track_file.try_exists()? {
-        warn!("{pack_name}: there is no link is installed");
+        warn!("no links installed");
         return Ok(());
     }
 
@@ -40,9 +42,9 @@ fn remove_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
 
     let symlinks = track.links;
 
-    debug!("{pack_name}: remove {symlinks:?}");
+    debug!("remove {symlinks:?}");
     for symlink in &symlinks {
-        info!("{pack_name}: remove symlink {symlink}");
+        info!("remove symlink {symlink}");
         symlink.remove()?;
     }
 
@@ -51,7 +53,7 @@ fn remove_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     if let Some(path) = track.decrypted_path
         && path.try_exists()?
     {
-        debug!("{pack_name}: remove decrypted dir, {}", path.display());
+        debug!("remove decrypted dir, {}", path.display());
         std::fs::remove_dir_all(path)?;
     }
 

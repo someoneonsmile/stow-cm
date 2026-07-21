@@ -193,7 +193,9 @@ fn status_packs(global_config: &Config, paths: Vec<PathBuf>, fix: bool, json: bo
         let track_file = resolve_track_file(pack, &pack_name)?;
 
         if !track_file.try_exists()? {
-            info!("no track file for pack: {pack_name}, skipping");
+            util::scoped_log_prefix(&pack_name, || {
+                info!("no track file, skipping");
+            });
             continue;
         }
 

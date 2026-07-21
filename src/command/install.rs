@@ -19,13 +19,15 @@ use super::{pack_envs, resolve_track_file};
 pub fn install(config: &Arc<Config>, pack: impl AsRef<Path>) -> Result<()> {
     let pack = Arc::new(pack.as_ref().to_path_buf());
     let pack_name = config.resolve_pack_name(&pack)?.into_owned();
-    info!("install pack: {pack_name}");
+    info!("installing");
 
     install_link(config, &pack)?;
 
     // execute the init script
     if let Some(command) = &config.init {
+        info!("running init script");
         command.execute(&*pack, pack_envs(&pack, &pack_name))?;
+        info!("init script done");
     }
 
     Ok(())
@@ -35,7 +37,7 @@ pub fn install(config: &Arc<Config>, pack: impl AsRef<Path>) -> Result<()> {
 fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     let pack_name = config.resolve_pack_name(pack.as_ref())?.into_owned();
     let Some(target) = config.target.as_ref() else {
-        warn!("{pack_name}: target is none, skip install links");
+        warn!("target is none, skip install links");
         return Ok(());
     };
 
@@ -126,7 +128,7 @@ fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
             let decrypted_file_path =
                 util::change_base_path(&symlink.src, pack.as_path(), decrypted_path.as_path())?;
             debug!(
-                "{pack_name}: change_base_path, src={}, base={}, new_base={}, result={}",
+                "change_base_path, src={}, base={}, new_base={}, result={}",
                 symlink.src.display(),
                 pack.display(),
                 decrypted_path.display(),
@@ -137,7 +139,7 @@ fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         }
 
         // decrypted the file
-        debug!("{pack_name}: decrypted paths {decrypted_file_map:?}");
+        debug!("decrypted paths {decrypted_file_map:?}");
         for (origin_file_path, decrypted_file_path) in &decrypted_file_map {
             // 用 symlink_metadata 一次性获取元数据，避免多次 stat() 调用之间的 TOCTOU 竞态窗口
             match std::fs::symlink_metadata(decrypted_file_path) {
@@ -155,7 +157,7 @@ fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
                 Err(e) => return Err(e.into()),
             }
             info!(
-                "{pack_name}: decrypt {} to {}",
+                "decrypt {} to {}",
                 origin_file_path.display(),
                 decrypted_file_path.display()
             );
@@ -177,14 +179,14 @@ fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         }
     }
 
-    debug!("{pack_name}: install paths {symlinks:?}");
+    debug!("install paths {symlinks:?}");
     for symlink in &symlinks {
-        info!("{pack_name}: symlink {symlink}");
+        info!("symlink {symlink}");
         symlink.create(true)?;
     }
 
     debug!(
-        "{pack_name}: installed links record to track file, track_file = {}, links = {symlinks:?}",
+        "installed links record to track file, track_file = {}, links = {symlinks:?}",
         track_file.display()
     );
     std::fs::write(

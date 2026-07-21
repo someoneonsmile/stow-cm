@@ -22,7 +22,7 @@ fn crypto_process<P: AsRef<Path>>(
 ) -> Result<()> {
     let pack = Arc::new(pack.as_ref().to_path_buf());
     let pack_name = config.resolve_pack_name(&pack)?.into_owned();
-    info!("{op_name} pack: {pack_name}");
+    info!("{op_name}");
 
     let enabled = config
         .encrypted
@@ -30,7 +30,7 @@ fn crypto_process<P: AsRef<Path>>(
         .is_some_and(|it| it.enable.is_some_and(std::convert::identity));
 
     if !enabled {
-        warn!("{pack_name}: pack is not enable encrypted");
+        warn!("pack is not enable encrypted");
         return Ok(());
     }
 
@@ -75,12 +75,12 @@ fn crypto_process<P: AsRef<Path>>(
         })
         .collect();
 
-    debug!("{pack_name}: {op_name} paths {files:?}");
+    debug!("{op_name} paths {files:?}");
     for file in &files {
         let path = file.path();
-        info!("{pack_name}: {op_name} {}", path.display());
+        info!("{op_name} {}", path.display());
         let Ok(content) = std::fs::read_to_string(path) else {
-            warn!("{pack_name}: {} contains not invalid utf-8", path.display());
+            warn!("{} contains not invalid utf-8", path.display());
             continue;
         };
         let processed = crypto_fn(

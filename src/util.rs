@@ -2,6 +2,8 @@ use std::borrow::Cow;
 use std::env::VarError;
 use std::path::{Path, PathBuf};
 
+use std::cell::RefCell;
+
 use anyhow::Context;
 use sha3::{Digest, Sha3_256};
 use shellexpand::LookupError;
@@ -252,6 +254,31 @@ pub fn hash(content: &str) -> String {
     // format!("{result:x}")
     // result.iter().map(|b| format!("{:02x}", b)).collect::<String>()
     hex::encode(result)
+}
+
+thread_local! {
+    static LOG_PREFIX: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+/// 在 `f` 作用域内设置日志前缀，支持嵌套，作用域结束时恢复旧值。
+///
+/// 所有 `info!` / `warn!` / `debug!` 日志将自动在消息前附加高亮前缀。
+/// 使用 Drop 守卫确保 panic 时也能正确恢复。
+pub fn scoped_log_prefix<R>(prefix: &str, f: impl FnOnce() -> R) -> R {
+    struct RestoreOnDrop(Option<String>);
+    impl Drop for RestoreOnDrop {
+        fn drop(&mut self) {
+            LOG_PREFIX.with(|cell| *cell.borrow_mut() = self.0.take());
+        }
+    }
+    let old = LOG_PREFIX.with(|cell| cell.borrow_mut().replace(prefix.to_owned()));
+    let _guard = RestoreOnDrop(old);
+    f()
+}
+
+/// 读取当前日志前缀（在 `env_logger` 自定义 format 中使用）。
+pub(crate) fn get_log_prefix() -> Option<String> {
+    LOG_PREFIX.with(|cell| cell.borrow().clone())
 }
 
 #[cfg(test)]

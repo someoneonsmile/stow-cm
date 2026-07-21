@@ -1,3 +1,4 @@
+use std::io::{IsTerminal, Write};
 use std::sync::Arc;
 
 use anyhow::Context;
@@ -65,12 +66,33 @@ fn main() -> Result<()> {
         }
     };
 
+    let use_color = std::io::stderr().is_terminal();
     env_logger::Builder::from_env(Env::default().default_filter_or(default_log_level))
-        .default_format()
-        .format_level(true)
-        .format_target(false)
-        .format_module_path(false)
-        .format_timestamp(None)
+        .format(move |buf, record| {
+            let msg = format!("{}", record.args());
+            let styled = if let Some(ref prefix) = crate::util::get_log_prefix() {
+                if use_color {
+                    format!("\x1b[1;36m{prefix}\x1b[0m: {msg}")
+                } else {
+                    format!("{prefix}: {msg}")
+                }
+            } else {
+                msg
+            };
+            let level = record.level();
+            if use_color {
+                let level_color = match level {
+                    log::Level::Error => "\x1b[1;31m",
+                    log::Level::Warn => "\x1b[33m",
+                    log::Level::Info => "\x1b[32m",
+                    log::Level::Debug => "\x1b[34m",
+                    log::Level::Trace => "\x1b[35m",
+                };
+                writeln!(buf, "{level_color}{level:<5}\x1b[0m  {styled}")
+            } else {
+                writeln!(buf, "{level:<5}  {styled}")
+            }
+        })
         .init();
 
     debug!("opt: {opt:?}");
