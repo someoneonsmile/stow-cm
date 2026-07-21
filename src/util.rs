@@ -215,11 +215,23 @@ where
     Ok(Cow::Owned(result))
 }
 
-/// 从路径中提取包名（最后一级目录名）
+/// 从路径中提取包名（最后一级目录名）。
+///
+/// 对 `.`, `./`, `..` 等 `file_name()` 返回 `None` 的特殊路径，依次尝试
+/// `canonicalize`（路径已存在）和 `absolute`（路径可不存在）解析后再提取。
 #[inline]
-pub fn pack_name(pack: &Path) -> Result<&str> {
-    pack.file_name()
-        .and_then(|it| it.to_str())
+pub fn pack_name(pack: &Path) -> Result<String> {
+    // 快速路径：直接从路径提取
+    if let Some(name) = pack.file_name().and_then(std::ffi::OsStr::to_str) {
+        return Ok(name.to_owned());
+    }
+    // 回退：对 ".", "./", "..", "../" 等特殊路径，先解析再提取
+    let resolved = std::fs::canonicalize(pack).or_else(|_| std::path::absolute(pack));
+    let resolved = resolved.map_err(|e| anyhow!("path error: {} ({e})", pack.display()))?;
+    resolved
+        .file_name()
+        .and_then(std::ffi::OsStr::to_str)
+        .map(String::from)
         .ok_or_else(|| anyhow!("path error: {}", pack.display()))
 }
 

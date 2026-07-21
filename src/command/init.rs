@@ -57,11 +57,11 @@ pub async fn init(pack_path: &Path, global: Option<&Config>, use_defaults: bool)
                 pack_path.display()
             )
         })?;
-        write_default_config(&config_path, global, pack_path, default_name).await?;
+        write_default_config(&config_path, global, pack_path, &default_name).await?;
         info!("{default_name}: created {}", config_path.display());
     } else {
         let global = global.ok_or_else(|| anyhow!("global config not loaded"))?;
-        let gathered = gather_interactive(global, pack_path, default_name)?;
+        let gathered = gather_interactive(global, pack_path, &default_name)?;
 
         tokio::fs::create_dir_all(pack_path).await.map_err(|e| {
             anyhow!(
@@ -73,7 +73,7 @@ pub async fn init(pack_path: &Path, global: Option<&Config>, use_defaults: bool)
 
         let meta = PackMeta {
             pack_name: &gathered.pack_name,
-            default_name,
+            default_name: &default_name,
             target: &gathered.target,
             target_is_default: gathered.target_is_default,
             raw_target: gathered.raw_target.as_deref(),

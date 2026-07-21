@@ -152,7 +152,7 @@ impl Config {
         if let Some(ref name) = self.name {
             Ok(Cow::Borrowed(name.as_str()))
         } else {
-            Ok(Cow::Borrowed(util::pack_name(pack)?))
+            Ok(Cow::Owned(util::pack_name(pack)?))
         }
     }
 
