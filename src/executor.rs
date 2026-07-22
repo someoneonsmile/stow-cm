@@ -2,6 +2,8 @@ use std::ops::Deref;
 use std::path::Path;
 use std::sync::Arc;
 
+use log::info;
+
 use crate::config::Config;
 use crate::error::Result;
 use crate::util;
@@ -25,6 +27,7 @@ where
             }
         };
         let pack_name = config.resolve_pack_name(pack.as_ref())?.into_owned();
+        info!("========== {pack_name} ==========");
         let result = util::scoped_log_prefix(&pack_name, || f(&Arc::new(config), pack));
         if let Err(e) = result {
             errors.push(e);
