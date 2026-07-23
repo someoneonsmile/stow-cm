@@ -77,11 +77,12 @@ impl fmt::Display for Action {
                     format!("{mode:?}").to_lowercase()
                 )
             }
-            Action::RemoveLink { dst, mode, .. } => {
+            Action::RemoveLink { src, dst, mode } => {
                 write!(
                     f,
-                    "- REMOVE   {}  [{}]",
+                    "- REMOVE   {}  ->  {}  [{}]",
                     dst.display(),
+                    src.display(),
                     format!("{mode:?}").to_lowercase()
                 )
             }
@@ -123,6 +124,12 @@ impl fmt::Display for ActionPlan {
         }
         if stats.ignored > 0 {
             parts.push(format!("{}i", stats.ignored));
+        }
+        if stats.overridden > 0 {
+            parts.push(format!("{}o", stats.overridden));
+        }
+        if stats.encrypted > 0 {
+            parts.push(format!("{}e", stats.encrypted));
         }
 
         if parts.is_empty() {
@@ -174,8 +181,7 @@ mod tests {
         assert!(output.contains("- REMOVE"), "output: {output}");
         assert!(output.contains("/dst/file"), "output: {output}");
         assert!(output.contains("[copy]"), "output: {output}");
-        // RemoveLink 不显示 src 路径
-        assert!(!output.contains("/src/file"), "output: {output}");
+        assert!(output.contains("/src/file"), "output: {output}");
     }
 
     #[test]
@@ -216,8 +222,8 @@ mod tests {
                 dirs_to_create: 0,
                 conflicts: 1,
                 ignored: 0,
-                overridden: 0,
-                encrypted: 0,
+                overridden: 2,
+                encrypted: 3,
             },
         };
         let output = format!("{plan}");
@@ -225,10 +231,12 @@ mod tests {
         assert!(output.contains("+ CREATE"), "output: {output}");
         assert!(output.contains("- REMOVE"), "output: {output}");
         assert!(output.contains("! CONFLICT"), "output: {output}");
-        // 页脚：1c, 1r, 1!
+        // 页脚：1c, 1r, 1!, 2o, 3e
         assert!(output.contains("1c"), "output: {output}");
         assert!(output.contains("1r"), "output: {output}");
         assert!(output.contains("1!"), "output: {output}");
+        assert!(output.contains("2o"), "output: {output}");
+        assert!(output.contains("3e"), "output: {output}");
         // ignored 为 0，不应出现在页脚
         assert!(!output.contains("0i"), "output: {output}");
     }
