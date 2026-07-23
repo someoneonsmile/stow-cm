@@ -84,24 +84,24 @@ fn execute_action(action: &Action) -> Result<()> {
             symlink.remove()
         }
         Action::CreateDir(path) => std::fs::create_dir_all(path)
-            .map_err(|e| anyhow::anyhow!("无法创建目录 {}: {e}", path.display())),
+            .map_err(|e| anyhow::anyhow!("Failed to create directory {}: {e}", path.display())),
         Action::Conflict { dst, reason } => {
-            log::warn!("冲突: {} ({})", dst.display(), reason);
-            Ok(()) // 冲突不阻断执行，仅警告
+            log::warn!("Conflict: {} ({})", dst.display(), reason);
+            Ok(()) // Conflict does not block execution, only warns
         }
         Action::DecryptFile { src, to } => {
             // 读取源文件，解密，写入目标位置
             let content = std::fs::read_to_string(src)
-                .map_err(|e| anyhow::anyhow!("无法读取文件 {}: {e}", src.display()))?;
+                .map_err(|e| anyhow::anyhow!("Failed to read file {}: {e}", src.display()))?;
 
             // 解密功能后续由 crypto 模块集成。
             // 目前 install 流程中解密操作在执行前已完成，此处直接复制。
             if let Some(parent) = to.parent() {
                 std::fs::create_dir_all(parent)
-                    .map_err(|e| anyhow::anyhow!("无法创建解密目录: {e}"))?;
+                    .map_err(|e| anyhow::anyhow!("Failed to create decrypt directory: {e}"))?;
             }
             std::fs::write(to, content)
-                .map_err(|e| anyhow::anyhow!("无法写入解密文件 {}: {e}", to.display()))
+                .map_err(|e| anyhow::anyhow!("Failed to write decrypt file {}: {e}", to.display()))
         }
     }
 }

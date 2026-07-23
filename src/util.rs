@@ -195,7 +195,7 @@ where
 
             if let Some(nl) = next_left {
                 let after_right = after_left + ri + right.len();
-                debug_assert!(after_right <= nl, "left 与 right 重叠，跳转优化不适用");
+                debug_assert!(after_right <= nl, "left and right overlap, jump optimization not applicable");
                 result.push_str(&content[after_right..nl]);
                 pos = nl;
             } else {

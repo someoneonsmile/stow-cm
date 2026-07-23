@@ -167,7 +167,7 @@ impl VNode {
 /// 不会被跟随。
 fn scan_recursive(abs_path: &Path, rel_path: &Path, follow_symlinks: bool) -> Result<VNode> {
     let meta = std::fs::symlink_metadata(abs_path)
-        .with_context(|| format!("无法读取文件元数据: {}", abs_path.display()))?;
+        .with_context(|| format!("Failed to read file metadata: {}", abs_path.display()))?;
 
     let ft = meta.file_type();
 
@@ -175,7 +175,7 @@ fn scan_recursive(abs_path: &Path, rel_path: &Path, follow_symlinks: bool) -> Re
     if ft.is_symlink() {
         if !follow_symlinks {
             let target = std::fs::read_link(abs_path)
-                .with_context(|| format!("无法读取符号链接: {}", abs_path.display()))?;
+                .with_context(|| format!("Failed to read symlink: {}", abs_path.display()))?;
             return Ok(VNode {
                 rel_path: rel_path.to_path_buf(),
                 abs_path: abs_path.to_path_buf(),
@@ -186,7 +186,7 @@ fn scan_recursive(abs_path: &Path, rel_path: &Path, follow_symlinks: bool) -> Re
 
         // 跟随符号链接：使用 metadata 获取目标文件属性
         let resolved = std::fs::metadata(abs_path)
-            .with_context(|| format!("无法读取符号链接目标: {}", abs_path.display()))?;
+            .with_context(|| format!("Failed to resolve symlink target: {}", abs_path.display()))?;
         if resolved.is_dir() {
             return scan_dir_children(abs_path, rel_path, follow_symlinks);
         }
@@ -222,7 +222,7 @@ fn scan_dir_children(abs_path: &Path, rel_path: &Path, follow_symlinks: bool) ->
     let mut children = Vec::new();
 
     let mut entries: Vec<_> = std::fs::read_dir(abs_path)
-        .with_context(|| format!("无法读取目录: {}", abs_path.display()))?
+        .with_context(|| format!("Failed to read directory: {}", abs_path.display()))?
         .filter_map(std::result::Result::ok)
         .collect();
 
@@ -239,7 +239,7 @@ fn scan_dir_children(abs_path: &Path, rel_path: &Path, follow_symlinks: bool) ->
             && child_meta.file_type().is_symlink()
         {
             let target = std::fs::read_link(&child_abs)
-                .with_context(|| format!("无法读取子符号链接: {}", child_abs.display()))?;
+                .with_context(|| format!("Failed to read child symlink: {}", child_abs.display()))?;
             children.push(VNode {
                 rel_path: PathBuf::from(child_rel),
                 abs_path: child_abs,
