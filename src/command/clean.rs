@@ -42,7 +42,7 @@ fn clean_link(config: &Arc<Config>, pack: &Arc<PathBuf>, dry_run: bool) -> Resul
         return Ok(());
     };
 
-    let track_file = resolve_track_file(pack, &pack_name)?;
+    let track_file = resolve_track_file(pack)?;
 
     // ── 扫描文件系统，找到所有指向 pack 的符号链接 ──
     let symlinks = util::find_prefix_symlink(target, pack.as_ref())?;

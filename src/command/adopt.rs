@@ -83,7 +83,7 @@ fn adopt_one(global: &Config, source: &Path, pack_dir: &Path, pack_name: &str) -
     }
 
     // 已安装的 pack 不能再次 adopt
-    let track_file = resolve_track_file(pack_dir, pack_name)?;
+    let track_file = resolve_track_file(pack_dir)?;
     if track_file.try_exists()? {
         bail!("{pack_name}: pack has been installed, cannot adopt");
     }

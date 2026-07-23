@@ -7,15 +7,6 @@ use std::sync::Arc;
 
 use stow_cm::command::install;
 
-// ── 辅助：解析 pack 名称 ──
-fn pack_name_from_dir(pack_dir: &std::path::Path) -> String {
-    pack_dir
-        .file_name()
-        .and_then(|n| n.to_str())
-        .expect("invalid pack dir name")
-        .to_string()
-}
-
 // ── 基础安装 ──
 
 #[test]
@@ -41,7 +32,7 @@ fn test_install_basic() {
     // 验证两个 symlink
     common::assert_symlink(target_dir.join("readme.txt"), pack_dir.join("readme.txt"));
     common::assert_symlink(target_dir.join("LICENSE"), pack_dir.join("LICENSE"));
-    common::assert_track_links(&pack_dir, pack_name, 2);
+    common::assert_track_links(&pack_dir, 2);
 }
 
 // ── Dry Run ──
@@ -69,7 +60,7 @@ fn test_install_dry_run() {
     common::assert_not_exists(target_dir.join("notes.txt"));
     // track file 也不应创建
     let track_file =
-        stow_cm::command::resolve_track_file(&pack_dir, pack_name).expect("track path");
+        stow_cm::command::resolve_track_file(&pack_dir).expect("track path");
     common::assert_not_exists(&track_file);
 }
 
@@ -131,7 +122,7 @@ fn test_install_override() {
 
     // 验证 symlink 已覆盖原有文件
     common::assert_symlink(target_dir.join("notes.txt"), pack_dir.join("notes.txt"));
-    common::assert_track_links(&pack_dir, pack_name, 1);
+    common::assert_track_links(&pack_dir, 1);
 }
 
 // ── Ignore 忽略 ──
@@ -161,7 +152,7 @@ fn test_install_ignore() {
     common::assert_not_exists(target_dir.join("readme.md"));
     // 未被忽略的文件应正常链接
     common::assert_symlink(target_dir.join("config.lua"), pack_dir.join("config.lua"));
-    common::assert_track_links(&pack_dir, pack_name, 1);
+    common::assert_track_links(&pack_dir, 1);
 }
 
 // ── Fold 目录折叠 ──
@@ -189,7 +180,7 @@ fn test_install_fold() {
     // fold 开启：`docs/` 整个目录折叠为单个 symlink
     common::assert_symlink(target_dir.join("docs"), pack_dir.join("docs"));
     common::assert_symlink(target_dir.join("config.lua"), pack_dir.join("config.lua"));
-    common::assert_track_links(&pack_dir, pack_name, 2);
+    common::assert_track_links(&pack_dir, 2);
 }
 
 // ── Copy 模式 ──
@@ -215,7 +206,7 @@ fn test_install_copy_mode() {
 
     // copy 模式：目标应为普通文件（非 symlink），内容与源文件一致
     common::assert_copy(target_dir.join("notes.txt"), pack_dir.join("notes.txt"));
-    common::assert_track_links(&pack_dir, pack_name, 1);
+    common::assert_track_links(&pack_dir, 1);
 }
 
 // ── 幂等性：重复安装失败 ──
@@ -272,8 +263,7 @@ fn test_install_target_none() {
     install(&config, &pack_dir, false).expect("target=None install should succeed");
 
     // track file 不应存在
-    let pack_name_str = pack_name_from_dir(&pack_dir);
     let track_file =
-        stow_cm::command::resolve_track_file(&pack_dir, &pack_name_str).expect("track path");
+        stow_cm::command::resolve_track_file(&pack_dir).expect("track path");
     common::assert_not_exists(&track_file);
 }

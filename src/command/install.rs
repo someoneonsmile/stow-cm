@@ -48,7 +48,7 @@ fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>, dry_run: bool) -> Res
     };
 
     // if track file already exists, then the pack has been installed
-    let track_file = resolve_track_file(pack, &pack_name)?;
+    let track_file = resolve_track_file(pack)?;
     if track_file.try_exists()? {
         bail!("{pack_name}: pack has been install")
     }

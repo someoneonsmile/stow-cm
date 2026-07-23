@@ -55,8 +55,7 @@ fn test_clean_basic() {
     // sub/file_b.txt 通过目录 symlink 可达
     assert_exists(&target_dir.join("sub").join("file_b.txt"));
 
-    let pack_name = config.resolve_pack_name(&pack_dir).expect("pack name");
-    let track_path = assert_track_links(&pack_dir, &pack_name, 2);
+    let track_path = assert_track_links(&pack_dir, 2);
 
     clean(&config, &pack_dir, false).expect("clean");
 
@@ -81,8 +80,7 @@ fn test_clean_empty() {
     assert_not_exists(&target_dir.join("sub").join("file_b.txt"));
 
     // track file 也不存在
-    let pack_name = config.resolve_pack_name(&pack_dir).expect("pack name");
-    let track_path = resolve_track_file(&pack_dir, &pack_name).expect("resolve track file");
+    let track_path = resolve_track_file(&pack_dir).expect("resolve track file");
     assert_not_exists(&track_path);
 }
 
@@ -101,8 +99,7 @@ fn test_clean_dry_run() {
     assert_exists(&link_a);
     assert_exists(&link_b);
 
-    let pack_name = config.resolve_pack_name(&pack_dir).expect("pack name");
-    let track_path = assert_track_links(&pack_dir, &pack_name, 2);
+    let track_path = assert_track_links(&pack_dir, 2);
 
     clean(&config, &pack_dir, true).expect("dry-run clean");
 
@@ -131,8 +128,7 @@ fn test_clean_after_manual_link_removal() {
     assert_not_exists(&link_a);
     assert_exists(&link_sub);
 
-    let pack_name = config.resolve_pack_name(&pack_dir).expect("pack name");
-    let track_path = assert_track_links(&pack_dir, &pack_name, 2);
+    let track_path = assert_track_links(&pack_dir, 2);
 
     // clean 通过文件系统扫描，仍能找到 sub 目录 symlink
     clean(&config, &pack_dir, false).expect("clean");
@@ -191,10 +187,8 @@ mode = 'symlink'
     assert_not_exists(&link_a);
     assert_symlink(&link_b, &pack_b_dir.join("file_b.txt"));
 
-    let name_a = cfg_a.resolve_pack_name(&pack_a_dir).expect("pack name a");
-    let track_a = resolve_track_file(&pack_a_dir, &name_a).expect("track a");
+    let track_a = resolve_track_file(&pack_a_dir).expect("track a");
     assert_not_exists(&track_a);
 
-    let name_b = cfg_b.resolve_pack_name(&pack_b_dir).expect("pack name b");
-    let _track_b = assert_track_links(&pack_b_dir, &name_b, 1);
+    let _track_b = assert_track_links(&pack_b_dir, 1);
 }

@@ -249,7 +249,7 @@ fn encrypted_install_full_lifecycle() {
         "installed file should have decrypted content without boundaries"
     );
 
-    common::assert_track_links(&pack_dir, "crypto-lifecycle", 1);
+    common::assert_track_links(&pack_dir, 1);
 
     remove(&config, &pack_dir, false).expect("remove encrypted pack should succeed");
     common::assert_not_exists(&link_path);

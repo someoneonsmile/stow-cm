@@ -53,7 +53,7 @@ fn reload_link(config: &Arc<Config>, pack: &Arc<PathBuf>, dry_run: bool) -> Resu
         return Ok(());
     };
 
-    let track_file = resolve_track_file(pack, &pack_name)?;
+    let track_file = resolve_track_file(pack)?;
 
     // ── 读取旧的 track file ──
     let old_track = if track_file.try_exists()? {

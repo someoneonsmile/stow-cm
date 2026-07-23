@@ -17,7 +17,6 @@ pub use crypto::{decrypt, encrypt};
 pub use init::init;
 pub use install::install;
 pub use list::list;
-use maplit::hashmap;
 pub use reload::reload;
 pub use remove::remove;
 pub use status::status;
@@ -38,13 +37,15 @@ pub(super) fn pack_envs(pack: &Path, pack_name: &str) -> [(&'static str, String)
 }
 
 /// 解析 pack 对应的 track file 路径，消除 `install`/`clean`/`remove` 中的重复逻辑。
-pub fn resolve_track_file(pack: &Path, pack_name: &str) -> Result<PathBuf> {
-    let context_map = hashmap! {
-        PACK_ID_ENV => util::hash(&pack.to_string_lossy()),
-        PACK_NAME_ENV => pack_name.to_owned(),
-    };
-    let track_file =
-        util::shell_expand_full_with_context(pack_track_file(), |key| context_map.get(key))?;
+pub fn resolve_track_file(pack: &Path) -> Result<PathBuf> {
+    let pack_id = util::hash(&pack.to_string_lossy());
+    let track_file = util::shell_expand_full_with_context(pack_track_file(), |key| {
+        if key == PACK_ID_ENV {
+            Some(pack_id.clone())
+        } else {
+            None
+        }
+    })?;
     Ok(track_file)
 }
 

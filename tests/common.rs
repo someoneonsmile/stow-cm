@@ -251,9 +251,9 @@ pub fn assert_exists(path: impl AsRef<Path>) {
 
 /// 断言 track file 存在且包含指定数量的链接。
 /// 返回 track file 路径。
-pub fn assert_track_links(pack: &Path, pack_name: &str, expected_count: usize) -> PathBuf {
+pub fn assert_track_links(pack: &Path, expected_count: usize) -> PathBuf {
     use stow_cm::command::resolve_track_file;
-    let track_path = resolve_track_file(pack, pack_name).expect("resolve_track_file failed");
+    let track_path = resolve_track_file(pack).expect("resolve_track_file failed");
     assert!(
         track_path.try_exists().unwrap_or(false),
         "track file not found at {}",

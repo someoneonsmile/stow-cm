@@ -16,7 +16,7 @@ pub fn remove<P: AsRef<Path>>(config: &Arc<Config>, pack: P, dry_run: bool) -> R
     let pack_name = config.resolve_pack_name(&pack)?.into_owned();
     info!("removing");
 
-    remove_link(config, &pack, dry_run)?;
+    remove_link(&pack, dry_run)?;
 
     // execute the clear script
     if let Some(command) = &config.clear {
@@ -33,9 +33,8 @@ pub fn remove<P: AsRef<Path>>(config: &Arc<Config>, pack: P, dry_run: bool) -> R
 }
 
 /// remove links
-fn remove_link(config: &Arc<Config>, pack: &Arc<PathBuf>, dry_run: bool) -> Result<()> {
-    let pack_name = config.resolve_pack_name(pack.as_ref())?.into_owned();
-    let track_file = resolve_track_file(pack, &pack_name)?;
+fn remove_link(pack: &Arc<PathBuf>, dry_run: bool) -> Result<()> {
+    let track_file = resolve_track_file(pack)?;
 
     if !track_file.try_exists()? {
         warn!("no links installed");

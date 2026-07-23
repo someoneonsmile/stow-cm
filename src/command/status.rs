@@ -190,7 +190,7 @@ fn status_packs(global_config: &Config, paths: Vec<PathBuf>, fix: bool, json: bo
     for pack in &paths {
         let config = Config::for_pack(pack, global_config, None, false)?;
         let pack_name = config.resolve_pack_name(pack)?.into_owned();
-        let track_file = resolve_track_file(pack, &pack_name)?;
+        let track_file = resolve_track_file(pack)?;
 
         if !track_file.try_exists()? {
             util::scoped_log_prefix(&pack_name, || {

@@ -47,7 +47,7 @@ fn reload_no_changes() {
 
     assert_symlink(&target_dir.join("file_a.txt"), &pack_dir.join("file_a.txt"));
     assert_symlink(&target_dir.join("sub"), &pack_dir.join("sub"));
-    assert_track_links(&pack_dir, "test-pack", 2);
+    assert_track_links(&pack_dir, 2);
 
     // reload 无变更 — 去重后链接仍存在
     let config2 = for_pack(&pack_dir);
@@ -64,7 +64,7 @@ fn reload_add_file() {
     let config = for_pack(&pack_dir);
 
     install(&config, &pack_dir, false).expect("install");
-    assert_track_links(&pack_dir, "test-pack", 2);
+    assert_track_links(&pack_dir, 2);
 
     write_pack_file(&pack_dir, "new_file.txt", "new\n");
 
@@ -78,7 +78,7 @@ fn reload_add_file() {
         &pack_dir.join("new_file.txt"),
     );
     // reload 去重：sub 的 remove+create 抵消，track 仅记录新增文件
-    assert_track_links(&pack_dir, "test-pack", 1);
+    assert_track_links(&pack_dir, 1);
 }
 
 #[test]
@@ -88,7 +88,7 @@ fn reload_remove_file() {
     let config = for_pack(&pack_dir);
 
     install(&config, &pack_dir, false).expect("install");
-    assert_track_links(&pack_dir, "test-pack", 2);
+    assert_track_links(&pack_dir, 2);
 
     std::fs::remove_file(pack_dir.join("file_a.txt")).expect("remove file_a.txt");
 
@@ -98,7 +98,7 @@ fn reload_remove_file() {
     assert_not_exists(&target_dir.join("file_a.txt"));
     assert_symlink(&target_dir.join("sub"), &pack_dir.join("sub"));
     // reload 去重：file_a.txt 移除，sub remove+create 抵消 → track 0 条
-    assert_track_links(&pack_dir, "test-pack", 0);
+    assert_track_links(&pack_dir, 0);
 }
 
 #[test]
@@ -111,7 +111,7 @@ fn reload_fresh() {
 
     assert_symlink(&target_dir.join("file_a.txt"), &pack_dir.join("file_a.txt"));
     assert_symlink(&target_dir.join("sub"), &pack_dir.join("sub"));
-    assert_track_links(&pack_dir, "test-pack", 2);
+    assert_track_links(&pack_dir, 2);
 }
 
 #[test]
@@ -131,5 +131,5 @@ fn reload_dry_run() {
     assert_symlink(&target_dir.join("file_a.txt"), &pack_dir.join("file_a.txt"));
     assert_symlink(&target_dir.join("sub"), &pack_dir.join("sub"));
     assert_not_exists(&target_dir.join("added.txt"));
-    assert_track_links(&pack_dir, "test-pack", 2);
+    assert_track_links(&pack_dir, 2);
 }

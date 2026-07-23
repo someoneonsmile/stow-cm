@@ -74,8 +74,7 @@ fn full_lifecycle_symlink() {
     assert_symlink(&link_two, pack_dir.join("two.txt"));
     assert_symlink(&link_sub, pack_dir.join("sub"));
 
-    let pack_name = cfg.resolve_pack_name(&pack_dir).expect("pack name");
-    let track_path = assert_track_links(&pack_dir, &pack_name, 3);
+    let track_path = assert_track_links(&pack_dir, 3);
 
     let global = Config::global().expect("global");
     status(&global, vec![pack_dir.clone()], false, false).expect("status");
@@ -114,8 +113,7 @@ fn full_lifecycle_remove() {
     assert_symlink(&link_a, pack_dir.join("a.txt"));
     assert_symlink(&link_b, pack_dir.join("b.txt"));
 
-    let pack_name = cfg.resolve_pack_name(&pack_dir).expect("pack name");
-    let track_path = assert_track_links(&pack_dir, &pack_name, 2);
+    let track_path = assert_track_links(&pack_dir, 2);
 
     let global = Config::global().expect("global");
     status(&global, vec![pack_dir.clone()], false, false).expect("status");
@@ -181,8 +179,7 @@ override = ['.*\.conf']
     let content = std::fs::read_to_string(target_dir.join("settings.conf")).unwrap();
     assert_eq!(content, "override settings\n");
 
-    let pack_name = cfg.resolve_pack_name(&pack_dir).expect("pack name");
-    assert_track_links(&pack_dir, &pack_name, 3);
+    assert_track_links(&pack_dir, 3);
 }
 
 // ── 测试 4: 嵌套目录 fold ──
@@ -213,8 +210,7 @@ fn nested_directories() {
     let leaf_path = target_dir.join("a/b/c/d/e/leaf.txt");
     assert!(leaf_path.try_exists().unwrap());
 
-    let pack_name = cfg.resolve_pack_name(&pack_dir).expect("pack name");
-    let track_path = assert_track_links(&pack_dir, &pack_name, 1);
+    let track_path = assert_track_links(&pack_dir, 1);
 
     clean(&cfg, &pack_dir, false).expect("clean");
     assert_not_exists(&link_dir);
@@ -273,10 +269,8 @@ fn multiple_packs() {
     assert_symlink(&link_banana, pack_b_dir.join("banana.txt"));
     assert_symlink(&link_bridge, pack_b_dir.join("bridge.txt"));
 
-    let name_a = cfg_a.resolve_pack_name(&pack_a_dir).unwrap();
-    let name_b = cfg_b.resolve_pack_name(&pack_b_dir).unwrap();
-    assert_track_links(&pack_a_dir, &name_a, 2);
-    assert_track_links(&pack_b_dir, &name_b, 2);
+    assert_track_links(&pack_a_dir, 2);
+    assert_track_links(&pack_b_dir, 2);
 
     remove(&cfg_a, &pack_a_dir, false).expect("remove a");
 
@@ -285,7 +279,7 @@ fn multiple_packs() {
     assert_symlink(&link_banana, pack_b_dir.join("banana.txt"));
     assert_symlink(&link_bridge, pack_b_dir.join("bridge.txt"));
 
-    let track_a = stow_cm::command::resolve_track_file(&pack_a_dir, &name_a).unwrap();
+    let track_a = stow_cm::command::resolve_track_file(&pack_a_dir).unwrap();
     assert_not_exists(&track_a);
-    assert_track_links(&pack_b_dir, &name_b, 2);
+    assert_track_links(&pack_b_dir, 2);
 }

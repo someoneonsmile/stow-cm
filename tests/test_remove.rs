@@ -41,7 +41,7 @@ fn test_remove_basic() {
     common::assert_exists(&target_dir.join("file_a.txt"));
     common::assert_exists(&target_dir.join("sub").join("file_b.txt"));
 
-    let track_path = common::assert_track_links(&pack_dir, "test-remove-basic", 2);
+    let track_path = common::assert_track_links(&pack_dir, 2);
 
     remove(&config, &pack_dir, false).expect("remove");
 
@@ -63,7 +63,7 @@ fn test_remove_dry_run() {
 
     common::assert_exists(&target_dir.join("file_a.txt"));
     common::assert_exists(&target_dir.join("sub").join("file_b.txt"));
-    common::assert_track_links(&pack_dir, "test-remove-dryrun", 2);
+    common::assert_track_links(&pack_dir, 2);
 }
 
 #[test]
