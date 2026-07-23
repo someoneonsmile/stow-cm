@@ -90,10 +90,10 @@ clean:
     rm -rf {{ SHELL_HELP_DIR }}
 
 fmt:
-    cargo fmt --all
+    cargo +nightly fmt --all
 
 fmt-check:
-    cargo fmt --all -- --check
+    cargo +nightly fmt --all -- --check
 
 lint:
     cargo clippy --all-features

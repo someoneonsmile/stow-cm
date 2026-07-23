@@ -1,8 +1,7 @@
 use std::borrow::Cow;
+use std::cell::{Cell, RefCell};
 use std::env::VarError;
 use std::path::{Path, PathBuf};
-
-use std::cell::{Cell, RefCell};
 
 use anyhow::Context;
 use sha3::{Digest, Sha3_256};
@@ -285,7 +284,7 @@ pub fn scoped_log_prefix<R>(prefix: &str, f: impl FnOnce() -> R) -> R {
 }
 
 /// 读取当前日志前缀堆栈（在 `env_logger` 自定义 format 中使用）。
-pub(crate) fn get_log_prefixes() -> Vec<(String, u8)> {
+pub fn get_log_prefixes() -> Vec<(String, u8)> {
     LOG_PREFIX.with(|cell| cell.borrow().clone())
 }
 

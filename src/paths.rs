@@ -1,6 +1,6 @@
-use crate::constants::TRACK_FILE_NAME;
-
 use std::path::PathBuf;
+
+use crate::constants::TRACK_FILE_NAME;
 
 fn config_home() -> PathBuf {
     dirs::config_dir()

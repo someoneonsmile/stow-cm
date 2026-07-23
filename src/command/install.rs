@@ -5,36 +5,42 @@ use std::sync::Arc;
 use anyhow::{Context, anyhow, bail};
 use log::{debug, info, warn};
 
+use super::{pack_envs, resolve_track_file};
+use crate::action::Action;
 use crate::config::{Config, EncryptedParams};
 use crate::crypto;
 use crate::error::Result;
-use crate::merge_tree;
-use crate::merge_tree::MergeOption;
+use crate::executor;
+use crate::planner;
+use crate::planner::MergeOption;
 use crate::track_file::Track;
 use crate::util;
-
-use super::{pack_envs, resolve_track_file};
+use crate::vtree;
 
 /// install packages
-pub fn install(config: &Arc<Config>, pack: impl AsRef<Path>) -> Result<()> {
+pub fn install(config: &Arc<Config>, pack: impl AsRef<Path>, dry_run: bool) -> Result<()> {
     let pack = Arc::new(pack.as_ref().to_path_buf());
     let pack_name = config.resolve_pack_name(&pack)?.into_owned();
     info!("installing");
 
-    install_link(config, &pack)?;
+    install_link(config, &pack, dry_run)?;
 
     // execute the init script
     if let Some(command) = &config.init {
-        info!("running init script");
-        command.execute(&*pack, pack_envs(&pack, &pack_name))?;
-        info!("init script done");
+        if dry_run {
+            info!("would run init script (dry-run)");
+        } else {
+            info!("running init script");
+            command.execute(&*pack, pack_envs(&pack, &pack_name))?;
+            info!("init script done");
+        }
     }
 
     Ok(())
 }
 
 /// install link
-fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
+fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>, dry_run: bool) -> Result<()> {
     let pack_name = config.resolve_pack_name(pack.as_ref())?.into_owned();
     let Some(target) = config.target.as_ref() else {
         warn!("target is none, skip install links");
@@ -62,32 +68,36 @@ fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
     let ignore_re = config.ignore_regex()?;
     let over_re = config.over_regex()?;
 
-    let merge_result = merge_tree::MergeTree::new(
-        target,
-        pack.as_ref(),
-        Some(Arc::new(MergeOption {
-            ignore: ignore_re,
-            over: over_re,
-            fold: config.fold,
-            symlink_mode: config.symlink_mode.clone(),
-        })),
-    )
-    .merge_add()?;
+    // ── Virtual tree pipeline: scan → plan → execute ──
+    let pack_tree = vtree::VNode::scan(pack.as_ref(), false)?;
+    let target_tree = vtree::VNode::scan(target, false)?;
 
-    if let Some(conflicts) = merge_result.conflicts {
-        bail!("check conflict: {conflicts:?}");
+    let options = MergeOption {
+        ignore: ignore_re,
+        over: over_re,
+        fold: config.fold,
+        symlink_mode: config.symlink_mode.clone(),
+    };
+
+    let mut plan = planner::plan_install(&pack_tree, &target_tree, &options);
+
+    // Check conflicts
+    if plan.stats.conflicts > 0 {
+        let conflict_details: Vec<_> = plan
+            .actions
+            .iter()
+            .filter_map(|a| {
+                if let Action::Conflict { dst, reason } = a {
+                    Some(format!("  {} ({})", dst.display(), reason))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        bail!("check conflict:\n{}", conflict_details.join("\n"));
     }
 
-    if let Some(expand_symlinks) = merge_result.expand_symlinks {
-        // convert symlink dir to dir
-        for expand_symlink in expand_symlinks {
-            util::expand_symlink_dir(expand_symlink)?;
-        }
-    }
-
-    let mut symlinks = merge_result.to_create_symlinks.unwrap_or_default();
-
-    // if config decrypted, decrypted the file
+    // if config decrypted, decrypt the files
     let decrypted_path = config
         .encrypted
         .as_ref()
@@ -124,21 +134,23 @@ fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         }
 
         let mut decrypted_file_map = vec![];
-        for symlink in &mut symlinks {
-            let decrypted_file_path =
-                util::change_base_path(&symlink.src, pack.as_path(), decrypted_path.as_path())?;
-            debug!(
-                "change_base_path, src={}, base={}, new_base={}, result={}",
-                symlink.src.display(),
-                pack.display(),
-                decrypted_path.display(),
-                decrypted_file_path.display(),
-            );
-            decrypted_file_map.push((symlink.src.clone(), decrypted_file_path.clone()));
-            symlink.src = decrypted_file_path;
+        for action in &mut plan.actions {
+            if let Action::CreateLink { src, .. } = action {
+                let decrypted_file_path =
+                    util::change_base_path(&*src, pack.as_path(), decrypted_path.as_path())?;
+                debug!(
+                    "change_base_path, src={}, base={}, new_base={}, result={}",
+                    src.display(),
+                    pack.display(),
+                    decrypted_path.display(),
+                    decrypted_file_path.display(),
+                );
+                decrypted_file_map.push((src.clone(), decrypted_file_path.clone()));
+                *src = decrypted_file_path;
+            }
         }
 
-        // decrypted the file
+        // decrypt the files
         debug!("decrypted paths {decrypted_file_map:?}");
         for (origin_file_path, decrypted_file_path) in &decrypted_file_map {
             // 用 symlink_metadata 一次性获取元数据，避免多次 stat() 调用之间的 TOCTOU 竞态窗口
@@ -179,29 +191,42 @@ fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>) -> Result<()> {
         }
     }
 
-    debug!("install paths {symlinks:?}");
-    for symlink in &symlinks {
-        info!("symlink {symlink}");
-        symlink.create(true)?;
-    }
+    // ── Execute ──
+    executor::execute_plan(&plan, dry_run)?;
 
-    debug!(
-        "installed links record to track file, track_file = {}, links = {symlinks:?}",
-        track_file.display()
-    );
-    std::fs::write(
-        track_file,
-        toml::to_string_pretty(&Track {
-            decrypted_path: if decrypted {
-                decrypted_path.cloned()
-            } else {
-                None
-            },
-            links: symlinks,
-            pack_name: Some(pack_name.clone()),
-            pack_path: Some((**pack).clone()),
-            target: Some(target.clone()),
-        })?,
-    )?;
+    // ── Write track file (skip on dry_run) ──
+    if !dry_run {
+        let symlinks: Vec<crate::symlink::Symlink> = plan
+            .actions
+            .iter()
+            .filter_map(|a| match a {
+                Action::CreateLink { src, dst, mode } => Some(crate::symlink::Symlink {
+                    src: src.clone(),
+                    dst: dst.clone(),
+                    mode: mode.clone(),
+                }),
+                _ => None,
+            })
+            .collect();
+
+        debug!(
+            "installed links record to track file, track_file = {}, links = {symlinks:?}",
+            track_file.display()
+        );
+        std::fs::write(
+            track_file,
+            toml::to_string_pretty(&Track {
+                decrypted_path: if decrypted {
+                    decrypted_path.cloned()
+                } else {
+                    None
+                },
+                links: symlinks,
+                pack_name: Some(pack_name.clone()),
+                pack_path: Some((**pack).clone()),
+                target: Some(target.clone()),
+            })?,
+        )?;
+    }
     Ok(())
 }

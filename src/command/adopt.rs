@@ -5,15 +5,15 @@ use std::sync::Arc;
 use anyhow::{anyhow, bail};
 use log::{info, warn};
 
+use super::install;
+use super::resolve_track_file;
 use crate::config::Config;
 use crate::constants::CONFIG_FILE_NAME;
 use crate::error::Result;
-use crate::merge_tree::{MergeOption, MergeTree};
+use crate::merge_tree::MergeTree;
+use crate::planner::MergeOption;
 use crate::symlink::{Symlink, SymlinkMode};
 use crate::util;
-
-use super::install;
-use super::resolve_track_file;
 
 /// 反向接管：将已有配置目录移入 stow 仓库并创建链接。
 ///
@@ -118,7 +118,7 @@ fn adopt_one(global: &Config, source: &Path, pack_dir: &Path, pack_name: &str) -
 
     // 复用 install 创建链接 + 写 track file + 执行 init 脚本
     let config = Arc::new(config);
-    install::install(&config, pack_dir)?;
+    install::install(&config, pack_dir, false)?;
 
     Ok(())
 }

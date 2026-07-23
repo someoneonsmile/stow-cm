@@ -7,7 +7,8 @@ use merge::vec::append;
 use regex::RegexSet;
 
 use crate::error::Result;
-use crate::symlink::{Symlink, SymlinkMode};
+use crate::planner::MergeOption;
+use crate::symlink::Symlink;
 use crate::util;
 
 #[derive(Debug)]
@@ -15,14 +16,6 @@ pub struct MergeTree {
     target: PathBuf,
     source: PathBuf,
     option: Option<Arc<MergeOption>>,
-}
-
-#[derive(Debug)]
-pub struct MergeOption {
-    pub ignore: Option<RegexSet>,
-    pub over: Option<RegexSet>,
-    pub fold: Option<bool>,
-    pub symlink_mode: Option<SymlinkMode>,
 }
 
 #[derive(Debug)]
