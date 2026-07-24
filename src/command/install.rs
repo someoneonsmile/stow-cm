@@ -2,19 +2,15 @@ use std::convert::identity;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use anyhow::{Context, anyhow, bail};
-use log::{debug, info, warn};
+use anyhow::{anyhow, bail};
+use log::{info, warn};
 
 use super::{pack_envs, resolve_track_file};
-use crate::action::Action;
 use crate::config::{Config, EncryptedParams};
-use crate::crypto;
 use crate::error::Result;
 use crate::executor;
 use crate::planner;
-use crate::planner::MergeOption;
-use crate::track_file::Track;
-use crate::util;
+use crate::planner::{MergeOption, PlanOption, TrackWriteInfo};
 use crate::vtree;
 
 /// install packages
@@ -52,18 +48,6 @@ fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>, dry_run: bool) -> Res
     if track_file.try_exists()? {
         bail!("{pack_name}: pack has been install")
     }
-    std::fs::create_dir_all(track_file.parent().with_context(|| {
-        format!(
-            "{pack_name}: failed to find track file parent, {}",
-            track_file.display()
-        )
-    })?)
-    .with_context(|| {
-        format!(
-            "{pack_name}: failed to create track file dir, {:?}",
-            track_file.parent()
-        )
-    })?;
 
     let ignore_re = config.ignore_regex()?;
     let over_re = config.over_regex()?;
@@ -72,24 +56,25 @@ fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>, dry_run: bool) -> Res
     let pack_tree = vtree::VNode::scan(pack.as_ref(), false)?;
     let target_tree = vtree::VNode::scan(target, false)?;
 
-    let options = MergeOption {
-        ignore: ignore_re,
-        over: over_re,
-        fold: config.fold,
-        symlink_mode: config.symlink_mode.clone(),
+    let mut options = PlanOption {
+        merge: MergeOption {
+            ignore: ignore_re,
+            over: over_re,
+            fold: config.fold,
+            symlink_mode: config.symlink_mode.clone(),
+        },
+        decrypt: None,
+        track_write: None,
     };
 
-    let mut plan = planner::plan_install(&pack_tree, &target_tree, &options);
-
-    // if config decrypted, decrypt the files
-    let decrypted_path = config
-        .encrypted
-        .as_ref()
-        .and_then(|it| it.decrypted_path.as_ref());
     let decrypted = config
         .encrypted
         .as_ref()
         .is_some_and(|it| it.enable.is_some_and(identity));
+    let decrypted_path = config
+        .encrypted
+        .as_ref()
+        .and_then(|it| it.decrypted_path.as_ref());
 
     if decrypted {
         let decrypted_path = decrypted_path
@@ -106,113 +91,30 @@ fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>, dry_run: bool) -> Res
             right_boundary,
             encrypted_alg,
         } = params;
-        let key = key.as_slice();
 
-        if !decrypted_path.try_exists()? {
-            std::fs::create_dir_all(decrypted_path).with_context(|| {
-                format!(
-                    "{pack_name}: failed to create decrypted dir, {}",
-                    decrypted_path.display()
-                )
-            })?;
-        }
-
-        let mut decrypted_file_map = vec![];
-        for action in &mut plan.actions {
-            if let Action::CreateLink { src, .. } = action {
-                let decrypted_file_path =
-                    util::change_base_path(&*src, pack.as_path(), decrypted_path.as_path())?;
-                debug!(
-                    "change_base_path, src={}, base={}, new_base={}, result={}",
-                    src.display(),
-                    pack.display(),
-                    decrypted_path.display(),
-                    decrypted_file_path.display(),
-                );
-                decrypted_file_map.push((src.clone(), decrypted_file_path.clone()));
-                *src = decrypted_file_path;
-            }
-        }
-
-        // decrypt the files
-        debug!("decrypted paths {decrypted_file_map:?}");
-        for (origin_file_path, decrypted_file_path) in &decrypted_file_map {
-            // 用 symlink_metadata 一次性获取元数据，避免多次 stat() 调用之间的 TOCTOU 竞态窗口
-            match std::fs::symlink_metadata(decrypted_file_path) {
-                Ok(meta) => {
-                    let ft = meta.file_type();
-                    if ft.is_file() || ft.is_symlink() {
-                        std::fs::remove_file(decrypted_file_path)?;
-                    } else if ft.is_dir() {
-                        std::fs::remove_dir_all(decrypted_file_path)?;
-                    }
-                }
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                    // 目标不存在，无需清理
-                }
-                Err(e) => return Err(e.into()),
-            }
-            info!(
-                "decrypt {} to {}",
-                origin_file_path.display(),
-                decrypted_file_path.display()
-            );
-            let content = std::fs::read_to_string(origin_file_path)?;
-            let origin_content = crypto::decrypt_inline(
-                &content,
-                encrypted_alg,
-                key,
-                left_boundary,
-                right_boundary,
-                true,
-            )?;
-            std::fs::write(decrypted_file_path, origin_content).with_context(|| {
-                format!(
-                    "{pack_name}: failed to write decrypted content to path={}",
-                    decrypted_file_path.display()
-                )
-            })?;
-        }
+        options.decrypt = Some(planner::DecryptOption {
+            decrypted_path: decrypted_path.clone(),
+            key: key.clone(),
+            alg: encrypted_alg.to_string(),
+            left_boundary: left_boundary.to_string(),
+            right_boundary: right_boundary.to_string(),
+            pack_path: (**pack).clone(),
+        });
     }
+
+    options.track_write = Some(TrackWriteInfo {
+        track_file: track_file.clone(),
+        pack_name: pack_name.clone(),
+        pack_path: (**pack).clone(),
+        target: target.clone(),
+        symlink_mode: config.symlink_mode.clone(),
+        encrypted: decrypted,
+    });
+
+    let plan = planner::plan_install(&pack_tree, &target_tree, &options)?;
 
     // ── Execute ──
     executor::execute_plan(&plan, dry_run)?;
 
-    // ── Write track file (skip on dry_run) ──
-    if !dry_run {
-        let symlinks: Vec<crate::symlink::Symlink> = plan
-            .actions
-            .iter()
-            .filter_map(|a| match a {
-                Action::CreateLink { src, dst, mode } => Some(crate::symlink::Symlink {
-                    src: src.clone(),
-                    dst: dst.clone(),
-                    mode: mode.clone(),
-                }),
-                _ => None,
-            })
-            .collect();
-
-        debug!(
-            "installed links record to track file, track_file = {}, links = {symlinks:?}",
-            track_file.display()
-        );
-        std::fs::write(
-            track_file,
-            toml::to_string_pretty(&Track {
-                decrypted_path: if decrypted {
-                    decrypted_path.cloned()
-                } else {
-                    None
-                },
-                encrypted: decrypted,
-                links: symlinks,
-                pack_name: Some(pack_name.clone()),
-                pack_path: Some((**pack).clone()),
-                target: Some(target.clone()),
-                symlink_mode: config.symlink_mode.clone(),
-            })?,
-        )?;
-    }
     Ok(())
 }

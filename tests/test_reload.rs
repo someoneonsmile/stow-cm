@@ -77,8 +77,8 @@ fn reload_add_file() {
         &target_dir.join("new_file.txt"),
         &pack_dir.join("new_file.txt"),
     );
-    // reload 去重：sub 的 remove+create 抵消，track 仅记录新增文件
-    assert_track_links(&pack_dir, 1);
+    // track_file 记录 reload 后的全量链接（去重只消除无效操作，不影响最终状态）
+    assert_track_links(&pack_dir, 3);
 }
 
 #[test]
@@ -97,8 +97,8 @@ fn reload_remove_file() {
 
     assert_not_exists(&target_dir.join("file_a.txt"));
     assert_symlink(&target_dir.join("sub"), &pack_dir.join("sub"));
-    // reload 去重：file_a.txt 移除，sub remove+create 抵消 → track 0 条
-    assert_track_links(&pack_dir, 0);
+    // track_file 记录 reload 后剩余链接（sub 仍存在）
+    assert_track_links(&pack_dir, 1);
 }
 
 #[test]

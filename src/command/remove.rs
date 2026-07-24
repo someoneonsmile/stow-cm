@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::anyhow;
-use log::{debug, info, warn};
+use log::{info, warn};
 
 use super::{pack_envs, resolve_track_file};
 use crate::config::Config;
@@ -50,38 +50,18 @@ fn remove_link(config: &Config, pack: &Arc<PathBuf>, dry_run: bool) -> Result<()
         .target
         .as_deref()
         .or(config.target.as_deref())
-        .ok_or_else(|| anyhow!("Cannot determine target: neither track file nor config contains target directory"))?;
+        .ok_or_else(|| {
+            anyhow!(
+                "Cannot determine target: neither track file nor config contains target directory"
+            )
+        })?;
 
     // ── 扫描目标目录虚拟树，生成移除计划 ──
     let mut target_tree = vtree::VNode::scan(target, false)?;
-    let plan = planner::plan_remove(&track, &mut target_tree);
+    let state_dir = track_file.parent().map(std::path::Path::to_path_buf);
+    let plan = planner::plan_remove(&track, &mut target_tree, state_dir.as_deref());
 
-    debug!("remove {:?}", plan.stats);
     executor::execute_plan(&plan, dry_run)?;
-
-    // obtain the decryption path from the track file
-    // if is decrypted, delete the decrypted file
-    if let Some(path) = track.decrypted_path
-        && path.try_exists()?
-    {
-        if dry_run {
-            info!("would remove decrypted dir: {}", path.display());
-        } else {
-            debug!("remove decrypted dir, {}", path.display());
-            std::fs::remove_dir_all(path)?;
-        }
-    }
-
-    if dry_run {
-        info!("would remove track file: {}", track_file.display());
-    } else {
-        std::fs::remove_file(&track_file)?;
-        // 删除空父目录（pack_id 目录）
-        if let Some(parent) = track_file.parent() {
-            debug!("remove pack state dir, {}", parent.display());
-            let _ = std::fs::remove_dir(parent);
-        }
-    }
 
     Ok(())
 }

@@ -119,25 +119,46 @@ fn execute_action(action: &Action) -> Result<()> {
             left_boundary,
             right_boundary,
         } => {
-            let content = std::fs::read_to_string(src)
-                .map_err(|e| anyhow::anyhow!("Failed to read file for decryption {}: {e}", src.display()))?;
+            let content = std::fs::read_to_string(src).map_err(|e| {
+                anyhow::anyhow!("Failed to read file for decryption {}: {e}", src.display())
+            })?;
 
-            let decrypted = crypto::decrypt_inline(
-                &content,
-                alg,
-                key,
-                left_boundary,
-                right_boundary,
-                true,
-            )?;
+            let decrypted =
+                crypto::decrypt_inline(&content, alg, key, left_boundary, right_boundary, true)?;
 
             if let Some(parent) = to.parent() {
                 std::fs::create_dir_all(parent).map_err(|e| {
                     anyhow::anyhow!("Failed to create decrypt target directory: {e}")
                 })?;
             }
-            std::fs::write(to, decrypted)
-                .map_err(|e| anyhow::anyhow!("Failed to write decrypted file {}: {e}", to.display()))
+            std::fs::write(to, decrypted).map_err(|e| {
+                anyhow::anyhow!("Failed to write decrypted file {}: {e}", to.display())
+            })
+        }
+        Action::RemoveDir { path } => {
+            if path.try_exists()? {
+                std::fs::remove_dir_all(path).map_err(|e| {
+                    anyhow::anyhow!("Failed to clean decrypted dir {}: {e}", path.display())
+                })
+            } else {
+                Ok(())
+            }
+        }
+        Action::WriteTrackFile { path, track } => {
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    anyhow::anyhow!(
+                        "Failed to create track file parent {}: {e}",
+                        parent.display()
+                    )
+                })?;
+            }
+            let content = toml::to_string_pretty(track).map_err(|e| {
+                anyhow::anyhow!("Failed to serialize track file: {e}")
+            })?;
+            std::fs::write(path, &content).map_err(|e| {
+                anyhow::anyhow!("Failed to write track file {}: {e}", path.display())
+            })
         }
     }
 }

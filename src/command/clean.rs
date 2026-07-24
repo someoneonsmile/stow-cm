@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::anyhow;
-use log::{debug, info, warn};
+use log::{info, warn};
 
 use super::{pack_envs, resolve_track_file};
 use crate::config::Config;
@@ -47,38 +47,27 @@ fn clean_link(config: &Arc<Config>, pack: &Arc<PathBuf>, dry_run: bool) -> Resul
     // ── 扫描文件系统，找到所有指向 pack 的符号链接 ──
     let symlinks = util::find_prefix_symlink(target, pack.as_ref())?;
 
-    if !symlinks.is_empty() {
-        let plan = planner::plan_clean(&symlinks);
-        executor::execute_plan(&plan, dry_run)?;
-    }
-
-    // 清理解密目录（dry-run 时跳过文件删除）
     let encrypted = config
         .encrypted
         .as_ref()
         .is_some_and(|it| it.enable.is_some_and(identity));
-    if encrypted && !dry_run {
-        let decrypted_path = config
-            .encrypted
-            .as_ref()
-            .and_then(|it| it.decrypted_path.as_ref())
-            .ok_or_else(|| anyhow!("{pack_name}: decrypted path is not configured"))?;
-        if decrypted_path.try_exists()? {
-            info!("clean decrypted dir, {}", decrypted_path.display());
-            std::fs::remove_dir_all(decrypted_path)?;
-        }
-    }
+    let decrypted_path = if encrypted {
+        Some(
+            config
+                .encrypted
+                .as_ref()
+                .and_then(|it| it.decrypted_path.as_ref())
+                .ok_or_else(|| anyhow!("{pack_name}: decrypted path is not configured"))?
+                .as_path(),
+        )
+    } else {
+        None
+    };
 
-    // 删除 track 文件（dry-run 时跳过）
-    if !dry_run && track_file.try_exists()? {
-        debug!("clean track file, {}", track_file.display());
-        std::fs::remove_file(&track_file)?;
-        // 删除空父目录（pack_id 目录）
-        if let Some(parent) = track_file.parent() {
-            debug!("remove pack state dir, {}", parent.display());
-            let _ = std::fs::remove_dir(parent);
-        }
-    }
+    let state_dir = track_file.parent().map(std::path::Path::to_path_buf);
+    let plan = planner::plan_clean(&symlinks, decrypted_path, state_dir.as_deref());
+
+    executor::execute_plan(&plan, dry_run)?;
 
     Ok(())
 }

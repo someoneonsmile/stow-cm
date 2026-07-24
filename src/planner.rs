@@ -14,13 +14,43 @@ use std::path::{Path, PathBuf};
 use regex::RegexSet;
 
 use crate::action::{Action, ActionPlan, PlanStats};
+use crate::error::Result;
 use crate::symlink::{Symlink, SymlinkMode};
 use crate::track_file::Track;
+use crate::util;
 use crate::vtree::{VNode, VNodeKind};
 
 // ── 公共入口 ──
 
-/// 合并选项，控制安装时的行为
+/// 解密选项，由命令模块从 Config 中提取并传给 planner
+#[derive(Debug, Clone)]
+pub struct DecryptOption {
+    pub decrypted_path: PathBuf,
+    pub key: Vec<u8>,
+    pub alg: String,
+    pub left_boundary: String,
+    pub right_boundary: String,
+    pub pack_path: PathBuf,
+}
+
+/// track file 写入元信息，由命令模块传递给 planner 以生成 `WriteTrackFile` 动作
+#[derive(Debug, Clone)]
+pub struct TrackWriteInfo {
+    /// track file 目标路径
+    pub track_file: PathBuf,
+    /// pack 名称
+    pub pack_name: String,
+    /// pack 原始路径
+    pub pack_path: PathBuf,
+    /// 安装目标目录
+    pub target: PathBuf,
+    /// 安装时的 symlink 模式
+    pub symlink_mode: Option<SymlinkMode>,
+    /// 是否启用了加解密
+    pub encrypted: bool,
+}
+
+/// 合并选项，控制树合并时的行为
 #[derive(Debug)]
 pub struct MergeOption {
     /// 忽略匹配规则（不安装匹配的文件）
@@ -33,12 +63,34 @@ pub struct MergeOption {
     pub symlink_mode: Option<SymlinkMode>,
 }
 
+/// 计划选项，包含树合并配置、解密配置和可选的 track file 写入配置
+#[derive(Debug)]
+pub struct PlanOption {
+    /// 树合并选项
+    pub merge: MergeOption,
+    /// 解密选项（None 表示不启用加密/解密）
+    pub decrypt: Option<DecryptOption>,
+    /// track file 写入选项（None 表示不写入 track file）
+    pub track_write: Option<TrackWriteInfo>,
+}
+
 /// 为 `pack_tree` 生成安装计划。
 ///
 /// 递归比较 `pack_tree` 与 `target_tree`，为每个 pack 叶子节点生成
 /// `CreateLink` 操作。遇到冲突时生成 `Conflict`，匹配忽略规则时跳过，
 /// 满足覆盖规则时强制覆盖。支持目录折叠（fold）优化。
-pub fn plan_install(pack_tree: &VNode, target_tree: &VNode, options: &MergeOption) -> ActionPlan {
+///
+/// 如果 `options.decrypt` 已设置，生成的计划中会在 `CreateLink` 之前
+/// 插入 `DecryptFile` 操作，并将 `CreateLink.src` 重写为解密后的路径。
+///
+/// 如果 `track_write` 已设置，会额外生成：
+/// - `CreateDir(decrypted_path)`（解密场景下）
+/// - `WriteTrackFile` 写入安装后的 track 记录
+pub fn plan_install(
+    pack_tree: &VNode,
+    target_tree: &VNode,
+    options: &PlanOption,
+) -> Result<ActionPlan> {
     let target_base = target_tree.abs_path.clone();
     let children_plan = install_children(
         &pack_tree.children,
@@ -46,10 +98,72 @@ pub fn plan_install(pack_tree: &VNode, target_tree: &VNode, options: &MergeOptio
         &target_base,
         options,
     );
-    ActionPlan {
+    let mut plan = ActionPlan {
         actions: children_plan.actions,
         stats: *children_plan.stats,
+    };
+
+    // 注入解密动作
+    if let Some(decrypt) = &options.decrypt {
+        // 创建解密目标目录
+        plan.actions
+            .insert(0, Action::CreateDir(decrypt.decrypted_path.clone()));
+        plan.stats.dirs_to_create += 1;
+
+        let mut decrypt_actions = Vec::new();
+        for action in &mut plan.actions {
+            if let Action::CreateLink { src, .. } = action {
+                let decrypted_file_path =
+                    util::change_base_path(&*src, &decrypt.pack_path, &decrypt.decrypted_path)?;
+                decrypt_actions.push(Action::DecryptFile {
+                    src: src.clone(),
+                    to: decrypted_file_path.clone(),
+                    key: decrypt.key.clone(),
+                    alg: decrypt.alg.clone(),
+                    left_boundary: decrypt.left_boundary.clone(),
+                    right_boundary: decrypt.right_boundary.clone(),
+                });
+                *src = decrypted_file_path;
+            }
+        }
+        plan.stats.encrypted = decrypt_actions.len();
+        // 将 DecryptFile 插入到 CreateDir 之后、CreateLink 之前
+        plan.actions.splice(1..1, decrypt_actions);
     }
+
+    // 注入 track file 写入
+    if let Some(tw) = &options.track_write {
+        let symlinks: Vec<Symlink> = plan
+            .actions
+            .iter()
+            .filter_map(|a| match a {
+                Action::CreateLink { src, dst, mode } => Some(Symlink {
+                    src: src.clone(),
+                    dst: dst.clone(),
+                    mode: mode.clone(),
+                }),
+                _ => None,
+            })
+            .collect();
+
+        plan.actions.push(Action::WriteTrackFile {
+            path: tw.track_file.clone(),
+            track: Track {
+                decrypted_path: options
+                    .decrypt
+                    .as_ref()
+                    .map(|d| d.decrypted_path.clone()),
+                encrypted: tw.encrypted,
+                links: symlinks,
+                pack_name: Some(tw.pack_name.clone()),
+                pack_path: Some(tw.pack_path.clone()),
+                target: Some(tw.target.clone()),
+                symlink_mode: tw.symlink_mode.clone(),
+            },
+        });
+    }
+
+    Ok(plan)
 }
 
 /// 为 `track` 中的链接生成移除计划。
@@ -59,11 +173,16 @@ pub fn plan_install(pack_tree: &VNode, target_tree: &VNode, options: &MergeOptio
 /// - 一致 → 生成 `RemoveLink`，从 `target_tree` 中移除该节点
 /// - 不一致（drift / 被覆盖 / 类型变化）→ 生成 `Conflict`
 /// - 目标已不存在 → 仅累加 `links_to_remove` 统计，不产生文件系统操作
-pub fn plan_remove(track: &Track, target_tree: &mut VNode) -> ActionPlan {
+///
+/// `state_dir` 为 `$XDG_STATE_HOME/stow-cm/{PACK_ID}/` 目录路径，
+/// 传入 `Some` 则在计划末尾追加 `RemoveDir` 彻底清理 pack 状态目录。
+pub fn plan_remove(track: &Track, target_tree: &mut VNode, state_dir: Option<&Path>) -> ActionPlan {
     let mut plan = ActionPlan::new();
     let target_root = target_tree.abs_path.clone();
 
     for link in &track.links {
+        // 正常情况 link.dst 一定在 target_root 下（track.target 与 target_tree
+        // 来自同一来源），此处仅为防御手动篡改 track 文件的极端情况。
         let Ok(rel) = link.dst.strip_prefix(&target_root) else {
             plan.stats.conflicts += 1;
             plan.actions.push(Action::Conflict {
@@ -77,28 +196,39 @@ pub fn plan_remove(track: &Track, target_tree: &mut VNode) -> ActionPlan {
             continue;
         };
 
-        match target_tree.find(rel) {
-            Some(node) => {
-                if is_consistent(link, node) {
-                    plan.actions.push(Action::RemoveLink {
-                        src: link.src.clone(),
-                        dst: link.dst.clone(),
-                        mode: link.mode.clone(),
-                    });
-                    plan.stats.links_to_remove += 1;
-                    target_tree.remove(rel);
-                } else {
-                    plan.stats.conflicts += 1;
-                    plan.actions.push(Action::Conflict {
-                        dst: link.dst.clone(),
-                        reason: consistency_failure_reason(link, node),
-                    });
-                }
-            }
-            None => {
-                // 虚拟树中找不到此路径（可能已被手动从文件系统删除）
+        if let Some(node) = target_tree.find(rel) {
+            if is_consistent(link, node) {
+                plan.actions.push(Action::RemoveLink {
+                    src: link.src.clone(),
+                    dst: link.dst.clone(),
+                    mode: link.mode.clone(),
+                });
+                plan.stats.links_to_remove += 1;
+                target_tree.remove(rel);
+            } else {
+                plan.stats.conflicts += 1;
+                plan.actions.push(Action::Conflict {
+                    dst: link.dst.clone(),
+                    reason: consistency_failure_reason(link, node),
+                });
             }
         }
+        // else: 虚拟树中找不到此路径（可能已被手动从文件系统删除）
+    }
+
+    // 先清理解密目录（可能不在 pack state home 下）
+    if let Some(path) = &track.decrypted_path {
+        plan.actions.push(Action::RemoveDir { path: path.clone() });
+        plan.stats.dirs_removed += 1;
+    }
+
+    // 再删除整个 pack state 目录（$XDG_STATE_HOME/stow-cm/{PACK_ID}/）
+    // 放在最后确保 decrypted_path 内部子目录也一并被 remove_dir_all 兜底清理
+    if let Some(dir) = state_dir {
+        plan.actions.push(Action::RemoveDir {
+            path: dir.to_path_buf(),
+        });
+        plan.stats.dirs_removed += 1;
     }
 
     plan
@@ -161,42 +291,56 @@ fn consistency_failure_reason(link: &crate::symlink::Symlink, node: &VNode) -> S
 /// 同一棵树——install 阶段使用 remove 清理后的版本，避免已移除节点产生误报冲突。
 ///
 /// 合并规则：
-/// - 仅当 track 与 config 的 symlink mode **都为** Symlink 时才进行去重合并；
+/// - 仅当 track 与 config 的 symlink mode **都为** Symlink 时才去重；
 ///   copy 模式不做去重，remove 和 install 各自独立执行。
 /// - 若同一 `dst` 在移除和安装计划中同时出现，且 `src` 相同 → 同时删除此二操作（无净变更）
 /// - 若 `src` 不同 → 两者都保留
+/// - 去重仅影响 `RemoveLink`/`CreateLink` 对；解密目录的 `RemoveDir`/`CreateDir` 不受影响
 pub fn plan_reload(
     pack_tree: &VNode,
     remove_target: &mut VNode,
     install_target: Option<&VNode>,
     track: &Track,
-    options: &MergeOption,
-) -> ActionPlan {
-    let remove_plan = plan_remove(track, remove_target);
+    options: &PlanOption,
+) -> Result<ActionPlan> {
+    let remove_plan = plan_remove(track, remove_target, None);
 
     // install_target 为 None 时表示与 remove 同一棵树 → 使用清理后的版本
     let install_base = install_target.unwrap_or(remove_target);
-    let install_plan = plan_install(pack_tree, install_base, options);
+
+    // decrypt + track_write 统一由 plan_install 注入，plan_reload 只负责合并
+    let install_plan = plan_install(pack_tree, install_base, options)?;
 
     let track_mode = track.symlink_mode.as_ref().unwrap_or(&SymlinkMode::Symlink);
     let config_mode = options
+        .merge
         .symlink_mode
         .as_ref()
         .unwrap_or(&SymlinkMode::Symlink);
+    // 仅 Symlink→Symlink 时做 link 去重（加密场景同样生效：
+    // RemoveLink+CreateLink 相同 src/dst 即抵消，但解密目录的 RemoveDir+CreateDir 不受影响）
     let should_dedup = *track_mode == SymlinkMode::Symlink && *config_mode == SymlinkMode::Symlink;
 
-    if should_dedup {
+    let merged = if should_dedup {
         merge_and_dedup(remove_plan, install_plan)
     } else {
         combine_plans(remove_plan, install_plan)
-    }
+    };
+
+    Ok(merged)
 }
 
 /// 生成清理计划。
 ///
 /// 将文件系统扫描得到的符号链接列表转换为 `ActionPlan`，
 /// 每条链接生成一个 `RemoveLink` 操作。
-pub fn plan_clean(symlinks: &[Symlink]) -> ActionPlan {
+/// 若指定了 `decrypted_path` 则追加 `RemoveDir` 操作，
+/// 若指定了 `state_dir` 则追加 `RemoveDir` 清理 pack state 目录。
+pub fn plan_clean(
+    symlinks: &[Symlink],
+    decrypted_path: Option<&Path>,
+    state_dir: Option<&Path>,
+) -> ActionPlan {
     let actions: Vec<Action> = symlinks
         .iter()
         .map(|s| Action::RemoveLink {
@@ -205,13 +349,30 @@ pub fn plan_clean(symlinks: &[Symlink]) -> ActionPlan {
             mode: s.mode.clone(),
         })
         .collect();
-    ActionPlan {
+
+    let mut plan = ActionPlan {
         stats: PlanStats {
             links_to_remove: actions.len(),
             ..PlanStats::default()
         },
         actions,
+    };
+
+    if let Some(path) = decrypted_path {
+        plan.actions.push(Action::RemoveDir {
+            path: path.to_path_buf(),
+        });
+        plan.stats.dirs_removed += 1;
     }
+
+    if let Some(dir) = state_dir {
+        plan.actions.push(Action::RemoveDir {
+            path: dir.to_path_buf(),
+        });
+        plan.stats.dirs_removed += 1;
+    }
+
+    plan
 }
 
 // ── 内部类型 ──
@@ -249,7 +410,7 @@ fn install_children(
     pack_children: &[VNode],
     target_children: &[VNode],
     target_base: &Path,
-    options: &MergeOption,
+    options: &PlanOption,
 ) -> ChildrenPlan {
     let mut result = ChildrenPlan::empty();
 
@@ -290,10 +451,10 @@ fn install_node(
     pack: &VNode,
     target_child: Option<&VNode>,
     target_dst: &Path,
-    options: &MergeOption,
+    options: &PlanOption,
 ) -> ChildrenPlan {
     // ── 忽略检查 ──
-    if let Some(ignore_re) = &options.ignore {
+    if let Some(ignore_re) = &options.merge.ignore {
         if ignore_re.is_match(&pack.abs_path.to_string_lossy()) {
             let mut stats = Box::<PlanStats>::default();
             stats.ignored = 1;
@@ -319,13 +480,13 @@ fn plan_leaf(
     pack: &VNode,
     target_child: Option<&VNode>,
     target_dst: &Path,
-    options: &MergeOption,
+    options: &PlanOption,
 ) -> ChildrenPlan {
-    let mode = options.symlink_mode.clone().unwrap_or_default();
+    let mode = options.merge.symlink_mode.clone().unwrap_or_default();
 
     if let Some(target_node) = target_child {
         // 目标已存在 — 检查是否可覆盖
-        if let Some(over_re) = &options.over {
+        if let Some(over_re) = &options.merge.over {
             if over_re.is_match(&pack.abs_path.to_string_lossy()) {
                 let mut stats = Box::<PlanStats>::default();
                 stats.links_to_create = 1;
@@ -376,10 +537,10 @@ fn plan_dir(
     pack: &VNode,
     target_child: Option<&VNode>,
     target_dst: &Path,
-    options: &MergeOption,
+    options: &PlanOption,
 ) -> ChildrenPlan {
-    let mode = options.symlink_mode.clone().unwrap_or_default();
-    let fold_enabled = options.fold.unwrap_or(false);
+    let mode = options.merge.symlink_mode.clone().unwrap_or_default();
+    let fold_enabled = options.merge.fold.unwrap_or(false);
 
     // 递归处理所有子节点
     let target_children = target_child.map_or(&[] as &[VNode], |tc| tc.children.as_slice());
@@ -495,6 +656,7 @@ fn merge_and_dedup(remove_plan: ActionPlan, mut install_plan: ActionPlan) -> Act
         ignored: install_plan.stats.ignored + remove_plan.stats.ignored,
         overridden: install_plan.stats.overridden + remove_plan.stats.overridden,
         encrypted: install_plan.stats.encrypted + remove_plan.stats.encrypted,
+        dirs_removed: install_plan.stats.dirs_removed + remove_plan.stats.dirs_removed,
     };
 
     // 合并操作列表：remove 在前，install 在后
@@ -519,6 +681,7 @@ fn combine_plans(remove_plan: ActionPlan, install_plan: ActionPlan) -> ActionPla
         ignored: install_plan.stats.ignored + remove_plan.stats.ignored,
         overridden: install_plan.stats.overridden + remove_plan.stats.overridden,
         encrypted: install_plan.stats.encrypted + remove_plan.stats.encrypted,
+        dirs_removed: install_plan.stats.dirs_removed + remove_plan.stats.dirs_removed,
     };
     merged_actions.extend(install_plan.actions);
     ActionPlan {
@@ -571,23 +734,31 @@ mod tests {
         }
     }
 
-    /// 创建空的 MergeOption。
-    fn default_options() -> MergeOption {
-        MergeOption {
-            ignore: None,
-            over: None,
-            fold: None,
-            symlink_mode: None,
+    /// 创建空的 PlanOption（不含解密配置）。
+    fn default_options() -> PlanOption {
+        PlanOption {
+            merge: MergeOption {
+                ignore: None,
+                over: None,
+                fold: None,
+                symlink_mode: None,
+            },
+            decrypt: None,
+            track_write: None,
         }
     }
 
-    /// 创建只启用 fold 的 MergeOption。
-    fn fold_options() -> MergeOption {
-        MergeOption {
-            ignore: None,
-            over: None,
-            fold: Some(true),
-            symlink_mode: None,
+    /// 创建只启用 fold 的 PlanOption（不含解密配置）。
+    fn fold_options() -> PlanOption {
+        PlanOption {
+            merge: MergeOption {
+                ignore: None,
+                over: None,
+                fold: Some(true),
+                symlink_mode: None,
+            },
+            decrypt: None,
+            track_write: None,
         }
     }
 
@@ -616,7 +787,7 @@ mod tests {
         let pack = dir_node("", "/pack", vec![file_node("file.txt", "/pack/file.txt")]);
         let target = dir_node("", "/target", Vec::new());
 
-        let plan = plan_install(&pack, &target, &default_options());
+        let plan = plan_install(&pack, &target, &default_options()).unwrap();
 
         assert_eq!(plan.stats.links_to_create, 1);
         assert_eq!(plan.stats.conflicts, 0);
@@ -644,7 +815,7 @@ mod tests {
         );
         let target = dir_node("", "/target", Vec::new());
 
-        let plan = plan_install(&pack, &target, &default_options());
+        let plan = plan_install(&pack, &target, &default_options()).unwrap();
 
         assert_eq!(plan.stats.links_to_create, 2);
         assert_eq!(plan.actions.len(), 2);
@@ -660,7 +831,7 @@ mod tests {
             vec![file_node("file.txt", "/target/file.txt")],
         );
 
-        let plan = plan_install(&pack, &target, &default_options());
+        let plan = plan_install(&pack, &target, &default_options()).unwrap();
 
         assert_eq!(plan.stats.conflicts, 1);
         assert_eq!(plan.stats.links_to_create, 0);
@@ -678,14 +849,18 @@ mod tests {
             vec![file_node("file.txt", "/target/file.txt")],
         );
 
-        let options = MergeOption {
-            ignore: None,
-            over: Some(regex::RegexSet::new([".*file\\.txt"]).unwrap()),
-            fold: None,
-            symlink_mode: None,
+        let options = PlanOption {
+            merge: MergeOption {
+                ignore: None,
+                over: Some(regex::RegexSet::new([".*file\\.txt"]).unwrap()),
+                fold: None,
+                symlink_mode: None,
+            },
+            decrypt: None,
+            track_write: None,
         };
 
-        let plan = plan_install(&pack, &target, &options);
+        let plan = plan_install(&pack, &target, &options).unwrap();
 
         assert_eq!(plan.stats.overridden, 1);
         assert_eq!(plan.stats.conflicts, 0);
@@ -706,14 +881,18 @@ mod tests {
         );
         let target = dir_node("", "/target", Vec::new());
 
-        let options = MergeOption {
-            ignore: Some(regex::RegexSet::new([".*\\.md"]).unwrap()),
-            over: None,
-            fold: None,
-            symlink_mode: None,
+        let options = PlanOption {
+            merge: MergeOption {
+                ignore: Some(regex::RegexSet::new([".*\\.md"]).unwrap()),
+                over: None,
+                fold: None,
+                symlink_mode: None,
+            },
+            decrypt: None,
+            track_write: None,
         };
 
-        let plan = plan_install(&pack, &target, &options);
+        let plan = plan_install(&pack, &target, &options).unwrap();
 
         assert_eq!(plan.stats.ignored, 1);
         assert_eq!(plan.stats.links_to_create, 1);
@@ -737,7 +916,7 @@ mod tests {
         );
         let target = dir_node("", "/target", Vec::new());
 
-        let plan = plan_install(&pack, &target, &default_options());
+        let plan = plan_install(&pack, &target, &default_options()).unwrap();
 
         assert_eq!(plan.stats.links_to_create, 1);
         assert_eq!(plan.actions.len(), 1);
@@ -767,7 +946,7 @@ mod tests {
         );
         let target = dir_node("", "/target", Vec::new());
 
-        let plan = plan_install(&pack, &target, &fold_options());
+        let plan = plan_install(&pack, &target, &fold_options()).unwrap();
 
         // fold 后：整个 sub 目录折叠为一个链接
         assert_eq!(plan.stats.links_to_create, 1);
@@ -798,14 +977,18 @@ mod tests {
         );
         let target = dir_node("", "/target", Vec::new());
 
-        let options = MergeOption {
-            ignore: Some(regex::RegexSet::new([".*\\.md"]).unwrap()),
-            over: None,
-            fold: Some(true),
-            symlink_mode: None,
+        let options = PlanOption {
+            merge: MergeOption {
+                ignore: Some(regex::RegexSet::new([".*\\.md"]).unwrap()),
+                over: None,
+                fold: Some(true),
+                symlink_mode: None,
+            },
+            decrypt: None,
+            track_write: None,
         };
 
-        let plan = plan_install(&pack, &target, &options);
+        let plan = plan_install(&pack, &target, &options).unwrap();
 
         // 不可折叠 → 子节点单独链接
         assert_eq!(plan.stats.links_to_create, 1);
@@ -838,7 +1021,7 @@ mod tests {
             )],
         );
 
-        let plan = plan_install(&pack, &target, &fold_options());
+        let plan = plan_install(&pack, &target, &fold_options()).unwrap();
 
         // 不可折叠：target 中有 extra.txt
         assert_eq!(plan.actions.len(), 1);
@@ -857,7 +1040,7 @@ mod tests {
         );
         let target = dir_node("", "/target", Vec::new());
 
-        let plan = plan_install(&pack, &target, &default_options());
+        let plan = plan_install(&pack, &target, &default_options()).unwrap();
 
         assert_eq!(plan.stats.links_to_create, 1);
         assert_eq!(plan.actions.len(), 1);
@@ -880,7 +1063,7 @@ mod tests {
             vec![symlink_node("file.txt", mock_dst, mock_src)],
         );
 
-        let plan = plan_remove(&track, &mut target_tree);
+        let plan = plan_remove(&track, &mut target_tree, None);
 
         assert_eq!(plan.stats.links_to_remove, 1);
         assert_eq!(plan.stats.conflicts, 0);
@@ -905,7 +1088,7 @@ mod tests {
 
         let mut target_tree = dir_node("", "/target", Vec::new());
 
-        let plan = plan_remove(&track, &mut target_tree);
+        let plan = plan_remove(&track, &mut target_tree, None);
 
         assert_eq!(plan.stats.links_to_remove, 0);
         assert_eq!(plan.stats.conflicts, 0);
@@ -944,7 +1127,7 @@ mod tests {
             ],
         );
 
-        let plan = plan_remove(&track, &mut target_tree);
+        let plan = plan_remove(&track, &mut target_tree, None);
 
         assert_eq!(plan.stats.links_to_remove, 2);
         assert_eq!(plan.actions.len(), 2);
@@ -962,7 +1145,7 @@ mod tests {
             vec![symlink_node("file.txt", "/target/file.txt", "/other/b.txt")],
         );
 
-        let plan = plan_remove(&track, &mut target_tree);
+        let plan = plan_remove(&track, &mut target_tree, None);
 
         assert_eq!(plan.stats.conflicts, 1);
         assert_eq!(plan.stats.links_to_remove, 0);
@@ -992,7 +1175,7 @@ mod tests {
             vec![file_node("file.txt", "/target/file.txt")],
         );
 
-        let plan = plan_remove(&track, &mut target_tree);
+        let plan = plan_remove(&track, &mut target_tree, None);
 
         assert_eq!(plan.stats.conflicts, 1);
         assert_eq!(plan.stats.links_to_remove, 0);
@@ -1029,7 +1212,7 @@ mod tests {
             vec![symlink_node("a.txt", "/target/a.txt", "/somewhere/else")],
         );
 
-        let plan = plan_remove(&track, &mut target_tree);
+        let plan = plan_remove(&track, &mut target_tree, None);
 
         assert_eq!(plan.stats.conflicts, 1);
         assert_eq!(plan.stats.links_to_remove, 0);
@@ -1044,7 +1227,7 @@ mod tests {
 
         let mut target_tree = dir_node("", "/target", Vec::new());
 
-        let plan = plan_remove(&track, &mut target_tree);
+        let plan = plan_remove(&track, &mut target_tree, None);
 
         assert_eq!(plan.stats.conflicts, 1);
         assert_eq!(plan.stats.links_to_remove, 0);
@@ -1076,7 +1259,7 @@ mod tests {
         );
         let track = make_track("/pack/file.txt", "/target/file.txt");
 
-        let plan = plan_reload(&pack, &mut target, None, &track, &default_options());
+        let plan = plan_reload(&pack, &mut target, None, &track, &default_options()).unwrap();
 
         // 同一路径同时移除和创建，src 相同，互相抵消
         assert_eq!(plan.stats.links_to_create, 0);
@@ -1105,7 +1288,7 @@ mod tests {
         );
         let track = make_track("/pack/old/file.txt", "/target/file.txt");
 
-        let plan = plan_reload(&pack, &mut target, None, &track, &default_options());
+        let plan = plan_reload(&pack, &mut target, None, &track, &default_options()).unwrap();
 
         // src 不同 → remove 和 create 都应保留
         assert_eq!(plan.stats.links_to_create, 1);
@@ -1132,7 +1315,7 @@ mod tests {
             symlink_mode: None,
         };
 
-        let plan = plan_reload(&pack, &mut target, None, &track, &default_options());
+        let plan = plan_reload(&pack, &mut target, None, &track, &default_options()).unwrap();
 
         assert_eq!(plan.stats.links_to_create, 1);
         assert_eq!(plan.stats.links_to_remove, 0);
@@ -1150,7 +1333,7 @@ mod tests {
         );
         let track = make_track("/pack/old.txt", "/target/old.txt");
 
-        let plan = plan_reload(&pack, &mut target, None, &track, &default_options());
+        let plan = plan_reload(&pack, &mut target, None, &track, &default_options()).unwrap();
 
         // 只有 remove，没有 create
         assert_eq!(plan.stats.links_to_create, 0);
@@ -1169,7 +1352,7 @@ mod tests {
             mode: SymlinkMode::Symlink,
         }];
 
-        let plan = plan_clean(&symlinks);
+        let plan = plan_clean(&symlinks, None, None);
 
         assert_eq!(plan.stats.links_to_remove, 1);
         assert_eq!(plan.actions.len(), 1);
@@ -1180,7 +1363,7 @@ mod tests {
     fn plan_clean_empty() {
         let symlinks: [Symlink; 0] = [];
 
-        let plan = plan_clean(&symlinks);
+        let plan = plan_clean(&symlinks, None, None);
 
         assert!(plan.is_empty());
         assert_eq!(plan.stats.links_to_remove, 0);
@@ -1201,7 +1384,7 @@ mod tests {
             },
         ];
 
-        let plan = plan_clean(&symlinks);
+        let plan = plan_clean(&symlinks, None, None);
 
         assert_eq!(plan.stats.links_to_remove, 2);
         assert_eq!(plan.actions.len(), 2);

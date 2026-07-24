@@ -2,6 +2,7 @@ use std::fmt;
 use std::path::PathBuf;
 
 use crate::symlink::SymlinkMode;
+use crate::track_file::Track;
 
 /// 动作枚举，表示计划中的一个操作步骤
 #[derive(Debug, Clone)]
@@ -31,6 +32,10 @@ pub enum Action {
         left_boundary: String,
         right_boundary: String,
     },
+    /// 移除目录
+    RemoveDir { path: PathBuf },
+    /// 写入 track file
+    WriteTrackFile { path: PathBuf, track: Track },
 }
 
 /// 计划统计信息，记录各类操作的数量
@@ -43,6 +48,7 @@ pub struct PlanStats {
     pub ignored: usize,
     pub overridden: usize,
     pub encrypted: usize,
+    pub dirs_removed: usize,
 }
 
 /// 动作计划，包含一组待执行的操作及统计信息
@@ -102,6 +108,12 @@ impl fmt::Display for Action {
             Action::DecryptFile { src, to, .. } => {
                 write!(f, "~ DECRYPT  {}  ->  {}", src.display(), to.display())
             }
+            Action::RemoveDir { path } => {
+                write!(f, "- RMDIR    {}", path.display())
+            }
+            Action::WriteTrackFile { path, .. } => {
+                write!(f, "≈ TRACK   {}", path.display())
+            }
         }
     }
 }
@@ -137,6 +149,9 @@ impl fmt::Display for ActionPlan {
         }
         if stats.encrypted > 0 {
             parts.push(format!("{}e", stats.encrypted));
+        }
+        if stats.dirs_removed > 0 {
+            parts.push(format!("{}rd", stats.dirs_removed));
         }
 
         if parts.is_empty() {
@@ -231,6 +246,7 @@ mod tests {
                 ignored: 0,
                 overridden: 2,
                 encrypted: 3,
+                dirs_removed: 0,
             },
         };
         let output = format!("{plan}");
