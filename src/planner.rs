@@ -7,14 +7,14 @@
 //! - [`plan_install`] — 安装计划（pack → target）
 //! - [`plan_remove`]  — 移除计划（track → target）
 //! - [`plan_reload`]  — 重载计划（remove + install 合并去重）
-//! - [`plan_clean`]   — 清理计划（仅遍历 track）
+//! - [`plan_clean`]   — 清理计划（从文件系统扫描结果构建 RemoveLink 计划）
 
 use std::path::{Path, PathBuf};
 
 use regex::RegexSet;
 
 use crate::action::{Action, ActionPlan, PlanStats};
-use crate::symlink::SymlinkMode;
+use crate::symlink::{Symlink, SymlinkMode};
 use crate::track_file::Track;
 use crate::vtree::{VNode, VNodeKind};
 
@@ -54,36 +54,49 @@ pub fn plan_install(pack_tree: &VNode, target_tree: &VNode, options: &MergeOptio
 
 /// 为 `track` 中的链接生成移除计划。
 ///
-/// 在 `target_tree` 中查找每个链接对应的节点：
-/// - 存在 → 生成 `RemoveLink`，并将节点从 `target_tree` 中原地移除
-/// - 不存在 → 跳过（已被手动删除），仅累加统计
-///
-/// **注意**：此函数不会检测文件系统上的冲突（如目标已被替换为普通文件），
-/// 冲突检测由调用方（`plan_reload` / `reload` 命令）负责。
+/// 遍历 track 中每条链接，在 `target_tree` 中查找对应节点，
+/// 对比文件系统实际状态与 track 记录是否一致：
+/// - 一致 → 生成 `RemoveLink`，从 `target_tree` 中移除该节点
+/// - 不一致（drift / 被覆盖 / 类型变化）→ 生成 `Conflict`
+/// - 目标已不存在 → 仅累加 `links_to_remove` 统计，不产生文件系统操作
 pub fn plan_remove(track: &Track, target_tree: &mut VNode) -> ActionPlan {
     let mut plan = ActionPlan::new();
     let target_root = target_tree.abs_path.clone();
 
     for link in &track.links {
         let Ok(rel) = link.dst.strip_prefix(&target_root) else {
-            // 链接的目标路径不在 target_tree 的根下，跳过
-            plan.stats.links_to_remove += 1;
+            plan.stats.conflicts += 1;
+            plan.actions.push(Action::Conflict {
+                dst: link.dst.clone(),
+                reason: format!(
+                    "link target '{}' is not under the current target root '{}'",
+                    link.dst.display(),
+                    target_root.display()
+                ),
+            });
             continue;
         };
 
         match target_tree.find(rel) {
-            Some(_node) => {
-                plan.actions.push(Action::RemoveLink {
-                    src: link.src.clone(),
-                    dst: link.dst.clone(),
-                    mode: link.mode.clone(),
-                });
-                plan.stats.links_to_remove += 1;
-                target_tree.remove(rel);
+            Some(node) => {
+                if is_consistent(link, node) {
+                    plan.actions.push(Action::RemoveLink {
+                        src: link.src.clone(),
+                        dst: link.dst.clone(),
+                        mode: link.mode.clone(),
+                    });
+                    plan.stats.links_to_remove += 1;
+                    target_tree.remove(rel);
+                } else {
+                    plan.stats.conflicts += 1;
+                    plan.actions.push(Action::Conflict {
+                        dst: link.dst.clone(),
+                        reason: consistency_failure_reason(link, node),
+                    });
+                }
             }
             None => {
                 // 虚拟树中找不到此路径（可能已被手动从文件系统删除）
-                plan.stats.links_to_remove += 1;
             }
         }
     }
@@ -91,45 +104,114 @@ pub fn plan_remove(track: &Track, target_tree: &mut VNode) -> ActionPlan {
     plan
 }
 
+/// 判断 track 中的链接记录与文件系统实际节点是否一致。
+fn is_consistent(link: &crate::symlink::Symlink, node: &VNode) -> bool {
+    match (&link.mode, &node.kind) {
+        (SymlinkMode::Symlink, VNodeKind::Symlink { target }) => target == &link.src,
+        (SymlinkMode::Copy, VNodeKind::File) => true,
+        _ => false,
+    }
+}
+
+/// 生成一致性检查失败的原因描述。
+fn consistency_failure_reason(link: &crate::symlink::Symlink, node: &VNode) -> String {
+    match (&link.mode, &node.kind) {
+        (SymlinkMode::Symlink, VNodeKind::Symlink { target }) => {
+            format!(
+                "symlink drift: expected target '{}', actual target '{}'",
+                link.src.display(),
+                target.display()
+            )
+        }
+        (SymlinkMode::Symlink, VNodeKind::File) => {
+            format!(
+                "expected symlink at '{}', found regular file (overwritten)",
+                link.dst.display()
+            )
+        }
+        (SymlinkMode::Symlink, VNodeKind::Dir) => {
+            format!(
+                "expected symlink at '{}', found directory",
+                link.dst.display()
+            )
+        }
+        (SymlinkMode::Copy, VNodeKind::Symlink { .. }) => {
+            format!(
+                "expected regular file at '{}', found symlink",
+                link.dst.display()
+            )
+        }
+        (SymlinkMode::Copy, VNodeKind::Dir) => {
+            format!(
+                "expected regular file at '{}', found directory",
+                link.dst.display()
+            )
+        }
+        // 此分支不会执行（(Copy, File) 在 is_consistent 中返回 true），仅为满足穷尽匹配
+        (SymlinkMode::Copy, VNodeKind::File) => {
+            format!("unexpected inconsistency at '{}'", link.dst.display())
+        }
+    }
+}
+
 /// 生成重载计划：先移除、再安装，合并并去重。
 ///
+/// `remove_target` 从 `track.target` 扫描而来（会被 `plan_remove` 修改），
+/// `install_target` 从 `config.target` 扫描而来。若为 `None` 表示与 `remove_target`
+/// 同一棵树——install 阶段使用 remove 清理后的版本，避免已移除节点产生误报冲突。
+///
 /// 合并规则：
+/// - 仅当 track 与 config 的 symlink mode **都为** Symlink 时才进行去重合并；
+///   copy 模式不做去重，remove 和 install 各自独立执行。
 /// - 若同一 `dst` 在移除和安装计划中同时出现，且 `src` 相同 → 同时删除此二操作（无净变更）
 /// - 若 `src` 不同 → 两者都保留
 pub fn plan_reload(
     pack_tree: &VNode,
-    target_tree: &VNode,
+    remove_target: &mut VNode,
+    install_target: Option<&VNode>,
     track: &Track,
     options: &MergeOption,
 ) -> ActionPlan {
-    // 1. 克隆目标树用于清理阶段
-    let mut cleaned_target = target_tree.clone();
+    let remove_plan = plan_remove(track, remove_target);
 
-    // 2. 移除计划
-    let remove_plan = plan_remove(track, &mut cleaned_target);
+    // install_target 为 None 时表示与 remove 同一棵树 → 使用清理后的版本
+    let install_base = install_target.unwrap_or(remove_target);
+    let install_plan = plan_install(pack_tree, install_base, options);
 
-    // 3. 安装计划（基于清理后的目标树）
-    let install_plan = plan_install(pack_tree, &cleaned_target, options);
+    let track_mode = track.symlink_mode.as_ref().unwrap_or(&SymlinkMode::Symlink);
+    let config_mode = options
+        .symlink_mode
+        .as_ref()
+        .unwrap_or(&SymlinkMode::Symlink);
+    let should_dedup = *track_mode == SymlinkMode::Symlink && *config_mode == SymlinkMode::Symlink;
 
-    // 4. 合并并去重
-    merge_and_dedup(remove_plan, install_plan)
+    if should_dedup {
+        merge_and_dedup(remove_plan, install_plan)
+    } else {
+        combine_plans(remove_plan, install_plan)
+    }
 }
 
 /// 生成清理计划。
 ///
-/// 遍历 `track.links` 中的每一个链接，生成对应的 `RemoveLink` 操作。
-/// 不涉及任何文件系统 IO 或虚拟树操作。
-pub fn plan_clean(track: &Track) -> ActionPlan {
-    let mut plan = ActionPlan::new();
-    for link in &track.links {
-        plan.actions.push(Action::RemoveLink {
-            src: link.src.clone(),
-            dst: link.dst.clone(),
-            mode: link.mode.clone(),
-        });
-        plan.stats.links_to_remove += 1;
+/// 将文件系统扫描得到的符号链接列表转换为 `ActionPlan`，
+/// 每条链接生成一个 `RemoveLink` 操作。
+pub fn plan_clean(symlinks: &[Symlink]) -> ActionPlan {
+    let actions: Vec<Action> = symlinks
+        .iter()
+        .map(|s| Action::RemoveLink {
+            src: s.src.clone(),
+            dst: s.dst.clone(),
+            mode: s.mode.clone(),
+        })
+        .collect();
+    ActionPlan {
+        stats: PlanStats {
+            links_to_remove: actions.len(),
+            ..PlanStats::default()
+        },
+        actions,
     }
-    plan
 }
 
 // ── 内部类型 ──
@@ -425,6 +507,26 @@ fn merge_and_dedup(remove_plan: ActionPlan, mut install_plan: ActionPlan) -> Act
     }
 }
 
+/// 简单拼接 remove 和 install 计划（不做去重）。
+/// remove 的操作在前，install 的操作在后。
+fn combine_plans(remove_plan: ActionPlan, install_plan: ActionPlan) -> ActionPlan {
+    let mut merged_actions = remove_plan.actions;
+    let combined_stats = PlanStats {
+        links_to_create: install_plan.stats.links_to_create,
+        links_to_remove: remove_plan.stats.links_to_remove,
+        dirs_to_create: install_plan.stats.dirs_to_create + remove_plan.stats.dirs_to_create,
+        conflicts: install_plan.stats.conflicts + remove_plan.stats.conflicts,
+        ignored: install_plan.stats.ignored + remove_plan.stats.ignored,
+        overridden: install_plan.stats.overridden + remove_plan.stats.overridden,
+        encrypted: install_plan.stats.encrypted + remove_plan.stats.encrypted,
+    };
+    merged_actions.extend(install_plan.actions);
+    ActionPlan {
+        actions: merged_actions,
+        stats: combined_stats,
+    }
+}
+
 // ── 测试 ──
 
 #[cfg(test)]
@@ -498,9 +600,11 @@ mod tests {
                 mode: SymlinkMode::Symlink,
             }],
             decrypted_path: None,
+            encrypted: false,
             pack_name: None,
             pack_path: None,
             target: None,
+            symlink_mode: None,
         }
     }
 
@@ -769,11 +873,17 @@ mod tests {
 
         let track = make_track(mock_src, mock_dst);
 
-        let mut target_tree = dir_node("", "/target", vec![file_node("file.txt", mock_dst)]);
+        // Symlink 模式的 link，target_tree 中应为 Symlink 节点且指向正确的 src
+        let mut target_tree = dir_node(
+            "",
+            "/target",
+            vec![symlink_node("file.txt", mock_dst, mock_src)],
+        );
 
         let plan = plan_remove(&track, &mut target_tree);
 
         assert_eq!(plan.stats.links_to_remove, 1);
+        assert_eq!(plan.stats.conflicts, 0);
         assert_eq!(plan.actions.len(), 1);
         assert!(matches!(plan.actions[0], Action::RemoveLink { .. }));
         if let Action::RemoveLink {
@@ -790,14 +900,15 @@ mod tests {
 
     #[test]
     fn plan_remove_not_found() {
-        // 目标树中没有对应文件 → 仍然计数但无操作
+        // 目标树中没有对应文件 → 不产生操作也不计数
         let track = make_track("/pack/missing.txt", "/target/missing.txt");
 
         let mut target_tree = dir_node("", "/target", Vec::new());
 
         let plan = plan_remove(&track, &mut target_tree);
 
-        assert_eq!(plan.stats.links_to_remove, 1);
+        assert_eq!(plan.stats.links_to_remove, 0);
+        assert_eq!(plan.stats.conflicts, 0);
         assert_eq!(plan.actions.len(), 0);
     }
 
@@ -817,16 +928,18 @@ mod tests {
                 },
             ],
             decrypted_path: None,
+            encrypted: false,
             pack_name: None,
             pack_path: None,
             target: None,
+            symlink_mode: None,
         };
 
         let mut target_tree = dir_node(
             "",
             "/target",
             vec![
-                file_node("a.txt", "/target/a.txt"),
+                symlink_node("a.txt", "/target/a.txt", "/pack/a.txt"),
                 file_node("b.txt", "/target/b.txt"),
             ],
         );
@@ -838,21 +951,132 @@ mod tests {
         assert!(target_tree.children.is_empty());
     }
 
+    #[test]
+    fn plan_remove_symlink_drift_conflict() {
+        // track 记录 symlink → src_A，但实际 symlink 指向 src_B → 冲突
+        let track = make_track("/pack/a.txt", "/target/file.txt");
+
+        let mut target_tree = dir_node(
+            "",
+            "/target",
+            vec![symlink_node("file.txt", "/target/file.txt", "/other/b.txt")],
+        );
+
+        let plan = plan_remove(&track, &mut target_tree);
+
+        assert_eq!(plan.stats.conflicts, 1);
+        assert_eq!(plan.stats.links_to_remove, 0);
+        assert_eq!(plan.actions.len(), 1);
+        assert!(matches!(plan.actions[0], Action::Conflict { .. }));
+        if let Action::Conflict {
+            ref dst,
+            ref reason,
+        } = plan.actions[0]
+        {
+            assert_eq!(dst, &PathBuf::from("/target/file.txt"));
+            assert!(
+                reason.contains("drift"),
+                "reason should mention drift: {reason}"
+            );
+        }
+    }
+
+    #[test]
+    fn plan_remove_symlink_overwritten_conflict() {
+        // track 记录 symlink，但实际是普通文件（被覆盖）→ 冲突
+        let track = make_track("/pack/a.txt", "/target/file.txt");
+
+        let mut target_tree = dir_node(
+            "",
+            "/target",
+            vec![file_node("file.txt", "/target/file.txt")],
+        );
+
+        let plan = plan_remove(&track, &mut target_tree);
+
+        assert_eq!(plan.stats.conflicts, 1);
+        assert_eq!(plan.stats.links_to_remove, 0);
+        assert_eq!(plan.actions.len(), 1);
+        assert!(matches!(plan.actions[0], Action::Conflict { .. }));
+        if let Action::Conflict { ref reason, .. } = plan.actions[0] {
+            assert!(
+                reason.contains("overwritten"),
+                "reason should mention overwritten: {reason}"
+            );
+        }
+    }
+
+    #[test]
+    fn plan_remove_copy_replaced_by_symlink_conflict() {
+        // track 记录 copy 模式，但实际是 symlink → 冲突
+        let track = Track {
+            links: vec![Symlink {
+                src: PathBuf::from("/pack/a.txt"),
+                dst: PathBuf::from("/target/a.txt"),
+                mode: SymlinkMode::Copy,
+            }],
+            decrypted_path: None,
+            encrypted: false,
+            pack_name: None,
+            pack_path: None,
+            target: None,
+            symlink_mode: None,
+        };
+
+        let mut target_tree = dir_node(
+            "",
+            "/target",
+            vec![symlink_node("a.txt", "/target/a.txt", "/somewhere/else")],
+        );
+
+        let plan = plan_remove(&track, &mut target_tree);
+
+        assert_eq!(plan.stats.conflicts, 1);
+        assert_eq!(plan.stats.links_to_remove, 0);
+        assert_eq!(plan.actions.len(), 1);
+        assert!(matches!(plan.actions[0], Action::Conflict { .. }));
+    }
+
+    #[test]
+    fn plan_remove_out_of_tree_conflict() {
+        // link.dst 不在 target_root 下 → 冲突（issue 6）
+        let track = make_track("/pack/file.txt", "/other/file.txt");
+
+        let mut target_tree = dir_node("", "/target", Vec::new());
+
+        let plan = plan_remove(&track, &mut target_tree);
+
+        assert_eq!(plan.stats.conflicts, 1);
+        assert_eq!(plan.stats.links_to_remove, 0);
+        assert_eq!(plan.actions.len(), 1);
+        assert!(matches!(plan.actions[0], Action::Conflict { .. }));
+        if let Action::Conflict { ref reason, .. } = plan.actions[0] {
+            assert!(
+                reason.contains("not under"),
+                "reason should explain out-of-tree: {reason}"
+            );
+        }
+    }
+
     // ── plan_reload 测试 ──
 
     #[test]
     fn plan_reload_dedup_same_src() {
         // 同一 dst 在 remove 和 install 中 src 相同 → 抵消
         let pack = dir_node("", "/pack", vec![file_node("file.txt", "/pack/file.txt")]);
-        // target_tree 包含目标文件，以便 plan_remove 能找到它
-        let target = dir_node(
+        // target_tree 包含目标文件（Symlink 节点指向正确的 src），以便 plan_remove 能找到并移除它
+        let mut target = dir_node(
             "",
             "/target",
-            vec![file_node("file.txt", "/target/file.txt")],
+            vec![symlink_node(
+                "file.txt",
+                "/target/file.txt",
+                "/pack/file.txt",
+            )],
         );
         let track = make_track("/pack/file.txt", "/target/file.txt");
 
-        let plan = plan_reload(&pack, &target, &track, &default_options());
+        let plan = plan_reload(&pack, &mut target, None, &track, &default_options());
 
         // 同一路径同时移除和创建，src 相同，互相抵消
         assert_eq!(plan.stats.links_to_create, 0);
@@ -868,15 +1092,20 @@ mod tests {
             "/pack",
             vec![file_node("file.txt", "/pack/new/file.txt")],
         );
-        // target_tree 包含目标文件，以便 plan_remove 能找到它
-        let target = dir_node(
+        // target_tree 包含目标文件（Symlink 节点指向旧的 src），plan_remove 会检测到 drift 冲突
+        // 注意：这里 src="/pack/old/file.txt" 与 track 一致，但 install plan 的 src 是 "/pack/new/file.txt"
+        let mut target = dir_node(
             "",
             "/target",
-            vec![file_node("file.txt", "/target/file.txt")],
+            vec![symlink_node(
+                "file.txt",
+                "/target/file.txt",
+                "/pack/old/file.txt",
+            )],
         );
         let track = make_track("/pack/old/file.txt", "/target/file.txt");
 
-        let plan = plan_reload(&pack, &target, &track, &default_options());
+        let plan = plan_reload(&pack, &mut target, None, &track, &default_options());
 
         // src 不同 → remove 和 create 都应保留
         assert_eq!(plan.stats.links_to_create, 1);
@@ -892,16 +1121,18 @@ mod tests {
             "/pack",
             vec![file_node("new_file.txt", "/pack/new_file.txt")],
         );
-        let target = dir_node("", "/target", Vec::new());
+        let mut target = dir_node("", "/target", Vec::new());
         let track = Track {
             links: Vec::new(),
             decrypted_path: None,
+            encrypted: false,
             pack_name: None,
             pack_path: None,
             target: None,
+            symlink_mode: None,
         };
 
-        let plan = plan_reload(&pack, &target, &track, &default_options());
+        let plan = plan_reload(&pack, &mut target, None, &track, &default_options());
 
         assert_eq!(plan.stats.links_to_create, 1);
         assert_eq!(plan.stats.links_to_remove, 0);
@@ -912,10 +1143,14 @@ mod tests {
     fn plan_reload_removed_file() {
         // pack 中删除了文件（track 有记录但 pack 没有）
         let pack = dir_node("", "/pack", Vec::new());
-        let target = dir_node("", "/target", vec![file_node("old.txt", "/target/old.txt")]);
+        let mut target = dir_node(
+            "",
+            "/target",
+            vec![symlink_node("old.txt", "/target/old.txt", "/pack/old.txt")],
+        );
         let track = make_track("/pack/old.txt", "/target/old.txt");
 
-        let plan = plan_reload(&pack, &target, &track, &default_options());
+        let plan = plan_reload(&pack, &mut target, None, &track, &default_options());
 
         // 只有 remove，没有 create
         assert_eq!(plan.stats.links_to_create, 0);
@@ -928,9 +1163,13 @@ mod tests {
 
     #[test]
     fn plan_clean_basic() {
-        let track = make_track("/pack/file.txt", "/target/file.txt");
+        let symlinks = [Symlink {
+            src: PathBuf::from("/pack/file.txt"),
+            dst: PathBuf::from("/target/file.txt"),
+            mode: SymlinkMode::Symlink,
+        }];
 
-        let plan = plan_clean(&track);
+        let plan = plan_clean(&symlinks);
 
         assert_eq!(plan.stats.links_to_remove, 1);
         assert_eq!(plan.actions.len(), 1);
@@ -939,15 +1178,9 @@ mod tests {
 
     #[test]
     fn plan_clean_empty() {
-        let track = Track {
-            links: Vec::new(),
-            decrypted_path: None,
-            pack_name: None,
-            pack_path: None,
-            target: None,
-        };
+        let symlinks: [Symlink; 0] = [];
 
-        let plan = plan_clean(&track);
+        let plan = plan_clean(&symlinks);
 
         assert!(plan.is_empty());
         assert_eq!(plan.stats.links_to_remove, 0);
@@ -955,26 +1188,20 @@ mod tests {
 
     #[test]
     fn plan_clean_multiple_links() {
-        let track = Track {
-            links: vec![
-                Symlink {
-                    src: PathBuf::from("/pack/a.txt"),
-                    dst: PathBuf::from("/target/a.txt"),
-                    mode: SymlinkMode::Symlink,
-                },
-                Symlink {
-                    src: PathBuf::from("/pack/b.txt"),
-                    dst: PathBuf::from("/target/b.txt"),
-                    mode: SymlinkMode::Copy,
-                },
-            ],
-            decrypted_path: None,
-            pack_name: None,
-            pack_path: None,
-            target: None,
-        };
+        let symlinks = [
+            Symlink {
+                src: PathBuf::from("/pack/a.txt"),
+                dst: PathBuf::from("/target/a.txt"),
+                mode: SymlinkMode::Symlink,
+            },
+            Symlink {
+                src: PathBuf::from("/pack/b.txt"),
+                dst: PathBuf::from("/target/b.txt"),
+                mode: SymlinkMode::Copy,
+            },
+        ];
 
-        let plan = plan_clean(&track);
+        let plan = plan_clean(&symlinks);
 
         assert_eq!(plan.stats.links_to_remove, 2);
         assert_eq!(plan.actions.len(), 2);

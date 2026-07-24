@@ -2,10 +2,11 @@ use std::ops::Deref;
 use std::path::Path;
 use std::sync::Arc;
 
-use log::info;
+use log::{debug, info};
 
 use crate::action::{Action, ActionPlan};
 use crate::config::Config;
+use crate::crypto;
 use crate::error::Result;
 use crate::symlink::Symlink;
 use crate::util;
@@ -53,8 +54,25 @@ where
 /// 执行 `ActionPlan` 中的操作
 ///
 /// `dry_run` 为 true 时只打印计划不执行文件操作。
+/// 执行前检查冲突：若存在未被 ignore/override 覆盖的冲突，终止执行并报告给用户。
 pub fn execute_plan(plan: &ActionPlan, dry_run: bool) -> Result<()> {
-    info!("{plan}");
+    info!("plan:\n{plan}");
+
+    // 冲突检查：必须在任何实际文件操作前终止
+    if plan.has_conflicts() {
+        let mut details = Vec::new();
+        for action in &plan.actions {
+            if let Action::Conflict { dst, reason } = action {
+                details.push(format!("  {} ({})", dst.display(), reason));
+            }
+        }
+        anyhow::bail!(
+            "{} conflict(s) detected — resolve before executing:\n{}",
+            details.len(),
+            details.join("\n")
+        );
+    }
+
     if dry_run {
         return Ok(());
     }
@@ -66,6 +84,7 @@ pub fn execute_plan(plan: &ActionPlan, dry_run: bool) -> Result<()> {
 }
 
 fn execute_action(action: &Action) -> Result<()> {
+    debug!("execute_action: {action}");
     match action {
         Action::CreateLink { src, dst, mode } => {
             let symlink = Symlink {
@@ -86,22 +105,39 @@ fn execute_action(action: &Action) -> Result<()> {
         Action::CreateDir(path) => std::fs::create_dir_all(path)
             .map_err(|e| anyhow::anyhow!("Failed to create directory {}: {e}", path.display())),
         Action::Conflict { dst, reason } => {
-            log::warn!("Conflict: {} ({})", dst.display(), reason);
-            Ok(()) // Conflict does not block execution, only warns
+            anyhow::bail!(
+                "Unexpected conflict reached execution phase: {} ({})",
+                dst.display(),
+                reason
+            )
         }
-        Action::DecryptFile { src, to } => {
-            // 读取源文件，解密，写入目标位置
+        Action::DecryptFile {
+            src,
+            to,
+            key,
+            alg,
+            left_boundary,
+            right_boundary,
+        } => {
             let content = std::fs::read_to_string(src)
-                .map_err(|e| anyhow::anyhow!("Failed to read file {}: {e}", src.display()))?;
+                .map_err(|e| anyhow::anyhow!("Failed to read file for decryption {}: {e}", src.display()))?;
 
-            // 解密功能后续由 crypto 模块集成。
-            // 目前 install 流程中解密操作在执行前已完成，此处直接复制。
+            let decrypted = crypto::decrypt_inline(
+                &content,
+                alg,
+                key,
+                left_boundary,
+                right_boundary,
+                true,
+            )?;
+
             if let Some(parent) = to.parent() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| anyhow::anyhow!("Failed to create decrypt directory: {e}"))?;
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    anyhow::anyhow!("Failed to create decrypt target directory: {e}")
+                })?;
             }
-            std::fs::write(to, content)
-                .map_err(|e| anyhow::anyhow!("Failed to write decrypt file {}: {e}", to.display()))
+            std::fs::write(to, decrypted)
+                .map_err(|e| anyhow::anyhow!("Failed to write decrypted file {}: {e}", to.display()))
         }
     }
 }

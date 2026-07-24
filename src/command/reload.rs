@@ -66,9 +66,16 @@ fn reload_link(config: &Arc<Config>, pack: &Arc<PathBuf>, dry_run: bool) -> Resu
     let ignore_re = config.ignore_regex()?;
     let over_re = config.over_regex()?;
 
-    // ── 一次扫描两棵虚拟树 ──
+    // ── 扫描 pack 树（pack 内容）──
     let pack_tree = vtree::VNode::scan(pack.as_ref(), false)?;
-    let target_tree = vtree::VNode::scan(target, false)?;
+
+    // ── 分别构建目标树（同路径则共享一棵，避免 clone）──
+    let mut install_target_tree = vtree::VNode::scan(target, false)?;
+
+    let remove_target_path = old_track
+        .as_ref()
+        .and_then(|t| t.target.as_deref())
+        .unwrap_or(target);
 
     let options = MergeOption {
         ignore: ignore_re,
@@ -77,32 +84,29 @@ fn reload_link(config: &Arc<Config>, pack: &Arc<PathBuf>, dry_run: bool) -> Resu
         symlink_mode: config.symlink_mode.clone(),
     };
 
-    // ── 制定重载计划 ──
     let empty_track = Track {
         links: Vec::new(),
         decrypted_path: None,
+        encrypted: false,
         pack_name: None,
         pack_path: None,
         target: None,
+        symlink_mode: None,
     };
     let track = old_track.as_ref().unwrap_or(&empty_track);
-    let plan = planner::plan_reload(&pack_tree, &target_tree, track, &options);
 
-    if plan.has_conflicts() {
-        let conflicts: Vec<_> = plan
-            .actions
-            .iter()
-            .filter_map(|a| match a {
-                crate::action::Action::Conflict { dst, reason } => {
-                    Some(format!("  {} ({})", dst.display(), reason))
-                }
-                _ => None,
-            })
-            .collect();
-        if !conflicts.is_empty() {
-            anyhow::bail!("check conflict:\n{}", conflicts.join("\n"));
-        }
-    }
+    let plan = if remove_target_path == target.as_path() {
+        planner::plan_reload(&pack_tree, &mut install_target_tree, None, track, &options)
+    } else {
+        let mut remove_target_tree = vtree::VNode::scan(remove_target_path, false)?;
+        planner::plan_reload(
+            &pack_tree,
+            &mut remove_target_tree,
+            Some(&install_target_tree),
+            track,
+            &options,
+        )
+    };
 
     // ── 执行计划 ──
     executor::execute_plan(&plan, dry_run)?;
@@ -135,10 +139,12 @@ fn reload_link(config: &Arc<Config>, pack: &Arc<PathBuf>, dry_run: bool) -> Resu
             &track_file,
             toml::to_string_pretty(&Track {
                 decrypted_path: old_track.as_ref().and_then(|t| t.decrypted_path.clone()),
+                encrypted: old_track.as_ref().is_some_and(|t| t.encrypted),
                 links: symlinks,
                 pack_name: Some(pack_name.clone()),
                 pack_path: Some((**pack).clone()),
                 target: Some(target.clone()),
+                symlink_mode: config.symlink_mode.clone(),
             })?,
         )?;
     }

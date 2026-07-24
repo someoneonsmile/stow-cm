@@ -23,7 +23,14 @@ pub enum Action {
     /// 冲突（目标已存在且非链接文件）
     Conflict { dst: PathBuf, reason: String },
     /// 解密文件
-    DecryptFile { src: PathBuf, to: PathBuf },
+    DecryptFile {
+        src: PathBuf,
+        to: PathBuf,
+        key: Vec<u8>,
+        alg: String,
+        left_boundary: String,
+        right_boundary: String,
+    },
 }
 
 /// 计划统计信息，记录各类操作的数量
@@ -92,7 +99,7 @@ impl fmt::Display for Action {
             Action::Conflict { dst, reason } => {
                 write!(f, "! CONFLICT {}  ({})", dst.display(), reason)
             }
-            Action::DecryptFile { src, to } => {
+            Action::DecryptFile { src, to, .. } => {
                 write!(f, "~ DECRYPT  {}  ->  {}", src.display(), to.display())
             }
         }

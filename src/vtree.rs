@@ -238,8 +238,9 @@ fn scan_dir_children(abs_path: &Path, rel_path: &Path, follow_symlinks: bool) ->
             && let Ok(child_meta) = std::fs::symlink_metadata(&child_abs)
             && child_meta.file_type().is_symlink()
         {
-            let target = std::fs::read_link(&child_abs)
-                .with_context(|| format!("Failed to read child symlink: {}", child_abs.display()))?;
+            let target = std::fs::read_link(&child_abs).with_context(|| {
+                format!("Failed to read child symlink: {}", child_abs.display())
+            })?;
             children.push(VNode {
                 rel_path: PathBuf::from(child_rel),
                 abs_path: child_abs,

@@ -59,8 +59,7 @@ fn test_install_dry_run() {
     // 目标目录中不应创建任何 symlink
     common::assert_not_exists(target_dir.join("notes.txt"));
     // track file 也不应创建
-    let track_file =
-        stow_cm::command::resolve_track_file(&pack_dir).expect("track path");
+    let track_file = stow_cm::command::resolve_track_file(&pack_dir).expect("track path");
     common::assert_not_exists(&track_file);
 }
 
@@ -90,7 +89,7 @@ fn test_install_conflict() {
     assert!(result.is_err(), "install should fail on conflict");
     let err_msg = format!("{}", result.unwrap_err());
     assert!(
-        err_msg.contains("check conflict"),
+        err_msg.contains("conflict(s) detected"),
         "error should mention conflict: {err_msg}"
     );
 }
@@ -263,7 +262,6 @@ fn test_install_target_none() {
     install(&config, &pack_dir, false).expect("target=None install should succeed");
 
     // track file 不应存在
-    let track_file =
-        stow_cm::command::resolve_track_file(&pack_dir).expect("track path");
+    let track_file = stow_cm::command::resolve_track_file(&pack_dir).expect("track path");
     common::assert_not_exists(&track_file);
 }

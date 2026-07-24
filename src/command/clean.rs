@@ -6,10 +6,10 @@ use anyhow::anyhow;
 use log::{debug, info, warn};
 
 use super::{pack_envs, resolve_track_file};
-use crate::action::{Action, ActionPlan, PlanStats};
 use crate::config::Config;
 use crate::error::Result;
 use crate::executor;
+use crate::planner;
 use crate::util;
 
 /// clean packages
@@ -46,24 +46,9 @@ fn clean_link(config: &Arc<Config>, pack: &Arc<PathBuf>, dry_run: bool) -> Resul
 
     // ── 扫描文件系统，找到所有指向 pack 的符号链接 ──
     let symlinks = util::find_prefix_symlink(target, pack.as_ref())?;
-    debug!("clean paths: {symlinks:?}");
 
     if !symlinks.is_empty() {
-        let actions: Vec<Action> = symlinks
-            .iter()
-            .map(|s| Action::RemoveLink {
-                src: s.src.clone(),
-                dst: s.dst.clone(),
-                mode: s.mode.clone(),
-            })
-            .collect();
-        let plan = ActionPlan {
-            stats: PlanStats {
-                links_to_remove: actions.len(),
-                ..PlanStats::default()
-            },
-            actions,
-        };
+        let plan = planner::plan_clean(&symlinks);
         executor::execute_plan(&plan, dry_run)?;
     }
 
@@ -87,7 +72,12 @@ fn clean_link(config: &Arc<Config>, pack: &Arc<PathBuf>, dry_run: bool) -> Resul
     // 删除 track 文件（dry-run 时跳过）
     if !dry_run && track_file.try_exists()? {
         debug!("clean track file, {}", track_file.display());
-        std::fs::remove_file(track_file)?;
+        std::fs::remove_file(&track_file)?;
+        // 删除空父目录（pack_id 目录）
+        if let Some(parent) = track_file.parent() {
+            debug!("remove pack state dir, {}", parent.display());
+            let _ = std::fs::remove_dir(parent);
+        }
     }
 
     Ok(())

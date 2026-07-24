@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use anyhow::anyhow;
 use log::{debug, info, warn};
 
 use super::{pack_envs, resolve_track_file};
@@ -9,6 +10,7 @@ use crate::error::Result;
 use crate::executor;
 use crate::planner;
 use crate::track_file::Track;
+use crate::vtree;
 
 /// remove packages
 pub fn remove<P: AsRef<Path>>(config: &Arc<Config>, pack: P, dry_run: bool) -> Result<()> {
@@ -16,7 +18,7 @@ pub fn remove<P: AsRef<Path>>(config: &Arc<Config>, pack: P, dry_run: bool) -> R
     let pack_name = config.resolve_pack_name(&pack)?.into_owned();
     info!("removing");
 
-    remove_link(&pack, dry_run)?;
+    remove_link(config, &pack, dry_run)?;
 
     // execute the clear script
     if let Some(command) = &config.clear {
@@ -33,7 +35,7 @@ pub fn remove<P: AsRef<Path>>(config: &Arc<Config>, pack: P, dry_run: bool) -> R
 }
 
 /// remove links
-fn remove_link(pack: &Arc<PathBuf>, dry_run: bool) -> Result<()> {
+fn remove_link(config: &Config, pack: &Arc<PathBuf>, dry_run: bool) -> Result<()> {
     let track_file = resolve_track_file(pack)?;
 
     if !track_file.try_exists()? {
@@ -42,12 +44,19 @@ fn remove_link(pack: &Arc<PathBuf>, dry_run: bool) -> Result<()> {
     }
 
     let track: Track = toml::from_str(&std::fs::read_to_string(track_file.as_path())?)?;
-    let symlinks = track.links.clone();
 
-    // plan_clean iterates track.links and creates RemoveLink actions — no virtual tree needed
-    let plan = planner::plan_clean(&track);
+    // 优先使用 track 中记录的 target（安装时记录），降级使用 config.target
+    let target = track
+        .target
+        .as_deref()
+        .or(config.target.as_deref())
+        .ok_or_else(|| anyhow!("Cannot determine target: neither track file nor config contains target directory"))?;
 
-    debug!("remove {symlinks:?}");
+    // ── 扫描目标目录虚拟树，生成移除计划 ──
+    let mut target_tree = vtree::VNode::scan(target, false)?;
+    let plan = planner::plan_remove(&track, &mut target_tree);
+
+    debug!("remove {:?}", plan.stats);
     executor::execute_plan(&plan, dry_run)?;
 
     // obtain the decryption path from the track file
@@ -66,7 +75,12 @@ fn remove_link(pack: &Arc<PathBuf>, dry_run: bool) -> Result<()> {
     if dry_run {
         info!("would remove track file: {}", track_file.display());
     } else {
-        std::fs::remove_file(track_file)?;
+        std::fs::remove_file(&track_file)?;
+        // 删除空父目录（pack_id 目录）
+        if let Some(parent) = track_file.parent() {
+            debug!("remove pack state dir, {}", parent.display());
+            let _ = std::fs::remove_dir(parent);
+        }
     }
 
     Ok(())

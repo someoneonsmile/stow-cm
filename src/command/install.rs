@@ -81,22 +81,6 @@ fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>, dry_run: bool) -> Res
 
     let mut plan = planner::plan_install(&pack_tree, &target_tree, &options);
 
-    // Check conflicts
-    if plan.stats.conflicts > 0 {
-        let conflict_details: Vec<_> = plan
-            .actions
-            .iter()
-            .filter_map(|a| {
-                if let Action::Conflict { dst, reason } = a {
-                    Some(format!("  {} ({})", dst.display(), reason))
-                } else {
-                    None
-                }
-            })
-            .collect();
-        bail!("check conflict:\n{}", conflict_details.join("\n"));
-    }
-
     // if config decrypted, decrypt the files
     let decrypted_path = config
         .encrypted
@@ -221,10 +205,12 @@ fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>, dry_run: bool) -> Res
                 } else {
                     None
                 },
+                encrypted: decrypted,
                 links: symlinks,
                 pack_name: Some(pack_name.clone()),
                 pack_path: Some((**pack).clone()),
                 target: Some(target.clone()),
+                symlink_mode: config.symlink_mode.clone(),
             })?,
         )?;
     }
