@@ -153,6 +153,7 @@ fn reload_link(config: &Arc<Config>, pack: &Arc<PathBuf>, dry_run: bool) -> Resu
             )?
         }
     } else {
+        warn!("no previous installation found, reload will proceed as a fresh install");
         planner::plan_install(&pack_tree, &install_target_tree, &options)?
     };
 
