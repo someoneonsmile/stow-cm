@@ -216,14 +216,19 @@ pub fn plan_remove(track: &Track, target_tree: &mut VNode, state_dir: Option<&Pa
         // else: 虚拟树中找不到此路径（可能已被手动从文件系统删除）
     }
 
-    // 清理移除链接后留下的顶层空目录（收集阶段已完成去嵌套）
+    // 清理移除链接后留下的顶层空目录，同步从虚拟树中移除。
+    // 这样后续 plan_install（如 fold）看到的树不再包含这些目录，避免重复生成 RemoveDir。
     let (top_empty_dirs, _) = collect_empty_dirs(target_tree, true);
     for dir in top_empty_dirs {
         plan.actions.push(Action::RemoveDir {
-            path: dir,
+            path: dir.clone(),
             reason: "cleanup empty directory after removal".to_string(),
         });
         plan.stats.dirs_removed += 1;
+        // 从虚拟树中移除，防止后续 plan_install 的 fold 对同一目录重复生成 RemoveDir
+        if let Ok(rel) = dir.strip_prefix(&target_root) {
+            target_tree.remove(rel);
+        }
     }
 
     // 先清理解密目录（可能不在 pack state home 下）
