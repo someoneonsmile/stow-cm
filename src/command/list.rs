@@ -85,6 +85,8 @@ pub fn list(json: bool) -> Result<()> {
 
         let mode = if track.links.iter().any(|l| l.mode == SymlinkMode::Copy) {
             "copy"
+        } else if track.links.iter().any(|l| l.mode == SymlinkMode::Move) {
+            "move"
         } else {
             "symlink"
         };

@@ -8,6 +8,7 @@
 //! - [`plan_remove`]  — 移除计划（track → target）
 //! - [`plan_reload`]  — 重载计划（remove + install 合并去重）
 //! - [`plan_clean`]   — 清理计划（从文件系统扫描结果构建 RemoveLink 计划）
+//! - [`plan_adopt`]   — 接管计划（source → pack 移动 + 安装链接）
 
 use std::path::{Path, PathBuf};
 
@@ -80,6 +81,8 @@ pub struct PlanOption {
 /// `CreateLink` 操作。遇到冲突时生成 `Conflict`，匹配忽略规则时跳过，
 /// 满足覆盖规则时强制覆盖。支持目录折叠（fold）优化。
 ///
+/// 同步更新 `target_tree`（虚拟文件树），使其反映计划执行后的预期状态。
+///
 /// 如果 `options.decrypt` 已设置，生成的计划中会在 `CreateLink` 之前
 /// 插入 `DecryptFile` 操作，并将 `CreateLink.src` 重写为解密后的路径。
 ///
@@ -87,14 +90,14 @@ pub struct PlanOption {
 /// - `CreateDir(decrypted_path)`（解密场景下）
 /// - `WriteTrackFile` 写入安装后的 track 记录
 pub fn plan_install(
-    pack_tree: &VNode,
-    target_tree: &VNode,
+    pack_tree: &mut VNode,
+    target_tree: &mut VNode,
     options: &PlanOption,
 ) -> Result<ActionPlan> {
     let target_base = target_tree.abs_path.clone();
     let children_plan = install_children(
-        &pack_tree.children,
-        &target_tree.children,
+        &mut pack_tree.children,
+        &mut target_tree.children,
         &target_base,
         options,
     );
@@ -149,10 +152,7 @@ pub fn plan_install(
         plan.actions.push(Action::WriteTrackFile {
             path: tw.track_file.clone(),
             track: Track {
-                decrypted_path: options
-                    .decrypt
-                    .as_ref()
-                    .map(|d| d.decrypted_path.clone()),
+                decrypted_path: options.decrypt.as_ref().map(|d| d.decrypted_path.clone()),
                 encrypted: tw.encrypted,
                 links: symlinks,
                 pack_name: Some(tw.pack_name.clone()),
@@ -265,20 +265,20 @@ fn consistency_failure_reason(link: &crate::symlink::Symlink, node: &VNode) -> S
                 link.dst.display()
             )
         }
-        (SymlinkMode::Copy, VNodeKind::Symlink { .. }) => {
+        (SymlinkMode::Copy | SymlinkMode::Move, VNodeKind::Symlink { .. }) => {
             format!(
                 "expected regular file at '{}', found symlink",
                 link.dst.display()
             )
         }
-        (SymlinkMode::Copy, VNodeKind::Dir) => {
+        (SymlinkMode::Copy | SymlinkMode::Move, VNodeKind::Dir) => {
             format!(
                 "expected regular file at '{}', found directory",
                 link.dst.display()
             )
         }
-        // 此分支不会执行（(Copy, File) 在 is_consistent 中返回 true），仅为满足穷尽匹配
-        (SymlinkMode::Copy, VNodeKind::File) => {
+        // 这些分支不会执行（(Copy/Move, File) 在 is_consistent 中返回 true），仅为满足穷尽匹配
+        (SymlinkMode::Copy | SymlinkMode::Move, VNodeKind::File) => {
             format!("unexpected inconsistency at '{}'", link.dst.display())
         }
     }
@@ -297,19 +297,20 @@ fn consistency_failure_reason(link: &crate::symlink::Symlink, node: &VNode) -> S
 /// - 若 `src` 不同 → 两者都保留
 /// - 去重仅影响 `RemoveLink`/`CreateLink` 对；解密目录的 `RemoveDir`/`CreateDir` 不受影响
 pub fn plan_reload(
-    pack_tree: &VNode,
+    pack_tree: &mut VNode,
     remove_target: &mut VNode,
-    install_target: Option<&VNode>,
+    install_target: Option<&mut VNode>,
     track: &Track,
     options: &PlanOption,
 ) -> Result<ActionPlan> {
     let remove_plan = plan_remove(track, remove_target, None);
 
     // install_target 为 None 时表示与 remove 同一棵树 → 使用清理后的版本
-    let install_base = install_target.unwrap_or(remove_target);
-
-    // decrypt + track_write 统一由 plan_install 注入，plan_reload 只负责合并
-    let install_plan = plan_install(pack_tree, install_base, options)?;
+    let install_plan = if let Some(install_tree) = install_target {
+        plan_install(pack_tree, install_tree, options)?
+    } else {
+        plan_install(pack_tree, remove_target, options)?
+    };
 
     let track_mode = track.symlink_mode.as_ref().unwrap_or(&SymlinkMode::Symlink);
     let config_mode = options
@@ -375,6 +376,50 @@ pub fn plan_clean(
     plan
 }
 
+/// 为 adopt（反向接管）生成文件移动计划。
+///
+/// 复用 [`plan_install`] 对比 `source_tree` 与 `pack_tree` 做
+/// ignore 过滤和 fold，使用 `SymlinkMode::Move` 将文件从 source 移动到 pack。
+/// adopt 中 source == target，"file already exists" 冲突
+/// 会被忽略——文件移动后目标路径为空。
+///
+/// `source` 路径从 `source_tree.abs_path` 获取。
+pub fn plan_adopt(
+    source_tree: &mut VNode,
+    pack_tree: &mut VNode,
+    options: &PlanOption,
+) -> Result<ActionPlan> {
+    let install_plan = plan_install(source_tree, pack_tree, options)?;
+
+    let mut moved = 0usize;
+    let actions: Vec<Action> = install_plan
+        .actions
+        .into_iter()
+        .filter(|action| {
+            // adopt 中文件即将被移走，不算冲突
+            !matches!(action, Action::Conflict { reason, .. } if reason == "file already exists")
+        })
+        .inspect(|action| {
+            if matches!(action, Action::CreateLink { .. }) {
+                moved += 1;
+            }
+        })
+        .collect();
+
+    Ok(ActionPlan {
+        stats: PlanStats {
+            links_to_create: moved,
+            conflicts: actions
+                .iter()
+                .filter(|a| matches!(a, Action::Conflict { .. }))
+                .count(),
+            ignored: install_plan.stats.ignored,
+            ..PlanStats::default()
+        },
+        actions,
+    })
+}
+
 // ── 内部类型 ──
 
 /// 递归安装子节点时返回的结果，含该子树的操作与统计。
@@ -403,25 +448,43 @@ impl ChildrenPlan {
 // ── 递归安装核心 ──
 
 /// 递归处理 pack 的一组子节点，将每个子节点安装到 target 对应位置。
-///
-/// `target_children` 是目标树中当前目录的子节点列表，
-/// `target_base` 是当前目标目录的绝对路径。
+/// 合并处理传播标记, 但不做 fold 实际操作，fold 在 plan_dir 中处理
 fn install_children(
-    pack_children: &[VNode],
-    target_children: &[VNode],
+    pack_children: &mut Vec<VNode>,
+    target_children: &mut Vec<VNode>,
     target_base: &Path,
     options: &PlanOption,
 ) -> ChildrenPlan {
     let mut result = ChildrenPlan::empty();
 
-    for pack_child in pack_children {
-        // 在当前层级的目标子节点中查找同名节点
-        let target_child = target_children
+    let mut i = pack_children.len();
+    while i > 0 {
+        i -= 1;
+        let idx = target_children
             .iter()
-            .find(|tc| tc.rel_path == pack_child.rel_path);
+            .position(|tc| tc.rel_path == pack_children[i].rel_path);
 
-        let child_target_base = target_base.join(&pack_child.rel_path);
-        let child_plan = install_node(pack_child, target_child, &child_target_base, options);
+        let child_target_base = target_base.join(&pack_children[i].rel_path);
+
+        let child_plan = if let Some(target_idx) = idx {
+            install_node(
+                pack_children,
+                i,
+                target_children,
+                Some(target_idx),
+                &child_target_base,
+                options,
+            )
+        } else {
+            install_node(
+                pack_children,
+                i,
+                target_children,
+                None,
+                &child_target_base,
+                options,
+            )
+        };
 
         // 合并统计信息
         result.stats.links_to_create += child_plan.stats.links_to_create;
@@ -440,19 +503,28 @@ fn install_children(
         result.actions.extend(child_plan.actions);
     }
 
+    // 检查 target 中是否存在 pack 没有的子节点
+    let has_new_sub = target_children
+        .iter()
+        .any(|tc| !pack_children.iter().any(|pc| pc.rel_path == tc.rel_path));
+
+    result.foldable = result.foldable && !result.had_ignored && !has_new_sub;
     result
 }
 
-/// 递归处理单个 pack 节点，返回其安装计划。
-///
-/// - `target_child` — 目标树中对应的节点（如果存在）
-/// - `target_dst`  — 该 pack 节点在目标文件系统中的预期绝对路径
+/// - `pack_parent` / `pack_idx` — pack 节点在其父列表中的位置（Move 模式 possibly remove）
+/// - `target_parent` / `target_idx` — 目标节点在目标父列表中的位置（None 表示不存在）
+/// - `target_dst` — 该 pack 节点在目标文件系统中的预期绝对路径
 fn install_node(
-    pack: &VNode,
-    target_child: Option<&VNode>,
+    pack_parent: &mut Vec<VNode>,
+    pack_idx: usize,
+    target_parent: &mut Vec<VNode>,
+    target_idx: Option<usize>,
     target_dst: &Path,
     options: &PlanOption,
 ) -> ChildrenPlan {
+    let pack = &pack_parent[pack_idx];
+
     // ── 忽略检查 ──
     if let Some(ignore_re) = &options.merge.ignore {
         if ignore_re.is_match(&pack.abs_path.to_string_lossy()) {
@@ -468,33 +540,76 @@ fn install_node(
     }
 
     match &pack.kind {
-        VNodeKind::File | VNodeKind::Symlink { .. } => {
-            plan_leaf(pack, target_child, target_dst, options)
-        }
-        VNodeKind::Dir => plan_dir(pack, target_child, target_dst, options),
+        VNodeKind::File | VNodeKind::Symlink { .. } => plan_leaf(
+            pack_parent,
+            pack_idx,
+            target_parent,
+            target_idx,
+            target_dst,
+            options,
+        ),
+        VNodeKind::Dir => plan_dir(
+            pack_parent,
+            pack_idx,
+            target_parent,
+            target_idx,
+            target_dst,
+            options,
+        ),
     }
 }
 
 /// 处理叶子节点（File 或 Symlink）。
+///
+/// 操作虚拟文件树：
+/// - Move 模式：`pack_parent.remove(pack_idx)` 从 pack 父节点移除
+/// - 覆盖时：`target_parent[target_idx] = new_node` 替换目标节点
+/// - 新建时：`target_parent.push(new_node)` 插入目标节点
 fn plan_leaf(
-    pack: &VNode,
-    target_child: Option<&VNode>,
+    pack_parent: &mut Vec<VNode>,
+    pack_idx: usize,
+    target_parent: &mut Vec<VNode>,
+    target_idx: Option<usize>,
     target_dst: &Path,
     options: &PlanOption,
 ) -> ChildrenPlan {
     let mode = options.merge.symlink_mode.clone().unwrap_or_default();
 
-    if let Some(target_node) = target_child {
+    // 提取 pack 节点信息（clone），释放对 pack_parent 的 immutable borrow
+    let pack_abs = pack_parent[pack_idx].abs_path.clone();
+    let pack_kind = pack_parent[pack_idx].kind.clone();
+    let pack_rel = pack_parent[pack_idx].rel_path.clone();
+
+    // Move 模式：从 pack 父节点中移除当前节点
+    if mode == SymlinkMode::Move {
+        pack_parent.remove(pack_idx);
+    }
+
+    if let Some(target_idx) = target_idx {
         // 目标已存在 — 检查是否可覆盖
         if let Some(over_re) = &options.merge.over {
-            if over_re.is_match(&pack.abs_path.to_string_lossy()) {
+            if over_re.is_match(&pack_abs.to_string_lossy()) {
+                let kind = match &mode {
+                    SymlinkMode::Symlink => VNodeKind::Symlink {
+                        target: pack_abs.clone(),
+                    },
+                    SymlinkMode::Copy | SymlinkMode::Move => pack_kind.clone(),
+                };
+                let dst = target_parent[target_idx].abs_path.clone();
+                target_parent[target_idx] = VNode {
+                    rel_path: target_parent[target_idx].rel_path.clone(),
+                    abs_path: dst.clone(),
+                    kind,
+                    children: Vec::new(),
+                };
+
                 let mut stats = Box::<PlanStats>::default();
                 stats.links_to_create = 1;
                 stats.overridden = 1;
                 return ChildrenPlan {
                     actions: vec![Action::CreateLink {
-                        src: pack.abs_path.clone(),
-                        dst: target_node.abs_path.clone(),
+                        src: pack_abs.clone(),
+                        dst,
                         mode,
                     }],
                     stats,
@@ -508,7 +623,7 @@ fn plan_leaf(
         stats.conflicts = 1;
         ChildrenPlan {
             actions: vec![Action::Conflict {
-                dst: target_node.abs_path.clone(),
+                dst: target_parent[target_idx].abs_path.clone(),
                 reason: "file already exists".to_string(),
             }],
             stats,
@@ -517,11 +632,24 @@ fn plan_leaf(
         }
     } else {
         // 目标不存在 → 正常创建链接
+        let kind = match &mode {
+            SymlinkMode::Symlink => VNodeKind::Symlink {
+                target: pack_abs.clone(),
+            },
+            SymlinkMode::Copy | SymlinkMode::Move => pack_kind.clone(),
+        };
+        target_parent.push(VNode {
+            rel_path: pack_rel,
+            abs_path: target_dst.to_path_buf(),
+            kind,
+            children: Vec::new(),
+        });
+
         let mut stats = Box::<PlanStats>::default();
         stats.links_to_create = 1;
         ChildrenPlan {
             actions: vec![Action::CreateLink {
-                src: pack.abs_path.clone(),
+                src: pack_abs,
                 dst: target_dst.to_path_buf(),
                 mode,
             }],
@@ -532,39 +660,90 @@ fn plan_leaf(
     }
 }
 
-/// 处理目录节点：递归子节点，检查折叠条件。
+/// 处理目录节点：递归子节点，检查折叠条件，并折叠。
+///
+/// 操作虚拟文件树：
+/// - 折叠时替换 target_parent[target_idx] 或 push 到 target_parent
+/// - Move 模式 pack_parent.remove(pack_idx)
+/// - 非折叠时递归处理子节点
 fn plan_dir(
-    pack: &VNode,
-    target_child: Option<&VNode>,
+    pack_parent: &mut Vec<VNode>,
+    pack_idx: usize,
+    target_parent: &mut Vec<VNode>,
+    target_idx: Option<usize>,
     target_dst: &Path,
     options: &PlanOption,
 ) -> ChildrenPlan {
     let mode = options.merge.symlink_mode.clone().unwrap_or_default();
     let fold_enabled = options.merge.fold.unwrap_or(false);
 
-    // 递归处理所有子节点
-    let target_children = target_child.map_or(&[] as &[VNode], |tc| tc.children.as_slice());
+    // 提取 pack 节点信息（clone），释放对 pack_parent 的 immutable borrow
+    let pack_abs = pack_parent[pack_idx].abs_path.clone();
+    let pack_kind = pack_parent[pack_idx].kind.clone();
+    let pack_rel = pack_parent[pack_idx].rel_path.clone();
 
-    let children_plan = install_children(&pack.children, target_children, target_dst, options);
+    // 提取 target_children 供递归处理，用独立作用域限制 borrow 生命周期
+    let children_plan = {
+        let mut empty_children = Vec::new();
+        let target_children: &mut Vec<VNode> =
+            target_idx.map_or(&mut empty_children, |idx| &mut target_parent[idx].children);
+        install_children(
+            &mut pack_parent[pack_idx].children,
+            target_children,
+            target_dst,
+            options,
+        )
+    };
 
-    // 检查 target 中是否存在 pack 没有的子节点
-    let has_new_sub = target_children
-        .iter()
-        .any(|tc| !pack.children.iter().any(|pc| pc.rel_path == tc.rel_path));
-
-    let should_fold =
-        fold_enabled && children_plan.foldable && !children_plan.had_ignored && !has_new_sub;
+    let should_fold = fold_enabled && children_plan.foldable;
 
     if should_fold {
-        // 用目标节点 abs_path（如果存在）或计算出的 target_dst 作为 dst
-        let dst = target_child.map_or_else(|| target_dst.to_path_buf(), |tc| tc.abs_path.clone());
+        // Move 模式：从 pack 父节点中移除整个目录
+        if mode == SymlinkMode::Move {
+            pack_parent.remove(pack_idx);
+        }
+
+        let dst = target_idx.map_or_else(
+            || target_dst.to_path_buf(),
+            |idx| target_parent[idx].abs_path.clone(),
+        );
+
+        match target_idx {
+            Some(idx) => {
+                let kind = match &mode {
+                    SymlinkMode::Symlink => VNodeKind::Symlink {
+                        target: pack_abs.clone(),
+                    },
+                    SymlinkMode::Copy | SymlinkMode::Move => pack_kind.clone(),
+                };
+                target_parent[idx] = VNode {
+                    rel_path: target_parent[idx].rel_path.clone(),
+                    abs_path: dst.clone(),
+                    kind,
+                    children: Vec::new(),
+                };
+            }
+            None => {
+                let kind = match &mode {
+                    SymlinkMode::Symlink => VNodeKind::Symlink {
+                        target: pack_abs.clone(),
+                    },
+                    SymlinkMode::Copy | SymlinkMode::Move => pack_kind.clone(),
+                };
+                target_parent.push(VNode {
+                    rel_path: pack_rel,
+                    abs_path: dst.clone(),
+                    kind,
+                    children: Vec::new(),
+                });
+            }
+        }
 
         let mut stats = Box::<PlanStats>::default();
         stats.links_to_create = 1;
-
         ChildrenPlan {
             actions: vec![Action::CreateLink {
-                src: pack.abs_path.clone(),
+                src: pack_abs,
                 dst,
                 mode,
             }],
@@ -784,10 +963,10 @@ mod tests {
     #[test]
     fn plan_install_basic_file() {
         // pack: /pack/file.txt  →  target: (empty)
-        let pack = dir_node("", "/pack", vec![file_node("file.txt", "/pack/file.txt")]);
-        let target = dir_node("", "/target", Vec::new());
+        let mut pack = dir_node("", "/pack", vec![file_node("file.txt", "/pack/file.txt")]);
+        let mut target = dir_node("", "/target", Vec::new());
 
-        let plan = plan_install(&pack, &target, &default_options()).unwrap();
+        let plan = plan_install(&mut pack, &mut target, &default_options()).unwrap();
 
         assert_eq!(plan.stats.links_to_create, 1);
         assert_eq!(plan.stats.conflicts, 0);
@@ -805,7 +984,7 @@ mod tests {
 
     #[test]
     fn plan_install_multiple_files() {
-        let pack = dir_node(
+        let mut pack = dir_node(
             "",
             "/pack",
             vec![
@@ -813,9 +992,9 @@ mod tests {
                 file_node("b.txt", "/pack/b.txt"),
             ],
         );
-        let target = dir_node("", "/target", Vec::new());
+        let mut target = dir_node("", "/target", Vec::new());
 
-        let plan = plan_install(&pack, &target, &default_options()).unwrap();
+        let plan = plan_install(&mut pack, &mut target, &default_options()).unwrap();
 
         assert_eq!(plan.stats.links_to_create, 2);
         assert_eq!(plan.actions.len(), 2);
@@ -824,14 +1003,14 @@ mod tests {
     #[test]
     fn plan_install_conflict() {
         // target 中已存在同名文件 → 冲突
-        let pack = dir_node("", "/pack", vec![file_node("file.txt", "/pack/file.txt")]);
-        let target = dir_node(
+        let mut pack = dir_node("", "/pack", vec![file_node("file.txt", "/pack/file.txt")]);
+        let mut target = dir_node(
             "",
             "/target",
             vec![file_node("file.txt", "/target/file.txt")],
         );
 
-        let plan = plan_install(&pack, &target, &default_options()).unwrap();
+        let plan = plan_install(&mut pack, &mut target, &default_options()).unwrap();
 
         assert_eq!(plan.stats.conflicts, 1);
         assert_eq!(plan.stats.links_to_create, 0);
@@ -842,8 +1021,8 @@ mod tests {
     #[test]
     fn plan_install_override() {
         // over 规则匹配 → 强制覆盖
-        let pack = dir_node("", "/pack", vec![file_node("file.txt", "/pack/file.txt")]);
-        let target = dir_node(
+        let mut pack = dir_node("", "/pack", vec![file_node("file.txt", "/pack/file.txt")]);
+        let mut target = dir_node(
             "",
             "/target",
             vec![file_node("file.txt", "/target/file.txt")],
@@ -860,7 +1039,7 @@ mod tests {
             track_write: None,
         };
 
-        let plan = plan_install(&pack, &target, &options).unwrap();
+        let plan = plan_install(&mut pack, &mut target, &options).unwrap();
 
         assert_eq!(plan.stats.overridden, 1);
         assert_eq!(plan.stats.conflicts, 0);
@@ -871,7 +1050,7 @@ mod tests {
     #[test]
     fn plan_install_ignore() {
         // ignore 规则匹配 → 跳过
-        let pack = dir_node(
+        let mut pack = dir_node(
             "",
             "/pack",
             vec![
@@ -879,7 +1058,7 @@ mod tests {
                 file_node("config.txt", "/pack/config.txt"),
             ],
         );
-        let target = dir_node("", "/target", Vec::new());
+        let mut target = dir_node("", "/target", Vec::new());
 
         let options = PlanOption {
             merge: MergeOption {
@@ -892,7 +1071,7 @@ mod tests {
             track_write: None,
         };
 
-        let plan = plan_install(&pack, &target, &options).unwrap();
+        let plan = plan_install(&mut pack, &mut target, &options).unwrap();
 
         assert_eq!(plan.stats.ignored, 1);
         assert_eq!(plan.stats.links_to_create, 1);
@@ -905,7 +1084,7 @@ mod tests {
     #[test]
     fn plan_install_nested_dir() {
         // pack 中有嵌套目录结构
-        let pack = dir_node(
+        let mut pack = dir_node(
             "",
             "/pack",
             vec![dir_node(
@@ -914,9 +1093,9 @@ mod tests {
                 vec![file_node("inner.txt", "/pack/subdir/inner.txt")],
             )],
         );
-        let target = dir_node("", "/target", Vec::new());
+        let mut target = dir_node("", "/target", Vec::new());
 
-        let plan = plan_install(&pack, &target, &default_options()).unwrap();
+        let plan = plan_install(&mut pack, &mut target, &default_options()).unwrap();
 
         assert_eq!(plan.stats.links_to_create, 1);
         assert_eq!(plan.actions.len(), 1);
@@ -932,7 +1111,7 @@ mod tests {
     #[test]
     fn plan_install_fold() {
         // 启用 fold：可折叠的目录 → 单个 CreateLink
-        let pack = dir_node(
+        let mut pack = dir_node(
             "",
             "/pack",
             vec![dir_node(
@@ -944,9 +1123,9 @@ mod tests {
                 ],
             )],
         );
-        let target = dir_node("", "/target", Vec::new());
+        let mut target = dir_node("", "/target", Vec::new());
 
-        let plan = plan_install(&pack, &target, &fold_options()).unwrap();
+        let plan = plan_install(&mut pack, &mut target, &fold_options()).unwrap();
 
         // fold 后：整个 sub 目录折叠为一个链接
         assert_eq!(plan.stats.links_to_create, 1);
@@ -963,7 +1142,7 @@ mod tests {
     #[test]
     fn plan_install_fold_blocked_by_ignore() {
         // 目录中有被忽略的文件 → 不可折叠
-        let pack = dir_node(
+        let mut pack = dir_node(
             "",
             "/pack",
             vec![dir_node(
@@ -975,7 +1154,7 @@ mod tests {
                 ],
             )],
         );
-        let target = dir_node("", "/target", Vec::new());
+        let mut target = dir_node("", "/target", Vec::new());
 
         let options = PlanOption {
             merge: MergeOption {
@@ -988,7 +1167,7 @@ mod tests {
             track_write: None,
         };
 
-        let plan = plan_install(&pack, &target, &options).unwrap();
+        let plan = plan_install(&mut pack, &mut target, &options).unwrap();
 
         // 不可折叠 → 子节点单独链接
         assert_eq!(plan.stats.links_to_create, 1);
@@ -1002,7 +1181,7 @@ mod tests {
     #[test]
     fn plan_install_fold_blocked_by_new_sub() {
         // target 中存在 pack 没有的文件 → 不可折叠
-        let pack = dir_node(
+        let mut pack = dir_node(
             "",
             "/pack",
             vec![dir_node(
@@ -1011,7 +1190,7 @@ mod tests {
                 vec![file_node("x.txt", "/pack/sub/x.txt")],
             )],
         );
-        let target = dir_node(
+        let mut target = dir_node(
             "",
             "/target",
             vec![dir_node(
@@ -1021,7 +1200,7 @@ mod tests {
             )],
         );
 
-        let plan = plan_install(&pack, &target, &fold_options()).unwrap();
+        let plan = plan_install(&mut pack, &mut target, &fold_options()).unwrap();
 
         // 不可折叠：target 中有 extra.txt
         assert_eq!(plan.actions.len(), 1);
@@ -1033,14 +1212,14 @@ mod tests {
     #[test]
     fn plan_install_symlink_node() {
         // Symlink 类型的节点应被视为叶子，生成 CreateLink
-        let pack = dir_node(
+        let mut pack = dir_node(
             "",
             "/pack",
             vec![symlink_node("link.txt", "/pack/link.txt", "/etc/somefile")],
         );
-        let target = dir_node("", "/target", Vec::new());
+        let mut target = dir_node("", "/target", Vec::new());
 
-        let plan = plan_install(&pack, &target, &default_options()).unwrap();
+        let plan = plan_install(&mut pack, &mut target, &default_options()).unwrap();
 
         assert_eq!(plan.stats.links_to_create, 1);
         assert_eq!(plan.actions.len(), 1);
@@ -1246,7 +1425,7 @@ mod tests {
     #[test]
     fn plan_reload_dedup_same_src() {
         // 同一 dst 在 remove 和 install 中 src 相同 → 抵消
-        let pack = dir_node("", "/pack", vec![file_node("file.txt", "/pack/file.txt")]);
+        let mut pack = dir_node("", "/pack", vec![file_node("file.txt", "/pack/file.txt")]);
         // target_tree 包含目标文件（Symlink 节点指向正确的 src），以便 plan_remove 能找到并移除它
         let mut target = dir_node(
             "",
@@ -1259,7 +1438,7 @@ mod tests {
         );
         let track = make_track("/pack/file.txt", "/target/file.txt");
 
-        let plan = plan_reload(&pack, &mut target, None, &track, &default_options()).unwrap();
+        let plan = plan_reload(&mut pack, &mut target, None, &track, &default_options()).unwrap();
 
         // 同一路径同时移除和创建，src 相同，互相抵消
         assert_eq!(plan.stats.links_to_create, 0);
@@ -1270,7 +1449,7 @@ mod tests {
     #[test]
     fn plan_reload_different_src() {
         // 同一 dst，但 src 不同（文件位置变更）→ 两者都保留
-        let pack = dir_node(
+        let mut pack = dir_node(
             "",
             "/pack",
             vec![file_node("file.txt", "/pack/new/file.txt")],
@@ -1288,7 +1467,7 @@ mod tests {
         );
         let track = make_track("/pack/old/file.txt", "/target/file.txt");
 
-        let plan = plan_reload(&pack, &mut target, None, &track, &default_options()).unwrap();
+        let plan = plan_reload(&mut pack, &mut target, None, &track, &default_options()).unwrap();
 
         // src 不同 → remove 和 create 都应保留
         assert_eq!(plan.stats.links_to_create, 1);
@@ -1299,7 +1478,7 @@ mod tests {
     #[test]
     fn plan_reload_new_file() {
         // pack 中有新文件，track 为空
-        let pack = dir_node(
+        let mut pack = dir_node(
             "",
             "/pack",
             vec![file_node("new_file.txt", "/pack/new_file.txt")],
@@ -1315,7 +1494,7 @@ mod tests {
             symlink_mode: None,
         };
 
-        let plan = plan_reload(&pack, &mut target, None, &track, &default_options()).unwrap();
+        let plan = plan_reload(&mut pack, &mut target, None, &track, &default_options()).unwrap();
 
         assert_eq!(plan.stats.links_to_create, 1);
         assert_eq!(plan.stats.links_to_remove, 0);
@@ -1325,7 +1504,7 @@ mod tests {
     #[test]
     fn plan_reload_removed_file() {
         // pack 中删除了文件（track 有记录但 pack 没有）
-        let pack = dir_node("", "/pack", Vec::new());
+        let mut pack = dir_node("", "/pack", Vec::new());
         let mut target = dir_node(
             "",
             "/target",
@@ -1333,7 +1512,7 @@ mod tests {
         );
         let track = make_track("/pack/old.txt", "/target/old.txt");
 
-        let plan = plan_reload(&pack, &mut target, None, &track, &default_options()).unwrap();
+        let plan = plan_reload(&mut pack, &mut target, None, &track, &default_options()).unwrap();
 
         // 只有 remove，没有 create
         assert_eq!(plan.stats.links_to_create, 0);

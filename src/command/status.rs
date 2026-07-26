@@ -69,7 +69,7 @@ fn check_symlink(link: &Symlink) -> LinkStatus {
                     Err(_) => LinkStatus::Dangling,
                 }
             }
-            SymlinkMode::Copy => {
+            SymlinkMode::Copy | SymlinkMode::Move => {
                 if !meta.file_type().is_file() && !meta.file_type().is_symlink() {
                     return LinkStatus::Overwritten;
                 }

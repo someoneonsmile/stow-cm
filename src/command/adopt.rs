@@ -1,200 +1,61 @@
-use std::ffi::OsStr;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
-use anyhow::{anyhow, bail};
-use log::{info, warn};
+use anyhow::anyhow;
+use log::info;
 
-use super::install;
-use super::resolve_track_file;
 use crate::config::Config;
-use crate::constants::CONFIG_FILE_NAME;
 use crate::error::Result;
-use crate::merge_tree::MergeTree;
-use crate::planner::MergeOption;
-use crate::symlink::{Symlink, SymlinkMode};
-use crate::util;
+use crate::executor;
+use crate::planner::{self, MergeOption, PlanOption};
+use crate::symlink::SymlinkMode;
+use crate::vtree;
 
-/// 反向接管：将已有配置目录移入 stow 仓库并创建链接。
-///
-/// 每个 source 目录以其 basename 作为 pack 名，在 `stow_dir` 下创建 pack 目录，
-/// 自动生成 `stow-cm.toml`（target = source），然后移入文件并安装链接。
-pub fn adopt(global: &Config, sources: &[PathBuf], stow_dir: impl AsRef<Path>) -> Result<()> {
-    let stow_dir = stow_dir.as_ref();
+pub fn adopt(config: &Arc<Config>, pack: impl AsRef<Path>, dry_run: bool) -> Result<()> {
+    info!("adopting");
 
-    for source in sources {
-        let pack_name = source
-            .file_name()
-            .and_then(OsStr::to_str)
-            .ok_or_else(|| anyhow!("{}: cannot determine pack name", source.display()))?;
-
-        let pack_dir = stow_dir.join(pack_name);
-        util::scoped_log_prefix(pack_name, || {
-            adopt_one(global, source, &pack_dir, pack_name)
-        })?;
-    }
-
-    Ok(())
-}
-
-fn adopt_one(global: &Config, source: &Path, pack_dir: &Path, pack_name: &str) -> Result<()> {
-    info!("source={} pack={}", source.display(), pack_dir.display());
-
-    let config_path = pack_dir.join(CONFIG_FILE_NAME);
-
-    // 检查 pack 目录：已存在、非空、且无 stow-cm.toml → 拒绝
-    if pack_dir.exists() && !config_path.exists() {
-        let mut entries = std::fs::read_dir(pack_dir)?;
-        if entries.next().is_some() {
-            bail!(
-                "{pack_name}: pack directory '{}' already exists with content \
-                 but no {CONFIG_FILE_NAME} — refusing to adopt.\n\
-                 Remove the directory or create a {CONFIG_FILE_NAME} first.",
-                pack_dir.display()
-            );
-        }
-    }
-
-    // 确保 pack 目录存在
-    std::fs::create_dir_all(pack_dir)?;
-
-    // 如果没有 stow-cm.toml，先生成配置（含 target），再加载
-    if !config_path.exists() {
-        generate_config(&config_path, pack_name, source)?;
-        info!("generated stow-cm.toml");
-    }
-
-    let config = Config::for_pack(pack_dir, global, None, false)?;
+    let pack = pack.as_ref().to_path_buf();
+    let pack_name = config.resolve_pack_name(&pack)?.into_owned();
+    let ignore_re = config.ignore_regex()?;
     let target = config
         .target
         .as_ref()
         .ok_or_else(|| anyhow!("{pack_name}: target is not configured"))?;
-    let tc = std::fs::canonicalize(target);
-    let sc = std::fs::canonicalize(source);
-    let target_matches = match (tc, sc) {
-        (Ok(tc), Ok(sc)) => tc == sc,
-        _ => false,
+
+    let mut target_tree = vtree::VNode::scan(target, false)?;
+    if target_tree.children.is_empty() {
+        info!("source directory is empty, nothing to adopt");
+        return Ok(());
+    }
+    let mut pack_tree = vtree::VNode::scan(&pack, false)?;
+
+    let adopt_options = PlanOption {
+        merge: MergeOption {
+            ignore: ignore_re.clone(),
+            over: None,
+            fold: Some(true),
+            symlink_mode: Some(SymlinkMode::Move),
+        },
+        decrypt: None,
+        track_write: None,
     };
-    if !target_matches {
-        bail!(
-            "{pack_name}: target in stow-cm.toml does not match source '{}'",
-            source.display()
-        );
-    }
+    let move_plan = planner::plan_adopt(&mut target_tree, &mut pack_tree, &adopt_options)?;
+    executor::execute_plan(&move_plan, dry_run)?;
 
-    // 已安装的 pack 不能再次 adopt
-    let track_file = resolve_track_file(pack_dir)?;
-    if track_file.try_exists()? {
-        bail!("{pack_name}: pack has been installed, cannot adopt");
-    }
+    let mut pack_tree = vtree::VNode::scan(&pack, false)?;
+    let mut target_tree = vtree::VNode::scan(target, false)?;
+    let install_options = PlanOption {
+        merge: MergeOption {
+            ignore: ignore_re,
+            over: None,
+            fold: config.fold,
+            symlink_mode: config.symlink_mode.clone(),
+        },
+        decrypt: None,
+        track_write: None,
+    };
+    let install_plan = planner::plan_install(&mut pack_tree, &mut target_tree, &install_options)?;
+    executor::execute_plan(&install_plan, dry_run)?;
 
-    let ignore_re = config.ignore_regex()?;
-
-    // 用 merge_tree 扫描 source 目录，检测与 pack 的冲突，同时获取需移动的文件列表
-    // 注意：adopt 场景不允许 override 自动跳过冲突，over 传 None
-    let merge_option = Arc::new(MergeOption {
-        ignore: ignore_re,
-        over: None,
-        fold: Some(true),
-        symlink_mode: Some(SymlinkMode::Symlink),
-    });
-    let merge_result = MergeTree::new(pack_dir, target, Some(merge_option)).merge_add()?;
-
-    if let Some(ref conflicts) = merge_result.conflicts {
-        warn!("{} conflict(s) detected:", conflicts.len());
-        for conflict in conflicts {
-            warn!("  - {}", conflict.display());
-        }
-        bail!(
-            "{pack_name}: adopt aborted due to conflicts.
-             Resolve conflicts manually or add override patterns in stow-cm.toml."
-        );
-    }
-
-    // 将 merge_tree 返回的源文件移入 pack
-    if let Some(ref to_create) = merge_result.to_create_symlinks {
-        adopt_move_files(to_create)?;
-    }
-
-    // 复用 install 创建链接 + 写 track file + 执行 init 脚本
-    let config = Arc::new(config);
-    install::install(&config, pack_dir, false)?;
-
-    Ok(())
-}
-
-/// 为新 pack 生成最小 `stow-cm.toml`。
-/// `target` 不显式写出，由全局配置默认值继承；
-/// 注释记录源目录路径，供 `for_pack` 比对校验。
-fn generate_config(config_path: &Path, pack_name: &str, source: &Path) -> Result<()> {
-    let content = format!(
-        "# Auto-generated by stow-cm adopt\n\
-         name = \"{pack_name}\"\n\
-         # target inherits from global config (default: ${{XDG_CONFIG_HOME:-~/.config}}/${{PACK_NAME}}/);\n\
-         # for this pack it resolves to: \"{}\"\n",
-        source.display()
-    );
-
-    std::fs::write(config_path, content).map_err(|e| {
-        anyhow!(
-            "{pack_name}: failed to write {}: {e}",
-            config_path.display()
-        )
-    })?;
-    Ok(())
-}
-
-/// 将 `merge_tree` 扫描结果中的文件从 source 移入 pack。
-///
-/// 每个 Symlink 的 `src` 是 source 目录中的路径，`dst` 是 pack 目录中的对应位置。
-/// 合并后由 install 阶段在 `dst` 位置创建指向 pack 中文件的 symlink。
-fn adopt_move_files(to_move: &[Symlink]) -> Result<()> {
-    for symlink in to_move {
-        let src = &symlink.src;
-        let dst = &symlink.dst;
-
-        if let Some(parent) = dst.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-
-        info!("adopt {}", src.display());
-        if std::fs::rename(src, dst).is_err() && rename_cross_fs(src, dst).is_err() {
-            bail!("failed to adopt {}", src.display());
-        }
-    }
-
-    Ok(())
-}
-
-/// 跨文件系统移动：先递归复制到目标，再删除源文件。
-/// 显式处理 symlink 以避免 `is_dir()` 跟随解引用、`remove_dir()` 在 symlink 上失败。
-fn rename_cross_fs(src: &Path, dst: &Path) -> Result<(), std::io::Error> {
-    let meta = src.symlink_metadata()?;
-    if meta.file_type().is_symlink() {
-        if src.is_dir() {
-            std::fs::create_dir_all(dst)?;
-            for entry in std::fs::read_dir(src)? {
-                let entry = entry?;
-                let src_child = entry.path();
-                let dst_child = dst.join(entry.file_name());
-                rename_cross_fs(&src_child, &dst_child)?;
-            }
-        } else {
-            std::fs::copy(src, dst)?;
-        }
-        std::fs::remove_file(src)?;
-    } else if meta.file_type().is_dir() {
-        std::fs::create_dir_all(dst)?;
-        for entry in std::fs::read_dir(src)? {
-            let entry = entry?;
-            let src_child = entry.path();
-            let dst_child = dst.join(entry.file_name());
-            rename_cross_fs(&src_child, &dst_child)?;
-        }
-        std::fs::remove_dir(src)?;
-    } else {
-        std::fs::copy(src, dst)?;
-        std::fs::remove_file(src)?;
-    }
     Ok(())
 }

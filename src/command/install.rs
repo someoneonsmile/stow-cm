@@ -53,8 +53,8 @@ fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>, dry_run: bool) -> Res
     let over_re = config.over_regex()?;
 
     // ── Virtual tree pipeline: scan → plan → execute ──
-    let pack_tree = vtree::VNode::scan(pack.as_ref(), false)?;
-    let target_tree = vtree::VNode::scan(target, false)?;
+    let mut pack_tree = vtree::VNode::scan(pack.as_ref(), false)?;
+    let mut target_tree = vtree::VNode::scan(target, false)?;
 
     let mut options = PlanOption {
         merge: MergeOption {
@@ -111,7 +111,7 @@ fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>, dry_run: bool) -> Res
         encrypted: decrypted,
     });
 
-    let plan = planner::plan_install(&pack_tree, &target_tree, &options)?;
+    let plan = planner::plan_install(&mut pack_tree, &mut target_tree, &options)?;
 
     // ── Execute ──
     executor::execute_plan(&plan, dry_run)?;

@@ -68,7 +68,7 @@ fn reload_link(config: &Arc<Config>, pack: &Arc<PathBuf>, dry_run: bool) -> Resu
     let over_re = config.over_regex()?;
 
     // ── 扫描 pack 树（pack 内容）──
-    let pack_tree = vtree::VNode::scan(pack.as_ref(), false)?;
+    let mut pack_tree = vtree::VNode::scan(pack.as_ref(), false)?;
 
     // ── 分别构建目标树（同路径则共享一棵，避免 clone）──
     let mut install_target_tree = vtree::VNode::scan(target, false)?;
@@ -136,7 +136,7 @@ fn reload_link(config: &Arc<Config>, pack: &Arc<PathBuf>, dry_run: bool) -> Resu
     let plan = if let Some(ref track) = old_track {
         if remove_target_path == target.as_path() {
             planner::plan_reload(
-                &pack_tree,
+                &mut pack_tree,
                 &mut install_target_tree,
                 None,
                 track,
@@ -145,16 +145,16 @@ fn reload_link(config: &Arc<Config>, pack: &Arc<PathBuf>, dry_run: bool) -> Resu
         } else {
             let mut remove_target_tree = vtree::VNode::scan(remove_target_path, false)?;
             planner::plan_reload(
-                &pack_tree,
+                &mut pack_tree,
                 &mut remove_target_tree,
-                Some(&install_target_tree),
+                Some(&mut install_target_tree),
                 track,
                 &options,
             )?
         }
     } else {
         warn!("no previous installation found, reload will proceed as a fresh install");
-        planner::plan_install(&pack_tree, &install_target_tree, &options)?
+        planner::plan_install(&mut pack_tree, &mut install_target_tree, &options)?
     };
 
     // ── 执行计划 ──
