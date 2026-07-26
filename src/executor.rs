@@ -135,11 +135,19 @@ fn execute_action(action: &Action) -> Result<()> {
                 anyhow::anyhow!("Failed to write decrypted file {}: {e}", to.display())
             })
         }
-        Action::RemoveDir { path } => {
+        Action::RemoveDir { path, .. } => {
             if path.try_exists()? {
                 std::fs::remove_dir_all(path).map_err(|e| {
                     anyhow::anyhow!("Failed to clean decrypted dir {}: {e}", path.display())
                 })
+            } else {
+                Ok(())
+            }
+        }
+        Action::RemoveFile { path, .. } => {
+            if path.try_exists()? {
+                std::fs::remove_file(path)
+                    .map_err(|e| anyhow::anyhow!("Failed to remove file {}: {e}", path.display()))
             } else {
                 Ok(())
             }

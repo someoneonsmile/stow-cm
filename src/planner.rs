@@ -218,7 +218,10 @@ pub fn plan_remove(track: &Track, target_tree: &mut VNode, state_dir: Option<&Pa
 
     // 先清理解密目录（可能不在 pack state home 下）
     if let Some(path) = &track.decrypted_path {
-        plan.actions.push(Action::RemoveDir { path: path.clone() });
+        plan.actions.push(Action::RemoveDir {
+            path: path.clone(),
+            reason: "cleanup decrypted files directory".to_string(),
+        });
         plan.stats.dirs_removed += 1;
     }
 
@@ -227,6 +230,7 @@ pub fn plan_remove(track: &Track, target_tree: &mut VNode, state_dir: Option<&Pa
     if let Some(dir) = state_dir {
         plan.actions.push(Action::RemoveDir {
             path: dir.to_path_buf(),
+            reason: "cleanup pack state directory".to_string(),
         });
         plan.stats.dirs_removed += 1;
     }
@@ -362,6 +366,7 @@ pub fn plan_clean(
     if let Some(path) = decrypted_path {
         plan.actions.push(Action::RemoveDir {
             path: path.to_path_buf(),
+            reason: "cleanup decrypted files directory".to_string(),
         });
         plan.stats.dirs_removed += 1;
     }
@@ -369,6 +374,7 @@ pub fn plan_clean(
     if let Some(dir) = state_dir {
         plan.actions.push(Action::RemoveDir {
             path: dir.to_path_buf(),
+            reason: "cleanup pack state directory".to_string(),
         });
         plan.stats.dirs_removed += 1;
     }
@@ -492,6 +498,8 @@ fn install_children(
         result.stats.ignored += child_plan.stats.ignored;
         result.stats.overridden += child_plan.stats.overridden;
         result.stats.encrypted += child_plan.stats.encrypted;
+        result.stats.dirs_removed += child_plan.stats.dirs_removed;
+        result.stats.files_removed += child_plan.stats.files_removed;
 
         if child_plan.had_ignored {
             result.had_ignored = true;
@@ -589,13 +597,16 @@ fn plan_leaf(
         // 目标已存在 — 检查是否可覆盖
         if let Some(over_re) = &options.merge.over {
             if over_re.is_match(&pack_abs.to_string_lossy()) {
+                // 记录旧目标类型，用于生成清理 action
+                let target_kind = target_parent[target_idx].kind.clone();
+                let dst = target_parent[target_idx].abs_path.clone();
+
                 let kind = match &mode {
                     SymlinkMode::Symlink => VNodeKind::Symlink {
                         target: pack_abs.clone(),
                     },
                     SymlinkMode::Copy | SymlinkMode::Move => pack_kind.clone(),
                 };
-                let dst = target_parent[target_idx].abs_path.clone();
                 target_parent[target_idx] = VNode {
                     rel_path: target_parent[target_idx].rel_path.clone(),
                     abs_path: dst.clone(),
@@ -606,12 +617,33 @@ fn plan_leaf(
                 let mut stats = Box::<PlanStats>::default();
                 stats.links_to_create = 1;
                 stats.overridden = 1;
+
+                let mut actions = Vec::new();
+                // 覆盖前先清理旧目标
+                match target_kind {
+                    VNodeKind::Dir => {
+                        actions.push(Action::RemoveDir {
+                            path: dst.clone(),
+                            reason: "overridden".to_string(),
+                        });
+                        stats.dirs_removed = 1;
+                    }
+                    VNodeKind::File | VNodeKind::Symlink { .. } => {
+                        actions.push(Action::RemoveFile {
+                            path: dst.clone(),
+                            reason: "overridden".to_string(),
+                        });
+                        stats.files_removed = 1;
+                    }
+                }
+                actions.push(Action::CreateLink {
+                    src: pack_abs.clone(),
+                    dst,
+                    mode,
+                });
+
                 return ChildrenPlan {
-                    actions: vec![Action::CreateLink {
-                        src: pack_abs.clone(),
-                        dst,
-                        mode,
-                    }],
+                    actions,
                     stats,
                     foldable: true,
                     had_ignored: false,
@@ -708,8 +740,17 @@ fn plan_dir(
             |idx| target_parent[idx].abs_path.clone(),
         );
 
+        let mut actions = Vec::new();
+        let mut stats = Box::<PlanStats>::default();
+
         match target_idx {
             Some(idx) => {
+                actions.push(Action::RemoveDir {
+                    path: dst.clone(),
+                    reason: "folded directory replaced".to_string(),
+                });
+                stats.dirs_removed = 1;
+
                 let kind = match &mode {
                     SymlinkMode::Symlink => VNodeKind::Symlink {
                         target: pack_abs.clone(),
@@ -739,14 +780,15 @@ fn plan_dir(
             }
         }
 
-        let mut stats = Box::<PlanStats>::default();
+        actions.push(Action::CreateLink {
+            src: pack_abs,
+            dst,
+            mode,
+        });
         stats.links_to_create = 1;
+
         ChildrenPlan {
-            actions: vec![Action::CreateLink {
-                src: pack_abs,
-                dst,
-                mode,
-            }],
+            actions,
             stats,
             foldable: true,
             had_ignored: false,
@@ -836,6 +878,7 @@ fn merge_and_dedup(remove_plan: ActionPlan, mut install_plan: ActionPlan) -> Act
         overridden: install_plan.stats.overridden + remove_plan.stats.overridden,
         encrypted: install_plan.stats.encrypted + remove_plan.stats.encrypted,
         dirs_removed: install_plan.stats.dirs_removed + remove_plan.stats.dirs_removed,
+        files_removed: install_plan.stats.files_removed + remove_plan.stats.files_removed,
     };
 
     // 合并操作列表：remove 在前，install 在后
@@ -861,6 +904,7 @@ fn combine_plans(remove_plan: ActionPlan, install_plan: ActionPlan) -> ActionPla
         overridden: install_plan.stats.overridden + remove_plan.stats.overridden,
         encrypted: install_plan.stats.encrypted + remove_plan.stats.encrypted,
         dirs_removed: install_plan.stats.dirs_removed + remove_plan.stats.dirs_removed,
+        files_removed: install_plan.stats.files_removed + remove_plan.stats.files_removed,
     };
     merged_actions.extend(install_plan.actions);
     ActionPlan {
@@ -1044,7 +1088,10 @@ mod tests {
         assert_eq!(plan.stats.overridden, 1);
         assert_eq!(plan.stats.conflicts, 0);
         assert_eq!(plan.stats.links_to_create, 1);
-        assert!(matches!(plan.actions[0], Action::CreateLink { .. }));
+        assert_eq!(plan.stats.files_removed, 1);
+        assert_eq!(plan.actions.len(), 2);
+        assert!(matches!(plan.actions[0], Action::RemoveFile { .. }));
+        assert!(matches!(plan.actions[1], Action::CreateLink { .. }));
     }
 
     #[test]

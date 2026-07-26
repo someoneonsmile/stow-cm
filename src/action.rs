@@ -33,7 +33,9 @@ pub enum Action {
         right_boundary: String,
     },
     /// 移除目录
-    RemoveDir { path: PathBuf },
+    RemoveDir { path: PathBuf, reason: String },
+    /// 移除文件
+    RemoveFile { path: PathBuf, reason: String },
     /// 写入 track file
     WriteTrackFile { path: PathBuf, track: Track },
 }
@@ -49,6 +51,8 @@ pub struct PlanStats {
     pub overridden: usize,
     pub encrypted: usize,
     pub dirs_removed: usize,
+    /// 移除文件的数量
+    pub files_removed: usize,
 }
 
 /// 动作计划，包含一组待执行的操作及统计信息
@@ -108,8 +112,11 @@ impl fmt::Display for Action {
             Action::DecryptFile { src, to, .. } => {
                 write!(f, "~ DECRYPT  {}  ->  {}", src.display(), to.display())
             }
-            Action::RemoveDir { path } => {
-                write!(f, "- RMDIR    {}", path.display())
+            Action::RemoveDir { path, reason } => {
+                write!(f, "- RMDIR    {}  ({})", path.display(), reason)
+            }
+            Action::RemoveFile { path, reason } => {
+                write!(f, "- RM       {}  ({})", path.display(), reason)
             }
             Action::WriteTrackFile { path, .. } => {
                 write!(f, "≈ TRACK   {}", path.display())
@@ -152,6 +159,9 @@ impl fmt::Display for ActionPlan {
         }
         if stats.dirs_removed > 0 {
             parts.push(format!("{}rd", stats.dirs_removed));
+        }
+        if stats.files_removed > 0 {
+            parts.push(format!("{}rf", stats.files_removed));
         }
 
         if parts.is_empty() {
@@ -219,6 +229,36 @@ mod tests {
     }
 
     #[test]
+    fn test_remove_dir_display() {
+        let action = Action::RemoveDir {
+            path: PathBuf::from("/tmp/decrypted"),
+            reason: "cleanup decrypted files".to_string(),
+        };
+        let output = format!("{action}");
+        assert!(output.contains("- RMDIR"), "output: {output}");
+        assert!(output.contains("/tmp/decrypted"), "output: {output}");
+        assert!(
+            output.contains("cleanup decrypted files"),
+            "output: {output}"
+        );
+    }
+
+    #[test]
+    fn test_remove_file_display() {
+        let action = Action::RemoveFile {
+            path: PathBuf::from("/tmp/stale.txt"),
+            reason: "orphaned track file".to_string(),
+        };
+        let output = format!("{action}");
+        assert!(output.contains("- RM"), "output: {output}");
+        assert!(output.contains("/tmp/stale.txt"), "output: {output}");
+        assert!(
+            output.contains("orphaned track file"),
+            "output: {output}"
+        );
+    }
+
+    #[test]
     fn test_plan_display_multiple() {
         let actions = vec![
             Action::CreateLink {
@@ -247,6 +287,7 @@ mod tests {
                 overridden: 2,
                 encrypted: 3,
                 dirs_removed: 0,
+                files_removed: 1,
             },
         };
         let output = format!("{plan}");
@@ -254,12 +295,13 @@ mod tests {
         assert!(output.contains("+ CREATE"), "output: {output}");
         assert!(output.contains("- REMOVE"), "output: {output}");
         assert!(output.contains("! CONFLICT"), "output: {output}");
-        // 页脚：1c, 1r, 1!, 2o, 3e
+        // 页脚：1c, 1r, 1!, 2o, 3e, 1rf
         assert!(output.contains("1c"), "output: {output}");
         assert!(output.contains("1r"), "output: {output}");
         assert!(output.contains("1!"), "output: {output}");
         assert!(output.contains("2o"), "output: {output}");
         assert!(output.contains("3e"), "output: {output}");
+        assert!(output.contains("1rf"), "output: {output}");
         // ignored 为 0，不应出现在页脚
         assert!(!output.contains("0i"), "output: {output}");
     }
