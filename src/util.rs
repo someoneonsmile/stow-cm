@@ -238,6 +238,14 @@ pub fn pack_name(pack: &Path) -> Result<String> {
         .ok_or_else(|| anyhow!("path error: {}", pack.display()))
 }
 
+/// 检查两个路径是否指向同一物理文件（同一 inode）。
+///
+/// 委托给 `same_file` crate，通过比较设备 ID 和 inode 判断，
+/// 无需路径规范化或解析符号链接。
+pub fn same_file(a: &Path, b: &Path) -> bool {
+    same_file::is_same_file(a, b).unwrap_or(false)
+}
+
 #[inline]
 pub fn canonicalize(paths: Vec<PathBuf>) -> Result<Vec<PathBuf>> {
     paths

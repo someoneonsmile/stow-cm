@@ -650,6 +650,16 @@ fn plan_leaf(
                 };
             }
         }
+        // 检查是否是事实上的同一文件（同一 inode），如果是则无需操作
+        if util::same_file(&pack_abs, &target_parent[target_idx].abs_path) {
+            return ChildrenPlan {
+                actions: Vec::new(),
+                stats: Box::default(),
+                foldable: true,
+                had_ignored: false,
+            };
+        }
+
         // 存在且不可覆盖 → 冲突，不可折叠
         let mut stats = Box::<PlanStats>::default();
         stats.conflicts = 1;
@@ -1614,6 +1624,36 @@ mod tests {
 
         assert_eq!(plan.stats.links_to_remove, 2);
         assert_eq!(plan.actions.len(), 2);
+    }
+
+    // ── plan_install 同一文件不冲突测试 ──
+
+    /// 当 pack 文件和 target 文件是同一物理文件（同一 inode）时，
+    /// plan_install 不应报冲突，应直接跳过。
+    #[test]
+    fn plan_install_same_file_no_conflict() {
+        let dir = tempfile::TempDir::with_prefix("stow-cm-test-").unwrap();
+        let dir_str = dir.path().to_str().unwrap();
+        let real_file = dir.path().join("realfile.txt");
+        std::fs::write(&real_file, "content").unwrap();
+
+        // 创建子目录，用于构造包含 ".." 的路径表达式
+        std::fs::create_dir(dir.path().join("subdir")).unwrap();
+
+        // pack_abs: .../subdir/../realfile.txt — 路径表达式不同
+        // target_abs: .../realfile.txt — 直接路径
+        // canonicalize 后两者都指向同一个 real_file
+        let pack_abs = format!("{dir_str}/subdir/../realfile.txt");
+        let target_abs = format!("{dir_str}/realfile.txt");
+
+        let mut pack = dir_node("", dir_str, vec![file_node("realfile.txt", &pack_abs)]);
+        let mut target = dir_node("", dir_str, vec![file_node("realfile.txt", &target_abs)]);
+
+        let plan = plan_install(&mut pack, &mut target, &default_options()).unwrap();
+
+        assert_eq!(plan.stats.conflicts, 0);
+        assert_eq!(plan.stats.links_to_create, 0);
+        assert_eq!(plan.actions.len(), 0);
     }
 
     // ── merge_and_dedup 测试 ──
