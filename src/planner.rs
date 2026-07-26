@@ -216,6 +216,16 @@ pub fn plan_remove(track: &Track, target_tree: &mut VNode, state_dir: Option<&Pa
         // else: 虚拟树中找不到此路径（可能已被手动从文件系统删除）
     }
 
+    // 清理移除链接后留下的顶层空目录（收集阶段已完成去嵌套）
+    let (top_empty_dirs, _) = collect_empty_dirs(target_tree, true);
+    for dir in top_empty_dirs {
+        plan.actions.push(Action::RemoveDir {
+            path: dir,
+            reason: "cleanup empty directory after removal".to_string(),
+        });
+        plan.stats.dirs_removed += 1;
+    }
+
     // 先清理解密目录（可能不在 pack state home 下）
     if let Some(path) = &track.decrypted_path {
         plan.actions.push(Action::RemoveDir {
@@ -335,6 +345,35 @@ pub fn plan_reload(
     Ok(merged)
 }
 
+/// 收集虚拟树中的顶层空目录：对于嵌套空目录只返回最上层，结果中无父子关系。
+///
+/// 返回 `(顶层空目录列表, 当前子树是否全空)`。
+/// 如果当前子树全空，所有 child 的空目录结果被替换为当前目录自身。
+fn collect_empty_dirs(node: &VNode, is_root: bool) -> (Vec<PathBuf>, bool) {
+    if node.is_leaf() {
+        return (Vec::new(), false);
+    }
+    let mut top_empty = Vec::new();
+    let mut all_children_empty = true;
+    for child in &node.children {
+        if child.is_leaf() {
+            all_children_empty = false;
+        } else {
+            let (mut sub_empty, sub_all_empty) = collect_empty_dirs(child, false);
+            if !sub_all_empty {
+                all_children_empty = false;
+            }
+            top_empty.append(&mut sub_empty);
+        }
+    }
+    if !is_root && all_children_empty {
+        // 所有子节点全空：当前目录是顶层空目录，清除子目录的结果
+        top_empty.clear();
+        top_empty.push(node.abs_path.clone());
+    }
+    (top_empty, all_children_empty)
+}
+
 /// 生成清理计划。
 ///
 /// 将文件系统扫描得到的符号链接列表转换为 `ActionPlan`，
@@ -444,6 +483,12 @@ fn install_children(
 ) -> ChildrenPlan {
     let mut result = ChildrenPlan::empty();
 
+    // 检查 target 中是否存在 pack 没有的子节点（外部文件），需在迭代前判断，
+    // 因为 Move 模式下 plan_leaf 会从 pack_children 中移除节点。
+    let has_new_sub = target_children
+        .iter()
+        .any(|tc| !pack_children.iter().any(|pc| pc.rel_path == tc.rel_path));
+
     let mut i = pack_children.len();
     while i > 0 {
         i -= 1;
@@ -492,11 +537,7 @@ fn install_children(
         result.actions.extend(child_plan.actions);
     }
 
-    // 检查 target 中是否存在 pack 没有的子节点
-    let has_new_sub = target_children
-        .iter()
-        .any(|tc| !pack_children.iter().any(|pc| pc.rel_path == tc.rel_path));
-
+    // 负责 foldable 传播
     result.foldable = result.foldable && !result.had_ignored && !has_new_sub;
     result
 }
@@ -718,7 +759,8 @@ fn plan_dir(
         )
     };
 
-    let should_fold = fold_enabled && children_plan.foldable;
+    // 负责能不能 fold
+    let should_fold = fold_enabled && mode != SymlinkMode::Copy && children_plan.foldable;
 
     if should_fold {
         // Move 模式：从 pack 父节点中移除整个目录
@@ -1670,5 +1712,306 @@ mod tests {
         assert_eq!(merged.actions.len(), 0);
         assert_eq!(merged.stats.links_to_remove, 0);
         assert_eq!(merged.stats.links_to_create, 0);
+    }
+
+    // ── copy 模式不 fold 测试 ──
+
+    #[test]
+    fn plan_install_copy_mode_no_fold() {
+        // copy 模式下即使启用 fold，目录也不应折叠（每个文件单独 CreateLink）
+        let mut pack = dir_node(
+            "",
+            "/pack",
+            vec![dir_node(
+                "sub",
+                "/pack/sub",
+                vec![
+                    file_node("x.txt", "/pack/sub/x.txt"),
+                    file_node("y.txt", "/pack/sub/y.txt"),
+                ],
+            )],
+        );
+        let mut target = dir_node("", "/target", Vec::new());
+
+        let options = PlanOption {
+            merge: MergeOption {
+                ignore: None,
+                over: None,
+                fold: Some(true),
+                symlink_mode: Some(SymlinkMode::Copy),
+            },
+            decrypt: None,
+            track_write: None,
+        };
+
+        let plan = plan_install(&mut pack, &mut target, &options).unwrap();
+
+        // copy 模式不折叠：应该为每个文件生成单独的 CreateLink
+        assert_eq!(plan.stats.links_to_create, 2);
+        assert_eq!(plan.actions.len(), 2);
+        for action in &plan.actions {
+            if let Action::CreateLink { mode, .. } = action {
+                assert_eq!(*mode, SymlinkMode::Copy);
+            } else {
+                panic!("expected CreateLink, got {action:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn plan_install_copy_mode_no_fold_single_file() {
+        // copy 模式下单个文件的目录：折叠不影响，因为是叶子
+        let mut pack = dir_node(
+            "",
+            "/pack",
+            vec![file_node("single.txt", "/pack/single.txt")],
+        );
+        let mut target = dir_node("", "/target", Vec::new());
+
+        let options = PlanOption {
+            merge: MergeOption {
+                ignore: None,
+                over: None,
+                fold: Some(true),
+                symlink_mode: Some(SymlinkMode::Copy),
+            },
+            decrypt: None,
+            track_write: None,
+        };
+
+        let plan = plan_install(&mut pack, &mut target, &options).unwrap();
+
+        assert_eq!(plan.stats.links_to_create, 1);
+        assert_eq!(plan.actions.len(), 1);
+        assert!(matches!(plan.actions[0], Action::CreateLink { .. }));
+        if let Action::CreateLink { mode, .. } = &plan.actions[0] {
+            assert_eq!(*mode, SymlinkMode::Copy);
+        }
+    }
+
+    #[test]
+    fn plan_install_move_mode_allows_fold() {
+        // move 模式允许 fold
+        let mut pack = dir_node(
+            "",
+            "/pack",
+            vec![dir_node(
+                "sub",
+                "/pack/sub",
+                vec![
+                    file_node("x.txt", "/pack/sub/x.txt"),
+                    file_node("y.txt", "/pack/sub/y.txt"),
+                ],
+            )],
+        );
+        let mut target = dir_node("", "/target", Vec::new());
+
+        let options = PlanOption {
+            merge: MergeOption {
+                ignore: None,
+                over: None,
+                fold: Some(true),
+                symlink_mode: Some(SymlinkMode::Move),
+            },
+            decrypt: None,
+            track_write: None,
+        };
+
+        let plan = plan_install(&mut pack, &mut target, &options).unwrap();
+
+        // move 模式允许 fold：整个 sub 目录折叠为一个 CreateLink
+        assert_eq!(plan.stats.links_to_create, 1);
+        assert_eq!(plan.actions.len(), 1);
+        if let Action::CreateLink {
+            ref src, ref mode, ..
+        } = plan.actions[0]
+        {
+            assert_eq!(src, &PathBuf::from("/pack/sub"));
+            assert_eq!(*mode, SymlinkMode::Move);
+        }
+    }
+
+    // ── plan_remove 空目录清理测试 ──
+
+    #[test]
+    fn plan_remove_cleans_empty_dirs() {
+        // 安装时创建了子目录结构，移除链接后子目录为空，应生成 RemoveDir
+        let mock_src = "/pack/sub/inner.txt";
+        let mock_dst = "/target/sub/inner.txt";
+        let mock_dir = "/target/sub";
+
+        let track = Track {
+            links: vec![Symlink {
+                src: PathBuf::from(mock_src),
+                dst: PathBuf::from(mock_dst),
+                mode: SymlinkMode::Symlink,
+            }],
+            decrypted_path: None,
+            encrypted: false,
+            pack_name: None,
+            pack_path: None,
+            target: None,
+            symlink_mode: None,
+        };
+
+        let mut target_tree = dir_node(
+            "",
+            "/target",
+            vec![dir_node(
+                "sub",
+                mock_dir,
+                vec![symlink_node("inner.txt", mock_dst, mock_src)],
+            )],
+        );
+
+        let plan = plan_remove(&track, &mut target_tree, None);
+
+        // 应该移除 1 个链接 + 1 个空目录
+        assert_eq!(plan.stats.links_to_remove, 1);
+        assert_eq!(plan.stats.dirs_removed, 1);
+        assert_eq!(plan.stats.conflicts, 0);
+
+        // 检查操作顺序：RemoveLink 先于 RemoveDir
+        assert_eq!(plan.actions.len(), 2);
+        assert!(matches!(plan.actions[0], Action::RemoveLink { .. }));
+        assert!(matches!(plan.actions[1], Action::RemoveDir { .. }));
+        if let Action::RemoveDir { ref path, .. } = plan.actions[1] {
+            assert_eq!(path, &PathBuf::from(mock_dir));
+        }
+    }
+
+    #[test]
+    fn plan_remove_no_cleanup_when_dir_has_other_files() {
+        // 目录中还有其他文件（非本 pack 所有），不应清理
+        let mock_src = "/pack/sub/inner.txt";
+        let mock_dst = "/target/sub/inner.txt";
+        let mock_dir = "/target/sub";
+
+        let track = Track {
+            links: vec![Symlink {
+                src: PathBuf::from(mock_src),
+                dst: PathBuf::from(mock_dst),
+                mode: SymlinkMode::Symlink,
+            }],
+            decrypted_path: None,
+            encrypted: false,
+            pack_name: None,
+            pack_path: None,
+            target: None,
+            symlink_mode: None,
+        };
+
+        let mut target_tree = dir_node(
+            "",
+            "/target",
+            vec![dir_node(
+                "sub",
+                mock_dir,
+                vec![
+                    symlink_node("inner.txt", mock_dst, mock_src),
+                    file_node("other.txt", "/target/sub/other.txt"),
+                ],
+            )],
+        );
+
+        let plan = plan_remove(&track, &mut target_tree, None);
+
+        // 移除 1 个链接，但目录不为空（有 other.txt），不生成 RemoveDir
+        assert_eq!(plan.stats.links_to_remove, 1);
+        assert_eq!(plan.stats.dirs_removed, 0);
+        assert_eq!(plan.actions.len(), 1);
+        assert!(matches!(plan.actions[0], Action::RemoveLink { .. }));
+    }
+
+    #[test]
+    fn plan_remove_cleans_nested_empty_dirs() {
+        // 嵌套空目录：a/b/inner.txt → 移除后 a/b 和 a 都为空 → 只删顶层 a
+        let mock_src = "/pack/a/b/inner.txt";
+        let mock_dst = "/target/a/b/inner.txt";
+        let dir_b = "/target/a/b";
+        let dir_a = "/target/a";
+
+        let track = Track {
+            links: vec![Symlink {
+                src: PathBuf::from(mock_src),
+                dst: PathBuf::from(mock_dst),
+                mode: SymlinkMode::Symlink,
+            }],
+            decrypted_path: None,
+            encrypted: false,
+            pack_name: None,
+            pack_path: None,
+            target: None,
+            symlink_mode: None,
+        };
+
+        let mut target_tree = dir_node(
+            "",
+            "/target",
+            vec![dir_node(
+                "a",
+                dir_a,
+                vec![dir_node(
+                    "b",
+                    dir_b,
+                    vec![symlink_node("inner.txt", mock_dst, mock_src)],
+                )],
+            )],
+        );
+
+        let plan = plan_remove(&track, &mut target_tree, None);
+
+        // 1 个链接 + 1 个顶层空目录（a 包含了 b，递归删除即可）
+        assert_eq!(plan.stats.links_to_remove, 1);
+        assert_eq!(plan.stats.dirs_removed, 1);
+        assert_eq!(plan.stats.conflicts, 0);
+        assert_eq!(plan.actions.len(), 2);
+
+        let remove_dirs: Vec<_> = plan
+            .actions
+            .iter()
+            .filter_map(|a| {
+                if let Action::RemoveDir { path, .. } = a {
+                    Some(path.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(remove_dirs, vec![PathBuf::from(dir_a)]);
+    }
+
+    #[test]
+    fn plan_remove_no_cleanup_of_target_root() {
+        // 即使根目录在移除后为空，也不应清理（根目录是用户的 target 目录）
+        let mock_src = "/pack/file.txt";
+        let mock_dst = "/target/file.txt";
+
+        let track = Track {
+            links: vec![Symlink {
+                src: PathBuf::from(mock_src),
+                dst: PathBuf::from(mock_dst),
+                mode: SymlinkMode::Symlink,
+            }],
+            decrypted_path: None,
+            encrypted: false,
+            pack_name: None,
+            pack_path: None,
+            target: None,
+            symlink_mode: None,
+        };
+
+        let mut target_tree = dir_node(
+            "",
+            "/target",
+            vec![symlink_node("file.txt", mock_dst, mock_src)],
+        );
+
+        let plan = plan_remove(&track, &mut target_tree, None);
+
+        // 移除 1 个链接，根目录 "/target" 不应被清理
+        assert_eq!(plan.stats.links_to_remove, 1);
+        assert_eq!(plan.stats.dirs_removed, 0);
+        assert_eq!(plan.actions.len(), 1);
     }
 }
