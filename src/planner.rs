@@ -386,8 +386,7 @@ pub fn plan_clean(
 ///
 /// 复用 [`plan_install`] 对比 `source_tree` 与 `pack_tree` 做
 /// ignore 过滤和 fold，使用 `SymlinkMode::Move` 将文件从 source 移动到 pack。
-/// adopt 中 source == target，"file already exists" 冲突
-/// 会被忽略——文件移动后目标路径为空。
+/// 若 pack 中已存在同名文件，会作为冲突暴露给用户处理。
 ///
 /// `source` 路径从 `source_tree.abs_path` 获取。
 pub fn plan_adopt(
@@ -397,32 +396,14 @@ pub fn plan_adopt(
 ) -> Result<ActionPlan> {
     let install_plan = plan_install(source_tree, pack_tree, options)?;
 
-    let mut moved = 0usize;
-    let actions: Vec<Action> = install_plan
-        .actions
-        .into_iter()
-        .filter(|action| {
-            // adopt 中文件即将被移走，不算冲突
-            !matches!(action, Action::Conflict { reason, .. } if reason == "file already exists")
-        })
-        .inspect(|action| {
-            if matches!(action, Action::CreateLink { .. }) {
-                moved += 1;
-            }
-        })
-        .collect();
-
     Ok(ActionPlan {
         stats: PlanStats {
-            links_to_create: moved,
-            conflicts: actions
-                .iter()
-                .filter(|a| matches!(a, Action::Conflict { .. }))
-                .count(),
+            links_to_create: install_plan.stats.links_to_create,
+            conflicts: install_plan.stats.conflicts,
             ignored: install_plan.stats.ignored,
             ..PlanStats::default()
         },
-        actions,
+        actions: install_plan.actions,
     })
 }
 
