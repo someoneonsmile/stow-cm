@@ -97,35 +97,44 @@ pub fn init(pack_path: &Path, global: Option<&Config>, use_defaults: bool) -> Re
 
 /// 为 pack 目录生成默认的 `stow-cm.toml`。
 ///
-/// `custom_target` 非 `None` 时直接写入 `target = '...'`，用于 adopt 等 target
-/// 不等于全局默认值的场景；为 `None` 时沿用全局默认 target（注释形式）。
+/// `target` 非 `None` 且与全局默认 target 实际路径不一致时，写入显式
+/// `target = '...'`；否则沿用全局默认 target（注释形式）。
 pub(crate) fn write_default_config(
     config_path: &Path,
     global: &Config,
     pack_path: &Path,
     pack_name: &str,
-    custom_target: Option<&Path>,
+    target: Option<&Path>,
 ) -> Result<()> {
-    let content = if let Some(target) = custom_target {
-        let target_str = target.to_string_lossy();
-        DEFAULT_TEMPLATE
-            .replace("__PACK_NAME__", pack_name)
-            .replace(
-                "# target inherits from global config (default: __TARGET_RAW__)\n# target = \"__TARGET__\"",
-                &format!("target = '{}'", target_str),
-            )
+    let resolved = Config::for_pack(pack_path, global, None, true)?;
+    let resolved_target = resolved
+        .target
+        .as_ref()
+        .map_or_else(default_pack_target, |p| p.to_string_lossy().to_string());
+
+    let raw_target = global
+        .target
+        .as_ref()
+        .map_or_else(default_pack_target, |p| p.to_string_lossy().to_string());
+
+    let content = if let Some(target_path) = target {
+        let target_str = target_path.to_string_lossy();
+        let differs = target_str.as_ref() != resolved_target;
+
+        if differs {
+            DEFAULT_TEMPLATE
+                .replace("__PACK_NAME__", pack_name)
+                .replace(
+                    "# target inherits from global config (default: __TARGET_RAW__)\n# target = \"__TARGET__\"",
+                    &format!("target = '{target_str}'"),
+                )
+        } else {
+            DEFAULT_TEMPLATE
+                .replace("__PACK_NAME__", pack_name)
+                .replace("__TARGET_RAW__", &raw_target)
+                .replace("__TARGET__", &resolved_target)
+        }
     } else {
-        let resolved = Config::for_pack(pack_path, global, None, true)?;
-        let resolved_target = resolved
-            .target
-            .as_ref()
-            .map_or_else(default_pack_target, |p| p.to_string_lossy().to_string());
-
-        let raw_target = global
-            .target
-            .as_ref()
-            .map_or_else(default_pack_target, |p| p.to_string_lossy().to_string());
-
         DEFAULT_TEMPLATE
             .replace("__PACK_NAME__", pack_name)
             .replace("__TARGET_RAW__", &raw_target)
