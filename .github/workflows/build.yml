@@ -2,6 +2,12 @@ name: Build
 
 on:
   workflow_call:
+    inputs:
+      version_suffix:
+        required: false
+        type: string
+        default: ''
+        description: 'Appended to Cargo.toml version (e.g. "-nightly.20260728.abc1234")'
 
 jobs:
   build:
@@ -47,6 +53,14 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
+
+      - name: Override version for nightly
+        if: inputs.version_suffix != ''
+        run: |
+          CURRENT=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml)
+          NEW="${CURRENT}${{ inputs.version_suffix }}"
+          sed -i "s/^version = \"${CURRENT}\"/version = \"${NEW}\"/" Cargo.toml
+          echo "Build version: ${NEW}"
 
       - name: Build (native)
         if: ${{ !matrix.cross }}

@@ -13,8 +13,18 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       proceed: ${{ steps.check.outputs.proceed }}
+      date: ${{ steps.vars.outputs.date }}
+      short_sha: ${{ steps.vars.outputs.short_sha }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Compute nightly version vars
+        id: vars
+        run: |
+          echo "date=$(date +%Y%m%d)" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$(git rev-parse --short=8 HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Check for changes since last nightly
         id: check
@@ -40,6 +50,8 @@ jobs:
     needs: check
     if: needs.check.outputs.proceed == 'true'
     uses: ./.github/workflows/build.yml
+    with:
+      version_suffix: -nightly.${{ needs.check.outputs.date }}.${{ needs.check.outputs.short_sha }}
 
   release:
     needs: build
