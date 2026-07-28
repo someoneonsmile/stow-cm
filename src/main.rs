@@ -5,7 +5,7 @@ use std::sync::Arc;
 use anyhow::Context;
 use clap::Parser;
 use env_logger::Env;
-use log::debug;
+use log::{debug, error};
 use stow_cm::cli::Cli;
 use stow_cm::cli::Commands;
 use stow_cm::command::adopt;
@@ -35,7 +35,8 @@ macro_rules! dispatch {
     }};
 }
 
-fn main() -> Result<()> {
+#[allow(clippy::exit)]
+fn main() {
     let opt = Cli::parse();
 
     let default_log_level = if opt.quiet {
@@ -80,6 +81,13 @@ fn main() -> Result<()> {
         })
         .init();
 
+    if let Err(e) = run(opt) {
+        error!("{e:#}");
+        std::process::exit(1);
+    }
+}
+
+fn run(opt: Cli) -> Result<()> {
     debug!("opt: {opt:?}");
 
     let common_config = Arc::new(Some(Config::global()?));
