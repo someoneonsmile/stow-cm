@@ -216,6 +216,12 @@ pub fn plan_remove(track: &Track, target_tree: &mut VNode, state_dir: Option<&Pa
         // else: 虚拟树中找不到此路径（可能已被手动从文件系统删除）
     }
 
+    // 存在冲突时执行会被 executor 阻断，跳过清理阶段，
+    // 避免计划输出同时出现 CONFLICT 和 RMDIR 造成困惑。
+    if plan.stats.conflicts > 0 {
+        return plan;
+    }
+
     // 清理移除链接后留下的顶层空目录，同步从虚拟树中移除。
     // 这样后续 plan_install（如 fold）看到的树不再包含这些目录，避免重复生成 RemoveDir。
     let (top_empty_dirs, _) = collect_empty_dirs(target_tree, true);
@@ -323,6 +329,11 @@ pub fn plan_reload(
     options: &PlanOption,
 ) -> Result<ActionPlan> {
     let remove_plan = plan_remove(track, remove_target, None);
+
+    // 移除阶段有冲突时跳过安装，executor 会因冲突终止整个 reload
+    if remove_plan.has_conflicts() {
+        return Ok(remove_plan);
+    }
 
     // install_target 为 None 时表示与 remove 同一棵树 → 使用清理后的版本
     let install_plan = if let Some(install_tree) = install_target {

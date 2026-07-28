@@ -132,8 +132,8 @@ fn main() -> Result<()> {
                 .as_ref()
                 .ok_or_else(|| stow_cm::error::anyhow!("global config not loaded"))?;
             let sources = stow_cm::util::canonicalize(sources)?;
-            let to = std::fs::canonicalize(&to)
-                .with_context(|| format!("path: {}", to.display()))?;
+            let to =
+                std::fs::canonicalize(&to).with_context(|| format!("path: {}", to.display()))?;
             for source in &sources {
                 adopt(global, source, &to, opt.dry_run)?;
             }

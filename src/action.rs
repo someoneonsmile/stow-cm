@@ -131,6 +131,17 @@ impl fmt::Display for ActionPlan {
             return writeln!(f, "── Plan (empty) ──");
         }
 
+        // 存在冲突时只展示冲突，避免与其他操作（如 RMDIR）混在一起造成困惑
+        if self.has_conflicts() {
+            writeln!(f, "── Conflicts ({}) ──", self.stats.conflicts)?;
+            for action in &self.actions {
+                if let Action::Conflict { .. } = action {
+                    writeln!(f, "{action}")?;
+                }
+            }
+            return Ok(());
+        }
+
         writeln!(f, "── Plan ──")?;
         for action in &self.actions {
             writeln!(f, "{action}")?;
@@ -144,9 +155,6 @@ impl fmt::Display for ActionPlan {
         }
         if stats.links_to_remove > 0 {
             parts.push(format!("{}r", stats.links_to_remove));
-        }
-        if stats.conflicts > 0 {
-            parts.push(format!("{}!", stats.conflicts));
         }
         if stats.ignored > 0 {
             parts.push(format!("{}i", stats.ignored));
@@ -252,10 +260,7 @@ mod tests {
         let output = format!("{action}");
         assert!(output.contains("- RM"), "output: {output}");
         assert!(output.contains("/tmp/stale.txt"), "output: {output}");
-        assert!(
-            output.contains("orphaned track file"),
-            "output: {output}"
-        );
+        assert!(output.contains("orphaned track file"), "output: {output}");
     }
 
     #[test]
@@ -271,10 +276,6 @@ mod tests {
                 dst: PathBuf::from("/dst/b"),
                 mode: SymlinkMode::Copy,
             },
-            Action::Conflict {
-                dst: PathBuf::from("/dst/c"),
-                reason: "exists".to_string(),
-            },
         ];
         let plan = ActionPlan {
             actions,
@@ -282,7 +283,7 @@ mod tests {
                 links_to_create: 1,
                 links_to_remove: 1,
                 dirs_to_create: 0,
-                conflicts: 1,
+                conflicts: 0,
                 ignored: 0,
                 overridden: 2,
                 encrypted: 3,
@@ -294,15 +295,48 @@ mod tests {
         assert!(output.contains("── Plan ──"), "output: {output}");
         assert!(output.contains("+ CREATE"), "output: {output}");
         assert!(output.contains("- REMOVE"), "output: {output}");
-        assert!(output.contains("! CONFLICT"), "output: {output}");
-        // 页脚：1c, 1r, 1!, 2o, 3e, 1rf
+        // 页脚：1c, 1r, 2o, 3e, 1rf
         assert!(output.contains("1c"), "output: {output}");
         assert!(output.contains("1r"), "output: {output}");
-        assert!(output.contains("1!"), "output: {output}");
         assert!(output.contains("2o"), "output: {output}");
         assert!(output.contains("3e"), "output: {output}");
         assert!(output.contains("1rf"), "output: {output}");
-        // ignored 为 0，不应出现在页脚
+        // ignored、conflicts 为 0，不应出现在页脚
         assert!(!output.contains("0i"), "output: {output}");
+        assert!(!output.contains("0!"), "output: {output}");
+    }
+
+    #[test]
+    fn test_plan_display_only_conflicts() {
+        let actions = vec![
+            Action::Conflict {
+                dst: PathBuf::from("/dst/a"),
+                reason: "file already exists".to_string(),
+            },
+            Action::Conflict {
+                dst: PathBuf::from("/dst/b"),
+                reason: "expected symlink, found directory".to_string(),
+            },
+            Action::RemoveLink {
+                src: PathBuf::from("/src/c"),
+                dst: PathBuf::from("/dst/c"),
+                mode: SymlinkMode::Symlink,
+            },
+        ];
+        let plan = ActionPlan {
+            actions,
+            stats: PlanStats {
+                links_to_remove: 1,
+                conflicts: 2,
+                ..PlanStats::default()
+            },
+        };
+        let output = format!("{plan}");
+        // 有冲突时只显示冲突，不显示其他操作也不需要页脚
+        assert!(output.contains("── Conflicts (2) ──"), "output: {output}");
+        assert!(output.contains("! CONFLICT"), "output: {output}");
+        assert!(!output.contains("── Plan ──"), "output: {output}");
+        assert!(!output.contains("- REMOVE"), "output: {output}");
+        assert!(!output.contains("1r"), "output: {output}");
     }
 }

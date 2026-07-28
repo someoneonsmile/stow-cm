@@ -161,12 +161,10 @@ fn execute_action(action: &Action) -> Result<()> {
                     )
                 })?;
             }
-            let content = toml::to_string_pretty(track).map_err(|e| {
-                anyhow::anyhow!("Failed to serialize track file: {e}")
-            })?;
-            std::fs::write(path, &content).map_err(|e| {
-                anyhow::anyhow!("Failed to write track file {}: {e}", path.display())
-            })
+            let content = toml::to_string_pretty(track)
+                .map_err(|e| anyhow::anyhow!("Failed to serialize track file: {e}"))?;
+            std::fs::write(path, &content)
+                .map_err(|e| anyhow::anyhow!("Failed to write track file {}: {e}", path.display()))
         }
     }
 }
