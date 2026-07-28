@@ -13,39 +13,46 @@ fn state_home() -> PathBuf {
 }
 
 /// 全局 XDG 用户配置文件完整路径（运行时解析）
+#[must_use]
 pub fn global_xdg_config_path() -> PathBuf {
     config_home().join("stow-cm").join("config.toml")
 }
 
 /// 全局系统配置文件路径（运行时解析）
+#[must_use]
 pub fn global_config_path() -> PathBuf {
     PathBuf::from("/etc/stow-cm/config.toml")
 }
 
 /// pack 状态目录模板，含 `${PACK_ID}` 占位符
+#[must_use]
 pub fn pack_state_home() -> String {
     format!("{}/stow-cm/${{PACK_ID}}", state_home().display())
 }
 
 /// pack track 文件路径模板，含 `${PACK_ID}` 占位符
+#[must_use]
 pub fn pack_track_file() -> String {
     let state_home = pack_state_home();
     format!("{state_home}/{TRACK_FILE_NAME}")
 }
 
 /// pack 解密文件目录模板，含 `${PACK_ID}` 占位符
+#[must_use]
 pub fn default_pack_decrypt() -> String {
     let state_home = pack_state_home();
     format!("{state_home}/decrypted/")
 }
 
 /// pack 安装目标目录模板，含 `${PACK_NAME}` 占位符
+#[must_use]
 pub fn default_pack_target() -> String {
     format!("{}/${{PACK_NAME}}/", config_home().display())
 }
 
 /// stow-cm 状态数据根目录（`$XDG_STATE_HOME/stow-cm/`），
 /// `list` 命令扫描此目录下的所有 track file
+#[must_use]
 pub fn stow_cm_state_dir() -> PathBuf {
     state_home().join("stow-cm")
 }

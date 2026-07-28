@@ -7,7 +7,7 @@
 //! - [`plan_install`] — 安装计划（pack → target）
 //! - [`plan_remove`]  — 移除计划（track → target）
 //! - [`plan_reload`]  — 重载计划（remove + install 合并去重）
-//! - [`plan_clean`]   — 清理计划（从文件系统扫描结果构建 RemoveLink 计划）
+//! - [`plan_clean`]   — 清理计划（从文件系统扫描结果构建 `RemoveLink` 计划）
 //! - [`plan_adopt`]   — 接管计划（source → pack 移动 + 安装链接）
 
 use std::path::{Path, PathBuf};
@@ -396,6 +396,7 @@ fn collect_empty_dirs(node: &VNode, is_root: bool) -> (Vec<PathBuf>, bool) {
 /// 每条链接生成一个 `RemoveLink` 操作。
 /// 若指定了 `decrypted_path` 则追加 `RemoveDir` 操作，
 /// 若指定了 `state_dir` 则追加 `RemoveDir` 清理 pack state 目录。
+#[must_use]
 pub fn plan_clean(
     symlinks: &[Symlink],
     decrypted_path: Option<&Path>,
@@ -490,7 +491,8 @@ impl ChildrenPlan {
 // ── 递归安装核心 ──
 
 /// 递归处理 pack 的一组子节点，将每个子节点安装到 target 对应位置。
-/// 合并处理传播标记, 但不做 fold 实际操作，fold 在 plan_dir 中处理
+/// 合并处理传播标记, 但不做 fold 实际操作，fold 在 `plan_dir` 中处理
+#[allow(clippy::indexing_slicing)]
 fn install_children(
     pack_children: &mut Vec<VNode>,
     target_children: &mut Vec<VNode>,
@@ -561,6 +563,7 @@ fn install_children(
 /// - `pack_parent` / `pack_idx` — pack 节点在其父列表中的位置（Move 模式 possibly remove）
 /// - `target_parent` / `target_idx` — 目标节点在目标父列表中的位置（None 表示不存在）
 /// - `target_dst` — 该 pack 节点在目标文件系统中的预期绝对路径
+#[allow(clippy::indexing_slicing)]
 fn install_node(
     pack_parent: &mut Vec<VNode>,
     pack_idx: usize,
@@ -572,17 +575,17 @@ fn install_node(
     let pack = &pack_parent[pack_idx];
 
     // ── 忽略检查 ──
-    if let Some(ignore_re) = &options.merge.ignore {
-        if ignore_re.is_match(&pack.abs_path.to_string_lossy()) {
-            let mut stats = Box::<PlanStats>::default();
-            stats.ignored = 1;
-            return ChildrenPlan {
-                actions: Vec::new(),
-                stats,
-                foldable: false,
-                had_ignored: true,
-            };
-        }
+    if let Some(ignore_re) = &options.merge.ignore
+        && ignore_re.is_match(&pack.abs_path.to_string_lossy())
+    {
+        let mut stats = Box::<PlanStats>::default();
+        stats.ignored = 1;
+        return ChildrenPlan {
+            actions: Vec::new(),
+            stats,
+            foldable: false,
+            had_ignored: true,
+        };
     }
 
     match &pack.kind {
@@ -611,6 +614,7 @@ fn install_node(
 /// - Move 模式：`pack_parent.remove(pack_idx)` 从 pack 父节点移除
 /// - 覆盖时：`target_parent[target_idx] = new_node` 替换目标节点
 /// - 新建时：`target_parent.push(new_node)` 插入目标节点
+#[allow(clippy::indexing_slicing)]
 fn plan_leaf(
     pack_parent: &mut Vec<VNode>,
     pack_idx: usize,
@@ -633,60 +637,60 @@ fn plan_leaf(
 
     if let Some(target_idx) = target_idx {
         // 目标已存在 — 检查是否可覆盖
-        if let Some(over_re) = &options.merge.over {
-            if over_re.is_match(&pack_abs.to_string_lossy()) {
-                // 记录旧目标类型，用于生成清理 action
-                let target_kind = target_parent[target_idx].kind.clone();
-                let dst = target_parent[target_idx].abs_path.clone();
+        if let Some(over_re) = &options.merge.over
+            && over_re.is_match(&pack_abs.to_string_lossy())
+        {
+            // 记录旧目标类型，用于生成清理 action
+            let target_kind = target_parent[target_idx].kind.clone();
+            let dst = target_parent[target_idx].abs_path.clone();
 
-                let kind = match &mode {
-                    SymlinkMode::Symlink => VNodeKind::Symlink {
-                        target: pack_abs.clone(),
-                    },
-                    SymlinkMode::Copy | SymlinkMode::Move => pack_kind.clone(),
-                };
-                target_parent[target_idx] = VNode {
-                    rel_path: target_parent[target_idx].rel_path.clone(),
-                    abs_path: dst.clone(),
-                    kind,
-                    children: Vec::new(),
-                };
+            let kind = match &mode {
+                SymlinkMode::Symlink => VNodeKind::Symlink {
+                    target: pack_abs.clone(),
+                },
+                SymlinkMode::Copy | SymlinkMode::Move => pack_kind.clone(),
+            };
+            target_parent[target_idx] = VNode {
+                rel_path: target_parent[target_idx].rel_path.clone(),
+                abs_path: dst.clone(),
+                kind,
+                children: Vec::new(),
+            };
 
-                let mut stats = Box::<PlanStats>::default();
-                stats.links_to_create = 1;
-                stats.overridden = 1;
+            let mut stats = Box::<PlanStats>::default();
+            stats.links_to_create = 1;
+            stats.overridden = 1;
 
-                let mut actions = Vec::new();
-                // 覆盖前先清理旧目标
-                match target_kind {
-                    VNodeKind::Dir => {
-                        actions.push(Action::RemoveDir {
-                            path: dst.clone(),
-                            reason: "overridden".to_string(),
-                        });
-                        stats.dirs_removed = 1;
-                    }
-                    VNodeKind::File | VNodeKind::Symlink { .. } => {
-                        actions.push(Action::RemoveFile {
-                            path: dst.clone(),
-                            reason: "overridden".to_string(),
-                        });
-                        stats.files_removed = 1;
-                    }
+            let mut actions = Vec::new();
+            // 覆盖前先清理旧目标
+            match target_kind {
+                VNodeKind::Dir => {
+                    actions.push(Action::RemoveDir {
+                        path: dst.clone(),
+                        reason: "overridden".to_string(),
+                    });
+                    stats.dirs_removed = 1;
                 }
-                actions.push(Action::CreateLink {
-                    src: pack_abs.clone(),
-                    dst,
-                    mode,
-                });
-
-                return ChildrenPlan {
-                    actions,
-                    stats,
-                    foldable: true,
-                    had_ignored: false,
-                };
+                VNodeKind::File | VNodeKind::Symlink { .. } => {
+                    actions.push(Action::RemoveFile {
+                        path: dst.clone(),
+                        reason: "overridden".to_string(),
+                    });
+                    stats.files_removed = 1;
+                }
             }
+            actions.push(Action::CreateLink {
+                src: pack_abs.clone(),
+                dst,
+                mode,
+            });
+
+            return ChildrenPlan {
+                actions,
+                stats,
+                foldable: true,
+                had_ignored: false,
+            };
         }
         // 检查是否是事实上的同一文件（同一 inode），如果是则无需操作
         if util::same_file(&pack_abs, &target_parent[target_idx].abs_path) {
@@ -743,9 +747,10 @@ fn plan_leaf(
 /// 处理目录节点：递归子节点，检查折叠条件，并折叠。
 ///
 /// 操作虚拟文件树：
-/// - 折叠时替换 target_parent[target_idx] 或 push 到 target_parent
-/// - Move 模式 pack_parent.remove(pack_idx)
+/// - 折叠时替换 `target_parent[target_idx]` 或 push 到 `target_parent`
+/// - Move 模式 `pack_parent.remove(pack_idx)`
 /// - 非折叠时递归处理子节点
+#[allow(clippy::indexing_slicing)]
 fn plan_dir(
     pack_parent: &mut Vec<VNode>,
     pack_idx: usize,
@@ -792,41 +797,38 @@ fn plan_dir(
         let mut actions = Vec::new();
         let mut stats = Box::<PlanStats>::default();
 
-        match target_idx {
-            Some(idx) => {
-                actions.push(Action::RemoveDir {
-                    path: dst.clone(),
-                    reason: "folded directory replaced".to_string(),
-                });
-                stats.dirs_removed = 1;
+        if let Some(idx) = target_idx {
+            actions.push(Action::RemoveDir {
+                path: dst.clone(),
+                reason: "folded directory replaced".to_string(),
+            });
+            stats.dirs_removed = 1;
 
-                let kind = match &mode {
-                    SymlinkMode::Symlink => VNodeKind::Symlink {
-                        target: pack_abs.clone(),
-                    },
-                    SymlinkMode::Copy | SymlinkMode::Move => pack_kind.clone(),
-                };
-                target_parent[idx] = VNode {
-                    rel_path: target_parent[idx].rel_path.clone(),
-                    abs_path: dst.clone(),
-                    kind,
-                    children: Vec::new(),
-                };
-            }
-            None => {
-                let kind = match &mode {
-                    SymlinkMode::Symlink => VNodeKind::Symlink {
-                        target: pack_abs.clone(),
-                    },
-                    SymlinkMode::Copy | SymlinkMode::Move => pack_kind.clone(),
-                };
-                target_parent.push(VNode {
-                    rel_path: pack_rel,
-                    abs_path: dst.clone(),
-                    kind,
-                    children: Vec::new(),
-                });
-            }
+            let kind = match &mode {
+                SymlinkMode::Symlink => VNodeKind::Symlink {
+                    target: pack_abs.clone(),
+                },
+                SymlinkMode::Copy | SymlinkMode::Move => pack_kind.clone(),
+            };
+            target_parent[idx] = VNode {
+                rel_path: target_parent[idx].rel_path.clone(),
+                abs_path: dst.clone(),
+                kind,
+                children: Vec::new(),
+            };
+        } else {
+            let kind = match &mode {
+                SymlinkMode::Symlink => VNodeKind::Symlink {
+                    target: pack_abs.clone(),
+                },
+                SymlinkMode::Copy | SymlinkMode::Move => pack_kind.clone(),
+            };
+            target_parent.push(VNode {
+                rel_path: pack_rel,
+                abs_path: dst.clone(),
+                kind,
+                children: Vec::new(),
+            });
         }
 
         actions.push(Action::CreateLink {
@@ -871,12 +873,11 @@ fn merge_and_dedup(remove_plan: ActionPlan, mut install_plan: ActionPlan) -> Act
         .actions
         .iter()
         .filter_map(|a| {
-            if let Action::RemoveLink { dst, src, .. } = a {
-                if let Some(install_src) = install_index.get(dst) {
-                    if install_src == src {
-                        return Some((dst.clone(), src.clone()));
-                    }
-                }
+            if let Action::RemoveLink { dst, src, .. } = a
+                && let Some(install_src) = install_index.get(dst)
+                && install_src == src
+            {
+                return Some((dst.clone(), src.clone()));
             }
             None
         })
@@ -884,15 +885,14 @@ fn merge_and_dedup(remove_plan: ActionPlan, mut install_plan: ActionPlan) -> Act
 
     // 从 install_plan 中移除匹配的 CreateLink
     install_plan.actions.retain(|a| {
-        if let Action::CreateLink { dst, src, .. } = a {
-            if to_remove_from_install
+        if let Action::CreateLink { dst, src, .. } = a
+            && to_remove_from_install
                 .iter()
                 .any(|(d, s)| d == dst && s == src)
-            {
-                install_plan.stats.links_to_create =
-                    install_plan.stats.links_to_create.saturating_sub(1);
-                return false;
-            }
+        {
+            install_plan.stats.links_to_create =
+                install_plan.stats.links_to_create.saturating_sub(1);
+            return false;
         }
         true
     });
@@ -905,14 +905,12 @@ fn merge_and_dedup(remove_plan: ActionPlan, mut install_plan: ActionPlan) -> Act
         if let Action::RemoveLink {
             ref dst, ref src, ..
         } = a
-        {
-            if to_remove_from_install
+            && to_remove_from_install
                 .iter()
                 .any(|(d, s)| d == dst && s == src)
-            {
-                remove_count = remove_count.saturating_sub(1);
-                continue;
-            }
+        {
+            remove_count = remove_count.saturating_sub(1);
+            continue;
         }
         filtered_remove_actions.push(a);
     }

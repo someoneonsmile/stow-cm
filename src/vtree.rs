@@ -63,6 +63,7 @@ impl VNode {
     ///
     /// 按路径组件逐层导航，通过匹配各节点的 `rel_path` 进行查找。
     /// `"."` 和空路径将返回 `self`。
+    #[must_use]
     pub fn find(&self, path: &Path) -> Option<&VNode> {
         let mut current = self;
         for component in path.components() {
@@ -150,11 +151,13 @@ impl VNode {
     }
 
     /// 判断当前节点是否为叶子节点（File 或 Symlink）。
+    #[must_use]
     pub fn is_leaf(&self) -> bool {
         matches!(self.kind, VNodeKind::File | VNodeKind::Symlink { .. })
     }
 
     /// 判断当前节点是否为目录。
+    #[must_use]
     pub fn is_dir(&self) -> bool {
         matches!(self.kind, VNodeKind::Dir)
     }

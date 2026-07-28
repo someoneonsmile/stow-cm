@@ -242,6 +242,7 @@ pub fn pack_name(pack: &Path) -> Result<String> {
 ///
 /// 委托给 `same_file` crate，通过比较设备 ID 和 inode 判断，
 /// 无需路径规范化或解析符号链接。
+#[must_use]
 pub fn same_file(a: &Path, b: &Path) -> bool {
     same_file::is_same_file(a, b).unwrap_or(false)
 }
@@ -257,6 +258,7 @@ pub fn canonicalize(paths: Vec<PathBuf>) -> Result<Vec<PathBuf>> {
 }
 
 #[inline]
+#[must_use]
 pub fn hash(content: &str) -> String {
     let mut hasher = Sha3_256::new();
     hasher.update(content);
@@ -295,6 +297,7 @@ pub fn scoped_log_prefix<R>(prefix: &str, f: impl FnOnce() -> R) -> R {
 }
 
 /// 读取当前日志前缀堆栈（在 `env_logger` 自定义 format 中使用）。
+#[must_use]
 pub fn get_log_prefixes() -> Vec<(String, u8)> {
     LOG_PREFIX.with(|cell| cell.borrow().clone())
 }

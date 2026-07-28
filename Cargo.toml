@@ -73,6 +73,7 @@ index_refutable_slice = "deny"
 indexing_slicing = "deny"
 
 match_wild_err_arm = "deny"
+missing_errors_doc = "allow"
 missing_panics_doc = "deny"
 panic = "deny"
 string_slice = "deny"

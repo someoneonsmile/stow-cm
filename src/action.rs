@@ -62,8 +62,15 @@ pub struct ActionPlan {
     pub stats: PlanStats,
 }
 
+impl Default for ActionPlan {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ActionPlan {
     /// 创建一个空的行动计划
+    #[must_use]
     pub fn new() -> Self {
         Self {
             actions: Vec::new(),
@@ -72,11 +79,13 @@ impl ActionPlan {
     }
 
     /// 判断计划是否为空
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.actions.is_empty()
     }
 
     /// 判断计划中是否存在冲突
+    #[must_use]
     pub fn has_conflicts(&self) -> bool {
         self.stats.conflicts > 0
     }
