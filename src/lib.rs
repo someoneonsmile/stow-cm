@@ -11,7 +11,6 @@ pub mod dev;
 pub mod error;
 pub mod executor;
 pub mod merge;
-pub mod merge_tree;
 pub mod paths;
 pub mod planner;
 pub mod symlink;

@@ -45,7 +45,7 @@ Exceptions in `clippy.toml`: `allow-unwrap-in-tests` and `allow-expect-in-tests`
   - `crypto.rs` — `encrypt()` + `decrypt()` + `crypto_process()`
   - 新增命令（`status`, `adopt`, `list`, `init`, `doctor`, `export` 等）按此模式各放独立文件，在 `mod.rs` 中声明 `mod xyz;` 并 `pub use`
 - **Execution**: `src/executor.rs` - parallel execution of pack operations
-- **Key modules**: `config`, `crypto`, `merge_tree`, `symlink`, `track_file`, `util`
+- **Key modules**: `config`, `crypto`, `symlink`, `track_file`, `util`
 - **功能规划**: `.omo/stow-cm-feature-roadmap.md`
 
 ## Config File Locations
