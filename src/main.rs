@@ -28,12 +28,6 @@ use stow_cm::error::Result;
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-macro_rules! dispatch {
-    ($common_config:expr, $paths:expr, $cmd:ident) => {{
-        let paths = stow_cm::util::canonicalize($paths)?;
-        stow_cm::executor::exec_all(&$common_config, paths, $cmd)?;
-    }};
-}
 
 #[allow(clippy::exit)]
 fn main() {
@@ -132,8 +126,20 @@ fn run(opt: Cli) -> Result<()> {
                 clean(config, pack, dry_run)
             })?;
         }
-        Commands::Encrypt { paths } => dispatch!(common_config, paths, encrypt),
-        Commands::Decrypt { paths } => dispatch!(common_config, paths, decrypt),
+        Commands::Encrypt { paths } => {
+            let paths = stow_cm::util::canonicalize(paths)?;
+            let dry_run = opt.dry_run;
+            stow_cm::executor::exec_all(&common_config, paths, |config, pack| {
+                encrypt(config, pack, dry_run)
+            })?;
+        }
+        Commands::Decrypt { paths } => {
+            let paths = stow_cm::util::canonicalize(paths)?;
+            let dry_run = opt.dry_run;
+            stow_cm::executor::exec_all(&common_config, paths, |config, pack| {
+                decrypt(config, pack, dry_run)
+            })?;
+        }
         Commands::Adopt { sources, to } => {
             let global = common_config
                 .as_ref()

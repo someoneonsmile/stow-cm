@@ -48,7 +48,7 @@ fn encrypt_decrypt_roundtrip() {
     let config = for_crypto_pack(&pack_dir, &global);
 
     // encrypt
-    encrypt(&config, &pack_dir).expect("encrypt should succeed");
+    encrypt(&config, &pack_dir, false).expect("encrypt should succeed");
 
     let encrypted_content =
         std::fs::read_to_string(pack_dir.join("secret.txt")).expect("read encrypted file");
@@ -66,7 +66,7 @@ fn encrypt_decrypt_roundtrip() {
     );
 
     // decrypt
-    decrypt(&config, &pack_dir).expect("decrypt should succeed");
+    decrypt(&config, &pack_dir, false).expect("decrypt should succeed");
 
     let decrypted_content =
         std::fs::read_to_string(pack_dir.join("secret.txt")).expect("read decrypted file");
@@ -96,7 +96,7 @@ fn encrypt_empty_pack() {
     let global = common::make_global_config();
     let config = for_crypto_pack(&pack_dir, &global);
 
-    encrypt(&config, &pack_dir).expect("encrypt on empty pack should succeed");
+    encrypt(&config, &pack_dir, false).expect("encrypt on empty pack should succeed");
 }
 
 // ─────────────────────────────────────────────
@@ -123,7 +123,7 @@ fn encrypt_skips_binary() {
     let global = common::make_global_config();
     let config = for_crypto_pack(&pack_dir, &global);
 
-    encrypt(&config, &pack_dir).expect("encrypt with binary file should succeed");
+    encrypt(&config, &pack_dir, false).expect("encrypt with binary file should succeed");
 
     let content = std::fs::read(pack_dir.join("data.bin")).expect("read binary file");
     assert_eq!(
@@ -172,7 +172,7 @@ encrypted_alg = 'ChaCha20-Poly1305'
     let global = common::make_global_config();
     let config = for_crypto_pack(&pack_dir, &global);
 
-    encrypt(&config, &pack_dir).expect("encrypt should succeed");
+    encrypt(&config, &pack_dir, false).expect("encrypt should succeed");
 
     // 被 ignore 的文件内容不变
     let ignored = std::fs::read_to_string(pack_dir.join("secret.ignore")).expect("read ignored");
@@ -224,7 +224,7 @@ fn encrypted_install_full_lifecycle() {
     let global = common::make_global_config();
     let config = for_crypto_pack(&pack_dir, &global);
 
-    encrypt(&config, &pack_dir).expect("encrypt should succeed");
+    encrypt(&config, &pack_dir, false).expect("encrypt should succeed");
     let encrypted =
         std::fs::read_to_string(pack_dir.join("secret.txt")).expect("read encrypted pack file");
     assert_ne!(encrypted, original, "encrypt should modify file content");
