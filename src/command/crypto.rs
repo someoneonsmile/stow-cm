@@ -26,11 +26,7 @@ fn crypto_process<P: AsRef<Path>>(
     let pack = Arc::new(pack.as_ref().to_path_buf());
     let pack_name = config.resolve_pack_name(&pack)?.into_owned();
 
-    if dry_run {
-        info!("[dry-run] {op_name}");
-    } else {
-        info!("{op_name}");
-    }
+    info!("{op_name}");
 
     let enabled = config
         .encrypted
@@ -108,7 +104,7 @@ fn crypto_process<P: AsRef<Path>>(
         modified += 1;
 
         if dry_run {
-            info!("[dry-run] would {op_name}: {}", path.display());
+            info!("would {op_name}: {}", path.display());
         } else {
             info!("{op_name} {}", path.display());
             std::fs::write(path, processed).with_context(|| {
@@ -122,10 +118,10 @@ fn crypto_process<P: AsRef<Path>>(
 
     if dry_run {
         if modified == 0 && skipped == 0 {
-            info!("[dry-run] no files to {op_name}");
+            info!("no files to {op_name}");
         } else {
             info!(
-                "[dry-run] {modified} file(s) would be modified, {skipped} file(s) unchanged"
+                "{modified} file(s) would be modified, {skipped} file(s) unchanged"
             );
         }
     }

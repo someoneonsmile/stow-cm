@@ -11,9 +11,20 @@ use crate::error::Result;
 use crate::symlink::Symlink;
 use crate::util;
 
-pub fn exec_all<F, P>(common_config: &Arc<Option<Config>>, packs: Vec<P>, f: F) -> Result<()>
+// TODO: 等 RFC 3955 (Named Fn trait parameters) 稳定后，
+// 可以在闭包签名中直接用 `dry_run: bool` 命名参数替代此类型别名。
+// RFC: https://github.com/rust-lang/rfcs/pull/3955
+// 追踪: https://github.com/rust-lang/rust/issues/158499
+pub type DryRun = bool;
+
+pub fn exec_all<F, P>(
+    common_config: &Arc<Option<Config>>,
+    packs: Vec<P>,
+    dry_run: DryRun,
+    f: F,
+) -> Result<()>
 where
-    F: Fn(&Arc<Config>, P) -> Result<()>,
+    F: Fn(&Arc<Config>, P, DryRun) -> Result<()>,
     P: AsRef<Path>,
 {
     let global = common_config
@@ -30,8 +41,12 @@ where
             }
         };
         let pack_name = config.resolve_pack_name(pack.as_ref())?.into_owned();
-        info!("========== {pack_name} ==========");
-        let result = util::scoped_log_prefix(&pack_name, || f(&Arc::new(config), pack));
+        if dry_run {
+            info!("[dry-run] ========== {pack_name} ==========");
+        } else {
+            info!("========== {pack_name} ==========");
+        }
+        let result = util::scoped_log_prefix(&pack_name, || f(&Arc::new(config), pack, dry_run));
         if let Err(e) = result {
             errors.push(e);
         }

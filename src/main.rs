@@ -90,8 +90,7 @@ fn run(opt: Cli) -> Result<()> {
     match opt.command {
         Commands::Install { paths } => {
             let paths = stow_cm::util::canonicalize(paths)?;
-            let dry_run = opt.dry_run;
-            stow_cm::executor::exec_all(&common_config, paths, |config, pack| {
+            stow_cm::executor::exec_all(&common_config, paths, opt.dry_run, |config, pack, dry_run| {
                 install(config, pack, dry_run)
             })?;
         }
@@ -101,8 +100,8 @@ fn run(opt: Cli) -> Result<()> {
                 all_paths.extend(resolve_pack_ids(&ids)?);
             }
             let all_paths = stow_cm::util::canonicalize(all_paths)?;
-            stow_cm::executor::exec_all(&common_config, all_paths, |config, pack| {
-                remove(config, pack, opt.dry_run)
+            stow_cm::executor::exec_all(&common_config, all_paths, opt.dry_run, |config, pack, dry_run| {
+                remove(config, pack, dry_run)
             })?;
         }
         Commands::Reload { paths, ids } => {
@@ -111,8 +110,8 @@ fn run(opt: Cli) -> Result<()> {
                 all_paths.extend(resolve_pack_ids(&ids)?);
             }
             let all_paths = stow_cm::util::canonicalize(all_paths)?;
-            stow_cm::executor::exec_all(&common_config, all_paths, |config, pack| {
-                reload(config, pack, opt.dry_run)
+            stow_cm::executor::exec_all(&common_config, all_paths, opt.dry_run, |config, pack, dry_run| {
+                reload(config, pack, dry_run)
             })?;
         }
         Commands::Clean { paths, ids } => {
@@ -120,23 +119,20 @@ fn run(opt: Cli) -> Result<()> {
             if !ids.is_empty() {
                 all_paths.extend(resolve_pack_ids(&ids)?);
             }
-            let dry_run = opt.dry_run;
             let paths = stow_cm::util::canonicalize(all_paths)?;
-            stow_cm::executor::exec_all(&common_config, paths, |config, pack| {
+            stow_cm::executor::exec_all(&common_config, paths, opt.dry_run, |config, pack, dry_run| {
                 clean(config, pack, dry_run)
             })?;
         }
         Commands::Encrypt { paths } => {
             let paths = stow_cm::util::canonicalize(paths)?;
-            let dry_run = opt.dry_run;
-            stow_cm::executor::exec_all(&common_config, paths, |config, pack| {
+            stow_cm::executor::exec_all(&common_config, paths, opt.dry_run, |config, pack, dry_run| {
                 encrypt(config, pack, dry_run)
             })?;
         }
         Commands::Decrypt { paths } => {
             let paths = stow_cm::util::canonicalize(paths)?;
-            let dry_run = opt.dry_run;
-            stow_cm::executor::exec_all(&common_config, paths, |config, pack| {
+            stow_cm::executor::exec_all(&common_config, paths, opt.dry_run, |config, pack, dry_run| {
                 decrypt(config, pack, dry_run)
             })?;
         }
