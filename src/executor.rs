@@ -2,7 +2,7 @@ use std::ops::Deref;
 use std::path::Path;
 use std::sync::Arc;
 
-use log::{debug, info};
+use log::{debug, info, warn};
 
 use crate::action::{Action, ActionPlan};
 use crate::config::Config;
@@ -119,6 +119,23 @@ fn execute_action(action: &Action) -> Result<()> {
             left_boundary,
             right_boundary,
         } => {
+            // 二进制文件跳过加解密，创建从解密路径到原文件的软链接（与 crypto_process 行为一致）
+            if binaryornot::is_binary(src).unwrap_or(true) {
+                warn!("{} is binary file, symlinking without decryption", src.display());
+                if let Some(parent) = to.parent() {
+                    std::fs::create_dir_all(parent).map_err(|e| {
+                        anyhow::anyhow!("Failed to create decrypt target directory: {e}")
+                    })?;
+                }
+                return std::os::unix::fs::symlink(src, to).map_err(|e| {
+                    anyhow::anyhow!(
+                        "Failed to symlink binary file {} -> {}: {e}",
+                        src.display(),
+                        to.display()
+                    )
+                });
+            }
+
             let content = std::fs::read_to_string(src).map_err(|e| {
                 anyhow::anyhow!("Failed to read file for decryption {}: {e}", src.display())
             })?;
