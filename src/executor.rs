@@ -136,7 +136,10 @@ fn execute_action(action: &Action) -> Result<()> {
         } => {
             // 二进制文件跳过加解密，创建从解密路径到原文件的软链接（与 crypto_process 行为一致）
             if binaryornot::is_binary(src).unwrap_or(true) {
-                warn!("{} is binary file, symlinking without decryption", src.display());
+                warn!(
+                    "{} is binary file, symlinking without decryption",
+                    src.display()
+                );
                 if let Some(parent) = to.parent() {
                     std::fs::create_dir_all(parent).map_err(|e| {
                         anyhow::anyhow!("Failed to create decrypt target directory: {e}")

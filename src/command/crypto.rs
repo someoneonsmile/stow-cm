@@ -120,9 +120,7 @@ fn crypto_process<P: AsRef<Path>>(
         if modified == 0 && skipped == 0 {
             info!("no files to {op_name}");
         } else {
-            info!(
-                "{modified} file(s) would be modified, {skipped} file(s) unchanged"
-            );
+            info!("{modified} file(s) would be modified, {skipped} file(s) unchanged");
         }
     }
 

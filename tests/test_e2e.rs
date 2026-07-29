@@ -8,10 +8,9 @@ mod common;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use common::{TestEnv, assert_exists, assert_not_exists, assert_symlink, assert_track_links};
+use common::{TestEnv, assert_not_exists, assert_symlink, assert_track_links};
 use stow_cm::command::{clean, install, reload, remove, status};
 use stow_cm::config::Config;
-use stow_cm::util;
 
 fn for_pack(pack_dir: &PathBuf, global: &Arc<Config>) -> Arc<Config> {
     Arc::new(Config::for_pack(pack_dir, global, None, false).expect("for_pack"))

@@ -5,6 +5,7 @@
 //! - Pack 构建辅助函数
 //! - 断言辅助函数（symlink 验证、track file 验证等）
 
+#![allow(dead_code)]
 #![allow(clippy::indexing_slicing)]
 #![allow(clippy::unwrap_used)]
 #![allow(clippy::expect_used)]
