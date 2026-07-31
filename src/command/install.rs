@@ -54,7 +54,7 @@ fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>, dry_run: bool) -> Res
 
     // ── Virtual tree pipeline: scan → plan → execute ──
     let mut pack_tree = vtree::VNode::scan(pack.as_ref(), false)?;
-    let mut target_tree = vtree::VNode::scan(target, false)?;
+    let mut target_tree = vtree::VNode::scan_guided(target, &pack_tree, false)?;
 
     let mut options = PlanOption {
         merge: MergeOption {

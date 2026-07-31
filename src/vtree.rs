@@ -15,8 +15,11 @@ use crate::error::Result;
 pub enum VNodeKind {
     /// 普通文件。
     File,
-    /// 目录，包含子节点。
+    /// 目录，包含子节点（完整递归扫描）。
     Dir,
+    /// 浅层目录：文件系统上存在但未被递归展开（参照扫描中
+    /// guide 不关心的目录），子树内容未知，视为非空叶子。
+    ShallowDir,
     /// 符号链接，记录其指向的目标路径。
     Symlink {
         /// 符号链接指向的目标路径。
@@ -52,6 +55,34 @@ impl VNode {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(VNode {
                 rel_path: PathBuf::new(),
                 abs_path: root.to_path_buf(),
+                kind: VNodeKind::Dir,
+                children: Vec::new(),
+            }),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// 参照扫描目标目录。
+    ///
+    /// 以 `guide_tree` 的结构为指引，在 `target_root` 下扫描：
+    /// - 每层做全量 `read_dir`（保证 fold 抑制和冲突检测的正确性）
+    /// - 只递归展开 guide 中存在的子目录
+    /// - guide 不关心的子目录标记为 [`VNodeKind::ShallowDir`]（不递归，视为非空）
+    ///
+    /// `guide_tree` 通常是 pack 目录的扫描结果（`VNode::scan(pack, false)`）。
+    /// 当 target 是大目录（如 `~`）而 pack 很小时，此方法比 `scan` 快数个数量级。
+    pub fn scan_guided(
+        target_root: &Path,
+        guide_tree: &VNode,
+        follow_symlinks: bool,
+    ) -> Result<VNode> {
+        match std::fs::symlink_metadata(target_root) {
+            Ok(_) => {
+                scan_guided_recursive(target_root, &PathBuf::new(), guide_tree, follow_symlinks)
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(VNode {
+                rel_path: PathBuf::new(),
+                abs_path: target_root.to_path_buf(),
                 kind: VNodeKind::Dir,
                 children: Vec::new(),
             }),
@@ -150,16 +181,157 @@ impl VNode {
         None
     }
 
-    /// 判断当前节点是否为叶子节点（File 或 Symlink）。
+    /// 判断当前节点是否为叶子节点（`File`、`Symlink` 或 `ShallowDir`）。
+    ///
+    /// `ShallowDir` 没有展开的子节点，在树遍历中应作为叶子处理，
+    /// 避免 `collect_empty_dirs` 等逻辑错误地递归进入。
     #[must_use]
     pub fn is_leaf(&self) -> bool {
-        matches!(self.kind, VNodeKind::File | VNodeKind::Symlink { .. })
+        matches!(
+            self.kind,
+            VNodeKind::File | VNodeKind::Symlink { .. } | VNodeKind::ShallowDir
+        )
     }
 
-    /// 判断当前节点是否为目录。
+    /// 判断当前节点是否为完整展开的目录（仅 `Dir` 变体）。
+    ///
+    /// `ShallowDir` 不被视为 `Dir` — 调用方不应尝试遍历其 `children`。
     #[must_use]
     pub fn is_dir(&self) -> bool {
         matches!(self.kind, VNodeKind::Dir)
+    }
+
+    /// 从一组相对路径构建虚拟文件树（用作 `scan_guided` 的参照）。
+    ///
+    /// `root` 是树的根绝对路径，`leaf_paths` 是相对于 `root` 的文件路径列表。
+    /// 中间目录自动创建为 `Dir` 节点，叶子节点为 `File` 节点。
+    /// 如果 `leaf_paths` 为空，返回仅含根 `Dir` 的空树。
+    #[must_use]
+    pub fn from_paths(root: &Path, leaf_paths: &[PathBuf]) -> VNode {
+        let mut root_node = new_dir(root);
+
+        for leaf in leaf_paths {
+            insert_leaf_path(&mut root_node, leaf);
+        }
+
+        root_node
+    }
+
+    /// 将树中的 `ShallowDir` 节点按 `guide` 树重新展开。
+    ///
+    /// 遍历 `self` 时，对每个 `ShallowDir`：
+    /// - 若 `guide` 在对应路径有 `Dir` 节点 → 用完整扫描替换该 `ShallowDir`
+    /// - 若 `guide` 没有对应节点 → 保持 `ShallowDir`
+    ///
+    /// `Dir` 节点会递归展开其子节点，`File`/`Symlink` 保持不变。
+    pub fn expand_shallow(&mut self, guide: &VNode) -> Result<()> {
+        let children = std::mem::take(&mut self.children);
+        for mut child in children {
+            if matches!(child.kind, VNodeKind::ShallowDir) {
+                if let Some(guide_child) = guide
+                    .children
+                    .iter()
+                    .find(|c| c.rel_path == child.rel_path && c.is_dir())
+                {
+                    child = scan_guided_recursive(
+                        &child.abs_path,
+                        &child.rel_path,
+                        guide_child,
+                        false,
+                    )?;
+                }
+            } else if child.is_dir()
+                && let Some(guide_child) = guide
+                    .children
+                    .iter()
+                    .find(|c| c.rel_path == child.rel_path && c.is_dir())
+            {
+                child.expand_shallow(guide_child)?;
+            }
+            self.children.push(child);
+        }
+        self.children.sort_by_key(|c| c.rel_path.clone());
+        Ok(())
+    }
+}
+
+/// 创建根 `Dir` 节点（`rel_path` 为空，`abs_path` 指向 `root`）。
+fn new_dir(root: &Path) -> VNode {
+    VNode {
+        rel_path: PathBuf::new(),
+        abs_path: root.to_path_buf(),
+        kind: VNodeKind::Dir,
+        children: Vec::new(),
+    }
+}
+
+/// 将一个相对路径插入到虚拟文件树中。
+///
+/// 按路径组件逐层创建中间 `Dir` 节点，将最后一个组件作为 `File` 节点插入。
+/// 已存在的节点不会被覆盖或重复插入。
+fn insert_leaf_path(parent: &mut VNode, rel_path: &Path) {
+    let mut components = rel_path.components().peekable();
+    let Some(first) = components.next() else {
+        return;
+    };
+
+    let mut node: &mut VNode = parent;
+    let mut comp = first;
+
+    loop {
+        let name = comp.as_os_str();
+        let is_last = components.peek().is_none();
+        let abs = node.abs_path.join(name);
+
+        if is_last {
+            // 叶子 File 节点：二分查找，不存在则插入到正确位置
+            if let Err(idx) = node
+                .children
+                .binary_search_by(|c| c.rel_path.as_os_str().cmp(name))
+            {
+                node.children.insert(
+                    idx,
+                    VNode {
+                        rel_path: PathBuf::from(name),
+                        abs_path: abs,
+                        kind: VNodeKind::File,
+                        children: Vec::new(),
+                    },
+                );
+            }
+            return;
+        }
+
+        // 中间 Dir 节点：二分查找 — 找到即导航，未找到就 insert 并导航
+        let idx = match node
+            .children
+            .binary_search_by(|c| c.rel_path.as_os_str().cmp(name))
+        {
+            Ok(idx) => idx,
+            Err(idx) => {
+                node.children.insert(
+                    idx,
+                    VNode {
+                        rel_path: PathBuf::from(name),
+                        abs_path: abs,
+                        kind: VNodeKind::Dir,
+                        children: Vec::new(),
+                    },
+                );
+                idx
+            }
+        };
+        // 两个分支中 idx 都保证有效，仅此处一个防御语句
+        if let Some(child) = node.children.get_mut(idx) {
+            node = child;
+        } else {
+            return;
+        }
+
+        let Some(next) = components.next() else {
+            return;
+        };
+        comp = next;
     }
 }
 
@@ -256,6 +428,159 @@ fn scan_dir_children(abs_path: &Path, rel_path: &Path, follow_symlinks: bool) ->
         // 递归扫描子节点
         let child_node = scan_recursive(&child_abs, &PathBuf::from(child_rel), follow_symlinks)?;
         children.push(child_node);
+    }
+
+    Ok(VNode {
+        rel_path: rel_path.to_path_buf(),
+        abs_path: abs_path.to_path_buf(),
+        kind: VNodeKind::Dir,
+        children,
+    })
+}
+
+/// 导览递归扫描 — 与 [`scan_recursive`] 行为相同，但目录子级使用
+/// [`scan_guided_dir_children`] 替代 [`scan_dir_children`]。
+fn scan_guided_recursive(
+    abs_path: &Path,
+    rel_path: &Path,
+    guide_node: &VNode,
+    follow_symlinks: bool,
+) -> Result<VNode> {
+    let meta = std::fs::symlink_metadata(abs_path)
+        .with_context(|| format!("Failed to read file metadata: {}", abs_path.display()))?;
+
+    let ft = meta.file_type();
+
+    if ft.is_symlink() {
+        if !follow_symlinks {
+            let target = std::fs::read_link(abs_path)
+                .with_context(|| format!("Failed to read symlink: {}", abs_path.display()))?;
+            return Ok(VNode {
+                rel_path: rel_path.to_path_buf(),
+                abs_path: abs_path.to_path_buf(),
+                kind: VNodeKind::Symlink { target },
+                children: Vec::new(),
+            });
+        }
+
+        let resolved = std::fs::metadata(abs_path)
+            .with_context(|| format!("Failed to resolve symlink target: {}", abs_path.display()))?;
+        if resolved.is_dir() {
+            return scan_guided_dir_children(abs_path, rel_path, guide_node, follow_symlinks);
+        }
+        return Ok(VNode {
+            rel_path: rel_path.to_path_buf(),
+            abs_path: abs_path.to_path_buf(),
+            kind: VNodeKind::File,
+            children: Vec::new(),
+        });
+    }
+
+    if ft.is_dir() {
+        return scan_guided_dir_children(abs_path, rel_path, guide_node, follow_symlinks);
+    }
+
+    Ok(VNode {
+        rel_path: rel_path.to_path_buf(),
+        abs_path: abs_path.to_path_buf(),
+        kind: VNodeKind::File,
+        children: Vec::new(),
+    })
+}
+
+/// 导览扫描目录子级 — 每层全量 `read_dir`，但只递归展开 guide 中存在的子目录。
+/// guide 不关心的子目录标记为 `ShallowDir`。
+fn scan_guided_dir_children(
+    abs_path: &Path,
+    rel_path: &Path,
+    guide_node: &VNode,
+    follow_symlinks: bool,
+) -> Result<VNode> {
+    use std::collections::HashSet;
+
+    // 从 guide 中提取关心的目录名集合（仅目录，文件/链接不影响递归决策）
+    let guide_dirs: HashSet<std::ffi::OsString> = guide_node
+        .children
+        .iter()
+        .filter(|c| c.is_dir())
+        .map(|c| c.rel_path.as_os_str().to_os_string())
+        .collect();
+
+    let mut children = Vec::new();
+
+    let mut entries: Vec<_> = std::fs::read_dir(abs_path)
+        .with_context(|| format!("Failed to read directory: {}", abs_path.display()))?
+        .filter_map(std::result::Result::ok)
+        .collect();
+
+    entries.sort_by_key(std::fs::DirEntry::file_name);
+
+    for entry in entries {
+        let child_abs = entry.path();
+        let child_rel = entry.file_name();
+
+        // 符号链接处理（与 scan_dir_children 一致）
+        if !follow_symlinks
+            && let Ok(child_meta) = std::fs::symlink_metadata(&child_abs)
+            && child_meta.file_type().is_symlink()
+        {
+            let target = std::fs::read_link(&child_abs).with_context(|| {
+                format!("Failed to read child symlink: {}", child_abs.display())
+            })?;
+            children.push(VNode {
+                rel_path: PathBuf::from(child_rel),
+                abs_path: child_abs,
+                kind: VNodeKind::Symlink { target },
+                children: Vec::new(),
+            });
+            continue;
+        }
+
+        let child_meta = std::fs::symlink_metadata(&child_abs)?;
+
+        if child_meta.is_dir() {
+            if guide_dirs.contains(&child_rel) {
+                // guide 关心的目录 → 递归展开
+                if let Some(guide_child) = guide_node
+                    .children
+                    .iter()
+                    .find(|c| c.rel_path.as_os_str() == child_rel && c.is_dir())
+                {
+                    let child_node = scan_guided_recursive(
+                        &child_abs,
+                        &PathBuf::from(child_rel),
+                        guide_child,
+                        follow_symlinks,
+                    )?;
+                    children.push(child_node);
+                } else {
+                    // guide_dirs 中标记为目录但在 guide_node.children 中未找到
+                    // （防御性处理：guide 树状态不一致）
+                    children.push(VNode {
+                        rel_path: PathBuf::from(child_rel),
+                        abs_path: child_abs,
+                        kind: VNodeKind::ShallowDir,
+                        children: Vec::new(),
+                    });
+                }
+            } else {
+                // guide 不关心的目录 → ShallowDir，不递归
+                children.push(VNode {
+                    rel_path: PathBuf::from(child_rel),
+                    abs_path: child_abs,
+                    kind: VNodeKind::ShallowDir,
+                    children: Vec::new(),
+                });
+            }
+        } else {
+            // 普通文件 / 设备文件等 → 正常叶子节点
+            children.push(VNode {
+                rel_path: PathBuf::from(child_rel),
+                abs_path: child_abs,
+                kind: VNodeKind::File,
+                children: Vec::new(),
+            });
+        }
     }
 
     Ok(VNode {
@@ -470,6 +795,15 @@ mod tests {
         };
         assert!(!dir_node.is_leaf());
         assert!(dir_node.is_dir());
+
+        let shallow_node = VNode {
+            rel_path: PathBuf::from("shallow"),
+            abs_path: PathBuf::from("/tmp/shallow"),
+            kind: VNodeKind::ShallowDir,
+            children: Vec::new(),
+        };
+        assert!(shallow_node.is_leaf());
+        assert!(!shallow_node.is_dir());
     }
 
     #[test]
@@ -480,5 +814,280 @@ mod tests {
         assert!(tree.children.is_empty());
         assert_eq!(tree.abs_path, nonexistent);
         assert_eq!(tree.rel_path, PathBuf::new());
+    }
+
+    // ── scan_guided 测试 ──
+
+    /// 在临时目录中创建双树结构：pack 树（小）和 target 树（大，含无关目录）。
+    /// 返回 (target_root, pack_root)。
+    fn temp_twin_trees() -> (PathBuf, PathBuf) {
+        let target = temp_dir();
+        let pack = temp_dir();
+
+        // pack 树: nvim/
+        let pack_nvim = pack.join("nvim");
+        std::fs::create_dir(&pack_nvim).unwrap();
+        std::fs::write(pack_nvim.join("init.lua"), "pack init").unwrap();
+        let pack_lua = pack_nvim.join("lua");
+        std::fs::create_dir(&pack_lua).unwrap();
+        std::fs::write(pack_lua.join("plugins.lua"), "pack plugins").unwrap();
+
+        // target 树: nvim/ (对应 pack) + fish/ (无关) + git/ (无关)
+        let target_nvim = target.join("nvim");
+        std::fs::create_dir(&target_nvim).unwrap();
+        std::fs::write(target_nvim.join("init.lua"), "target init").unwrap();
+        let target_lua = target_nvim.join("lua");
+        std::fs::create_dir(&target_lua).unwrap();
+        std::fs::write(target_lua.join("plugins.lua"), "target plugins").unwrap();
+        // nvim 下还有一个 pack 中没有的文件（测试 fold 抑制）
+        std::fs::write(target_nvim.join("custom.vim"), "custom").unwrap();
+
+        // 无关目录（不应被递归扫描）
+        let target_fish = target.join("fish");
+        std::fs::create_dir(&target_fish).unwrap();
+        std::fs::write(target_fish.join("config.fish"), "fish config").unwrap();
+        let fish_sub = target_fish.join("completions");
+        std::fs::create_dir(&fish_sub).unwrap();
+        std::fs::write(fish_sub.join("git.fish"), "fish completion").unwrap();
+
+        let target_git = target.join("git");
+        std::fs::create_dir(&target_git).unwrap();
+        std::fs::write(target_git.join("config"), "git config").unwrap();
+
+        (target, pack)
+    }
+
+    #[test]
+    fn scan_guided_marks_unrelated_as_shallow() {
+        let (target, pack) = temp_twin_trees();
+        let guide_tree = VNode::scan(&pack, false).unwrap();
+
+        // pack 中包含 nvim，不包含 fish 和 git
+        let target_tree = VNode::scan_guided(&target, &guide_tree, false).unwrap();
+
+        assert!(target_tree.is_dir());
+        assert_eq!(target_tree.children.len(), 3);
+
+        // nvim → 应被完整展开（在 guide 中）
+        let nvim = target_tree.find(Path::new("nvim")).unwrap();
+        assert!(nvim.is_dir());
+        assert!(!nvim.is_leaf());
+        // nvim 内部应完整展开（含 custom.vim）
+        assert_eq!(nvim.children.len(), 3); // init.lua, lua/, custom.vim
+
+        // fish → ShallowDir（不在 guide 中）
+        let fish = target_tree.find(Path::new("fish")).unwrap();
+        assert!(matches!(fish.kind, VNodeKind::ShallowDir));
+        assert!(fish.is_leaf());
+        assert!(!fish.is_dir());
+        assert!(fish.children.is_empty());
+
+        // git → ShallowDir（不在 guide 中）
+        let git = target_tree.find(Path::new("git")).unwrap();
+        assert!(matches!(git.kind, VNodeKind::ShallowDir));
+        assert!(git.is_leaf());
+    }
+
+    #[test]
+    fn scan_guided_fully_expands_guide_dirs() {
+        let (target, pack) = temp_twin_trees();
+        let guide_tree = VNode::scan(&pack, false).unwrap();
+        let target_tree = VNode::scan_guided(&target, &guide_tree, false).unwrap();
+
+        // nvim/lua/plugins.lua 应在 target 树中（guide 命中 → 全展开）
+        let plugins = target_tree.find(Path::new("nvim/lua/plugins.lua")).unwrap();
+        assert!(matches!(plugins.kind, VNodeKind::File));
+        assert_eq!(plugins.abs_path, target.join("nvim/lua/plugins.lua"));
+    }
+
+    #[test]
+    fn scan_guided_no_pack_path_in_target() {
+        let target = temp_dir();
+        let pack = temp_dir();
+
+        // pack 有 sub/，但 target 没有
+        std::fs::create_dir(pack.join("sub")).unwrap();
+        std::fs::write(pack.join("sub").join("a.txt"), "a").unwrap();
+
+        // target 有其他内容
+        std::fs::create_dir(target.join("other")).unwrap();
+        std::fs::write(target.join("other").join("b.txt"), "b").unwrap();
+
+        let guide_tree = VNode::scan(&pack, false).unwrap();
+        let target_tree = VNode::scan_guided(&target, &guide_tree, false).unwrap();
+
+        // other 是 ShallowDir
+        let other = target_tree.find(Path::new("other")).unwrap();
+        assert!(matches!(other.kind, VNodeKind::ShallowDir));
+
+        // sub 不在 target 中—不应出现
+        assert!(target_tree.find(Path::new("sub")).is_none());
+    }
+
+    #[test]
+    fn scan_guided_nonexistent_target() {
+        let pack = temp_dir();
+        std::fs::create_dir(pack.join("nvim")).unwrap();
+        std::fs::write(pack.join("nvim").join("init.lua"), "init").unwrap();
+
+        let nonexistent = PathBuf::from("/nonexistent/target/for/guided_test");
+        let guide_tree = VNode::scan(&pack, false).unwrap();
+        let tree = VNode::scan_guided(&nonexistent, &guide_tree, false).unwrap();
+
+        assert!(tree.is_dir());
+        assert!(tree.children.is_empty());
+        assert_eq!(tree.abs_path, nonexistent);
+    }
+
+    #[test]
+    fn scan_guided_symlink_handling() {
+        let target = temp_dir();
+        let pack = temp_dir();
+
+        // pack 里有 pack_file.txt
+        std::fs::write(pack.join("pack_file.txt"), "pack").unwrap();
+
+        // target 里有同名文件和一个符号链接
+        std::fs::write(target.join("pack_file.txt"), "target").unwrap();
+        let link_dst = target.join("my_link");
+        std::os::unix::fs::symlink("/some/where", &link_dst).unwrap();
+
+        let guide_tree = VNode::scan(&pack, false).unwrap();
+        let target_tree = VNode::scan_guided(&target, &guide_tree, false).unwrap();
+
+        // pack_file.txt → File（guide 中存在同名 → 但仍然按文件处理）
+        let f = target_tree.find(Path::new("pack_file.txt")).unwrap();
+        assert!(matches!(f.kind, VNodeKind::File));
+
+        // my_link → Symlink（不在 guide 中，按正常符号链接处理）
+        let l = target_tree.find(Path::new("my_link")).unwrap();
+        assert!(matches!(l.kind, VNodeKind::Symlink { .. }));
+    }
+
+    // ── from_paths 测试 ──
+
+    #[test]
+    fn from_paths_empty() {
+        let tree = VNode::from_paths(Path::new("/root"), &[]);
+        assert!(tree.is_dir());
+        assert!(tree.children.is_empty());
+        assert_eq!(tree.abs_path, Path::new("/root"));
+        assert_eq!(tree.rel_path, PathBuf::new());
+    }
+
+    #[test]
+    fn from_paths_single_file() {
+        let paths = [PathBuf::from("a.txt")];
+        let tree = VNode::from_paths(Path::new("/root"), &paths);
+        assert_eq!(tree.children.len(), 1);
+        assert!(matches!(tree.children[0].kind, VNodeKind::File));
+        assert_eq!(tree.children[0].rel_path, PathBuf::from("a.txt"));
+        assert_eq!(tree.children[0].abs_path, Path::new("/root/a.txt"));
+    }
+
+    #[test]
+    fn from_paths_nested() {
+        let paths = [
+            PathBuf::from("a/b/c.txt"),
+            PathBuf::from("a/b/d.txt"),
+            PathBuf::from("a/x.txt"),
+        ];
+        let tree = VNode::from_paths(Path::new("/root"), &paths);
+        assert_eq!(tree.children.len(), 1);
+
+        let a = &tree.children[0];
+        assert_eq!(a.rel_path, PathBuf::from("a"));
+        assert!(a.is_dir());
+        assert_eq!(a.children.len(), 2); // b, x.txt
+
+        // x.txt
+        let x = a
+            .children
+            .iter()
+            .find(|c| c.rel_path == PathBuf::from("x.txt"))
+            .unwrap();
+        assert!(matches!(x.kind, VNodeKind::File));
+
+        // b/
+        let b = a
+            .children
+            .iter()
+            .find(|c| c.rel_path == PathBuf::from("b"))
+            .unwrap();
+        assert!(b.is_dir());
+        assert_eq!(b.children.len(), 2); // c.txt, d.txt
+    }
+
+    #[test]
+    fn from_paths_duplicates() {
+        let paths = [PathBuf::from("a.txt"), PathBuf::from("a.txt")];
+        let tree = VNode::from_paths(Path::new("/root"), &paths);
+        assert_eq!(tree.children.len(), 1);
+    }
+
+    // ── expand_shallow 测试 ──
+
+    /// 创建 guide 树和目标树（含 ShallowDir），测试 expand_shallow。
+    fn setup_expand_test() -> (PathBuf, VNode, VNode) {
+        let target = temp_dir();
+        let pack = temp_dir();
+
+        // pack: nvim/init.lua
+        std::fs::create_dir(pack.join("nvim")).unwrap();
+        std::fs::write(pack.join("nvim").join("init.lua"), "pack init").unwrap();
+
+        // target: nvim/ (含 init.lua + custom.vim) + fish/
+        std::fs::create_dir(target.join("nvim")).unwrap();
+        std::fs::write(target.join("nvim").join("init.lua"), "target init").unwrap();
+        std::fs::write(target.join("nvim").join("custom.vim"), "custom").unwrap();
+        std::fs::create_dir(target.join("fish")).unwrap();
+        std::fs::write(target.join("fish").join("config.fish"), "fish").unwrap();
+
+        let pack_tree = VNode::scan(&pack, false).unwrap();
+        let target_tree = VNode::scan_guided(&target, &pack_tree, false).unwrap();
+
+        (target, pack_tree, target_tree)
+    }
+
+    #[test]
+    fn expand_shallow_expands_guide_matching_dir() {
+        let (_target, _pack_tree, mut target_tree) = setup_expand_test();
+
+        // nvim 在 guide 中 → 已全展开，不是 ShallowDir
+        let nvim = target_tree.find(Path::new("nvim")).unwrap();
+        assert!(nvim.is_dir());
+
+        // fish 不在 guide 中 → ShallowDir
+        let fish = target_tree.find(Path::new("fish")).unwrap();
+        assert!(matches!(fish.kind, VNodeKind::ShallowDir));
+
+        // 构造一个也包含 fish/ 目录的 guide（用实际目录扫描）
+        let guide_dir = temp_dir();
+        std::fs::create_dir(guide_dir.join("fish")).unwrap();
+        std::fs::write(guide_dir.join("fish").join("config.fish"), "guide fish").unwrap();
+        std::fs::create_dir(guide_dir.join("nvim")).unwrap();
+        let expanded_guide = VNode::scan(&guide_dir, false).unwrap();
+
+        target_tree.expand_shallow(&expanded_guide).unwrap();
+
+        // fish 应被展开为完整 Dir
+        let fish = target_tree.find(Path::new("fish")).unwrap();
+        assert!(fish.is_dir());
+        assert!(!fish.is_leaf());
+        assert_eq!(fish.children.len(), 1); // config.fish
+        assert!(matches!(fish.children[0].kind, VNodeKind::File));
+    }
+
+    #[test]
+    fn expand_shallow_ignores_non_matching_guide() {
+        let (_target, _pack_tree, mut target_tree) = setup_expand_test();
+
+        // expand 一个空的 guide：什么都不应改变
+        let empty_guide = VNode::from_paths(Path::new("/nonexistent"), &[]);
+
+        target_tree.expand_shallow(&empty_guide).unwrap();
+
+        let fish = target_tree.find(Path::new("fish")).unwrap();
+        assert!(matches!(fish.kind, VNodeKind::ShallowDir));
     }
 }
