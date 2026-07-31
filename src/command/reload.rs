@@ -70,9 +70,6 @@ fn reload_link(config: &Arc<Config>, pack: &Arc<PathBuf>, dry_run: bool) -> Resu
     // ── 扫描 pack 树（pack 内容）──
     let mut pack_tree = vtree::VNode::scan(pack.as_ref(), false)?;
 
-    // ── 分别构建目标树（同路径则共享一棵，避免 clone）──
-    let mut install_target_tree = vtree::VNode::scan(target, false)?;
-
     let remove_target_path = old_track
         .as_ref()
         .and_then(|t| t.target.as_deref())
@@ -134,16 +131,33 @@ fn reload_link(config: &Arc<Config>, pack: &Arc<PathBuf>, dry_run: bool) -> Resu
     });
 
     let plan = if let Some(ref track) = old_track {
+        // ── 从 track links 构建 remove 阶段参照树 ──
+        let track_rel_paths: Vec<PathBuf> = track
+            .links
+            .iter()
+            .filter_map(|link| {
+                link.dst
+                    .strip_prefix(remove_target_path)
+                    .ok()
+                    .map(Path::to_path_buf)
+            })
+            .collect();
+        let track_vnode = vtree::VNode::from_paths(remove_target_path, &track_rel_paths);
+        let mut remove_target_tree =
+            vtree::VNode::scan_guided(remove_target_path, &track_vnode, false)?;
+
         if remove_target_path == target.as_path() {
+            // 同路径：一棵树 — plan_reload 内部 expand_shallow 展开 pack 路径
             planner::plan_reload(
                 &mut pack_tree,
-                &mut install_target_tree,
+                &mut remove_target_tree,
                 None,
                 track,
                 &options,
             )?
         } else {
-            let mut remove_target_tree = vtree::VNode::scan(remove_target_path, false)?;
+            // 不同路径：install 以 pack 为参照构建独立目标树
+            let mut install_target_tree = vtree::VNode::scan_guided(target, &pack_tree, false)?;
             planner::plan_reload(
                 &mut pack_tree,
                 &mut remove_target_tree,
@@ -154,6 +168,7 @@ fn reload_link(config: &Arc<Config>, pack: &Arc<PathBuf>, dry_run: bool) -> Resu
         }
     } else {
         warn!("no previous installation found, reload will proceed as a fresh install");
+        let mut install_target_tree = vtree::VNode::scan_guided(target, &pack_tree, false)?;
         planner::plan_install(&mut pack_tree, &mut install_target_tree, &options)?
     };
 

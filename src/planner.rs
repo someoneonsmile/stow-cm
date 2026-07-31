@@ -284,7 +284,7 @@ fn consistency_failure_reason(link: &crate::symlink::Symlink, node: &VNode) -> S
                 link.dst.display()
             )
         }
-        (SymlinkMode::Symlink, VNodeKind::Dir) => {
+        (SymlinkMode::Symlink, VNodeKind::Dir | VNodeKind::ShallowDir) => {
             format!(
                 "expected symlink at '{}', found directory",
                 link.dst.display()
@@ -296,7 +296,7 @@ fn consistency_failure_reason(link: &crate::symlink::Symlink, node: &VNode) -> S
                 link.dst.display()
             )
         }
-        (SymlinkMode::Copy | SymlinkMode::Move, VNodeKind::Dir) => {
+        (SymlinkMode::Copy | SymlinkMode::Move, VNodeKind::Dir | VNodeKind::ShallowDir) => {
             format!(
                 "expected regular file at '{}', found directory",
                 link.dst.display()
@@ -335,10 +335,12 @@ pub fn plan_reload(
         return Ok(remove_plan);
     }
 
-    // install_target 为 None 时表示与 remove 同一棵树 → 使用清理后的版本
+    // install_target 为 None 时表示与 remove 同一棵树 → 使用清理后的版本，
+    // 但需先将 remove 阶段留下的 ShallowDir 按 pack 树展开为完整 Dir 节点
     let install_plan = if let Some(install_tree) = install_target {
         plan_install(pack_tree, install_tree, options)?
     } else {
+        remove_target.expand_shallow(pack_tree)?;
         plan_install(pack_tree, remove_target, options)?
     };
 
@@ -605,6 +607,8 @@ fn install_node(
             target_dst,
             options,
         ),
+        // ShallowDir 不会出现在 pack 树中（pack 使用完整扫描），仅为穷尽匹配
+        VNodeKind::ShallowDir => unreachable!("ShallowDir should not appear in pack tree"),
     }
 }
 
@@ -664,7 +668,7 @@ fn plan_leaf(
             let mut actions = Vec::new();
             // 覆盖前先清理旧目标
             match target_kind {
-                VNodeKind::Dir => {
+                VNodeKind::Dir | VNodeKind::ShallowDir => {
                     actions.push(Action::RemoveDir {
                         path: dst.clone(),
                         reason: "overridden".to_string(),

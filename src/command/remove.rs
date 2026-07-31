@@ -56,8 +56,14 @@ fn remove_link(config: &Config, pack: &Arc<PathBuf>, dry_run: bool) -> Result<()
             )
         })?;
 
-    // ── 扫描目标目录虚拟树，生成移除计划 ──
-    let mut target_tree = vtree::VNode::scan(target, false)?;
+    // ── 从 track links 构建参照 vnode，以安装记录为指引扫描目标目录 ──
+    let track_rel_paths: Vec<PathBuf> = track
+        .links
+        .iter()
+        .filter_map(|link| link.dst.strip_prefix(target).ok().map(Path::to_path_buf))
+        .collect();
+    let guide_vnode = vtree::VNode::from_paths(target, &track_rel_paths);
+    let mut target_tree = vtree::VNode::scan_guided(target, &guide_vnode, false)?;
     let state_dir = track_file.parent().map(std::path::Path::to_path_buf);
     let plan = planner::plan_remove(&track, &mut target_tree, state_dir.as_deref());
 
