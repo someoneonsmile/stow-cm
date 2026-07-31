@@ -13,15 +13,19 @@ use crate::error::Result;
 type CryptoFn = fn(&str, &str, &[u8], &str, &str, bool) -> crate::error::Result<String>;
 
 /// 提取 encrypt/decrypt 共享的加密配置参数，执行文件扫描和流式处理。
+///
+/// `dry_run` 为 true 时只预览不写盘；块级详情通过 `debug!` 输出。
 fn crypto_process<P: AsRef<Path>>(
     config: &Arc<Config>,
     pack: P,
     crypto_fn: CryptoFn,
     op_name: &str,
     content_label: &str,
+    dry_run: bool,
 ) -> Result<()> {
     let pack = Arc::new(pack.as_ref().to_path_buf());
     let pack_name = config.resolve_pack_name(&pack)?.into_owned();
+
     info!("{op_name}");
 
     let enabled = config
@@ -49,7 +53,6 @@ fn crypto_process<P: AsRef<Path>>(
 
     let ignore_re = config.ignore_regex()?;
 
-    // walk file, expect ignore_re, skip binary file
     let files: Vec<_> = WalkDir::new(&*pack)
         .into_iter()
         .filter_map(|entry| {
@@ -75,10 +78,12 @@ fn crypto_process<P: AsRef<Path>>(
         })
         .collect();
 
+    let mut modified: u32 = 0;
+    let mut skipped: u32 = 0;
+
     debug!("{op_name} paths {files:?}");
     for file in &files {
         let path = file.path();
-        info!("{op_name} {}", path.display());
         let Ok(content) = std::fs::read_to_string(path) else {
             warn!("{} contains not invalid utf-8", path.display());
             continue;
@@ -91,35 +96,57 @@ fn crypto_process<P: AsRef<Path>>(
             right_boundary,
             false,
         )?;
-        std::fs::write(path, processed).with_context(|| {
-            format!(
-                "{pack_name}: failed to write {content_label} to path={}",
-                path.display()
-            )
-        })?;
+
+        if content == processed {
+            skipped += 1;
+            continue;
+        }
+        modified += 1;
+
+        if dry_run {
+            info!("would {op_name}: {}", path.display());
+        } else {
+            info!("{op_name} {}", path.display());
+            std::fs::write(path, processed).with_context(|| {
+                format!(
+                    "{pack_name}: failed to write {content_label} to path={}",
+                    path.display()
+                )
+            })?;
+        }
+    }
+
+    if dry_run {
+        if modified == 0 && skipped == 0 {
+            info!("no files to {op_name}");
+        } else {
+            info!("{modified} file(s) would be modified, {skipped} file(s) unchanged");
+        }
     }
 
     Ok(())
 }
 
 /// encrypt packages
-pub fn encrypt<P: AsRef<Path>>(config: &Arc<Config>, pack: P) -> Result<()> {
+pub fn encrypt<P: AsRef<Path>>(config: &Arc<Config>, pack: P, dry_run: bool) -> Result<()> {
     crypto_process(
         config,
         pack,
         crypto::encrypt_inline,
         "encrypt",
         "encrypted_content",
+        dry_run,
     )
 }
 
 /// decrypt packages
-pub fn decrypt<P: AsRef<Path>>(config: &Arc<Config>, pack: P) -> Result<()> {
+pub fn decrypt<P: AsRef<Path>>(config: &Arc<Config>, pack: P, dry_run: bool) -> Result<()> {
     crypto_process(
         config,
         pack,
         crypto::decrypt_inline,
         "decrypt",
         "decrypted_content",
+        dry_run,
     )
 }

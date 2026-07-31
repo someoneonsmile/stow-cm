@@ -5,41 +5,22 @@ use std::sync::Arc;
 use anyhow::Context;
 use clap::Parser;
 use env_logger::Env;
-use log::debug;
-
-use crate::cli::Cli;
-use crate::cli::Commands;
-use crate::command::adopt;
-use crate::command::clean;
-use crate::command::decrypt;
-use crate::command::encrypt;
-use crate::command::init;
-use crate::command::install;
-use crate::command::list;
-use crate::command::reload;
-use crate::command::remove;
-use crate::command::resolve_pack_ids;
-use crate::command::status;
-use crate::config::Config;
-use crate::error::Result;
-
-mod base64;
-mod cli;
-mod cli_types;
-mod command;
-mod config;
-mod constants;
-mod crypto;
-mod custom_type;
-mod dev;
-mod error;
-mod executor;
-mod merge;
-mod merge_tree;
-mod paths;
-mod symlink;
-mod track_file;
-mod util;
+use log::{debug, error};
+use stow_cm::cli::Cli;
+use stow_cm::cli::Commands;
+use stow_cm::command::adopt;
+use stow_cm::command::clean;
+use stow_cm::command::decrypt;
+use stow_cm::command::encrypt;
+use stow_cm::command::init;
+use stow_cm::command::install;
+use stow_cm::command::list;
+use stow_cm::command::reload;
+use stow_cm::command::remove;
+use stow_cm::command::resolve_pack_ids;
+use stow_cm::command::status;
+use stow_cm::config::Config;
+use stow_cm::error::Result;
 
 // Avoid musl's default allocator due to lackluster performance
 // https://nickb.dev/blog/default-musl-allocator-considered-harmful-to-performance
@@ -47,14 +28,8 @@ mod util;
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-macro_rules! dispatch {
-    ($common_config:expr, $paths:expr, $cmd:ident) => {{
-        let paths = util::canonicalize($paths)?;
-        executor::exec_all(&$common_config, paths, $cmd)?;
-    }};
-}
-
-fn main() -> Result<()> {
+#[allow(clippy::exit)]
+fn main() {
     let opt = Cli::parse();
 
     let default_log_level = if opt.quiet {
@@ -71,7 +46,7 @@ fn main() -> Result<()> {
     env_logger::Builder::from_env(Env::default().default_filter_or(default_log_level))
         .format(move |buf, record| {
             let msg = format!("{}", record.args());
-            let prefixes = crate::util::get_log_prefixes();
+            let prefixes = stow_cm::util::get_log_prefixes();
             let styled = if prefixes.is_empty() {
                 msg
             } else if use_color {
@@ -99,55 +74,73 @@ fn main() -> Result<()> {
         })
         .init();
 
+    if let Err(e) = run(opt) {
+        error!("{e:#}");
+        std::process::exit(1);
+    }
+}
+
+fn run(opt: Cli) -> Result<()> {
     debug!("opt: {opt:?}");
 
     let common_config = Arc::new(Some(Config::global()?));
     debug!("common_config: {common_config:?}");
 
     match opt.command {
-        Commands::Install { paths } => dispatch!(common_config, paths, install),
+        Commands::Install { paths } => {
+            let paths = stow_cm::util::canonicalize(paths)?;
+            stow_cm::executor::exec_all(&common_config, paths, opt.dry_run, install)?;
+        }
         Commands::Remove { paths, ids } => {
             let mut all_paths = paths;
             if !ids.is_empty() {
                 all_paths.extend(resolve_pack_ids(&ids)?);
             }
-            dispatch!(common_config, all_paths, remove);
+            let all_paths = stow_cm::util::canonicalize(all_paths)?;
+            stow_cm::executor::exec_all(&common_config, all_paths, opt.dry_run, remove)?;
         }
         Commands::Reload { paths, ids } => {
             let mut all_paths = paths;
             if !ids.is_empty() {
                 all_paths.extend(resolve_pack_ids(&ids)?);
             }
-            dispatch!(common_config, all_paths, reload);
+            let all_paths = stow_cm::util::canonicalize(all_paths)?;
+            stow_cm::executor::exec_all(&common_config, all_paths, opt.dry_run, reload)?;
         }
         Commands::Clean { paths, ids } => {
             let mut all_paths = paths;
             if !ids.is_empty() {
                 all_paths.extend(resolve_pack_ids(&ids)?);
             }
-            dispatch!(common_config, all_paths, clean);
+            let paths = stow_cm::util::canonicalize(all_paths)?;
+            stow_cm::executor::exec_all(&common_config, paths, opt.dry_run, clean)?;
         }
-        Commands::Encrypt { paths } => dispatch!(common_config, paths, encrypt),
-        Commands::Decrypt { paths } => dispatch!(common_config, paths, decrypt),
+        Commands::Encrypt { paths } => {
+            let paths = stow_cm::util::canonicalize(paths)?;
+            stow_cm::executor::exec_all(&common_config, paths, opt.dry_run, encrypt)?;
+        }
+        Commands::Decrypt { paths } => {
+            let paths = stow_cm::util::canonicalize(paths)?;
+            stow_cm::executor::exec_all(&common_config, paths, opt.dry_run, decrypt)?;
+        }
         Commands::Adopt { sources, to } => {
             let global = common_config
                 .as_ref()
                 .as_ref()
-                .ok_or_else(|| crate::error::anyhow!("global config not loaded"))?;
-            let sources = util::canonicalize(sources)?;
-            let to = match std::fs::canonicalize(&to) {
-                Ok(resolved) => resolved,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => to,
-                Err(e) => return Err(e).with_context(|| format!("path: {}", to.display())),
-            };
-            adopt(global, &sources, &to)?;
+                .ok_or_else(|| stow_cm::error::anyhow!("global config not loaded"))?;
+            let sources = stow_cm::util::canonicalize(sources)?;
+            let to =
+                std::fs::canonicalize(&to).with_context(|| format!("path: {}", to.display()))?;
+            for source in &sources {
+                adopt(global, source, &to, opt.dry_run)?;
+            }
         }
         Commands::List { json } => list(json)?,
         Commands::Status { paths, fix, json } => {
             let global = common_config
                 .as_ref()
                 .as_ref()
-                .ok_or_else(|| crate::error::anyhow!("global config not loaded"))?;
+                .ok_or_else(|| stow_cm::error::anyhow!("global config not loaded"))?;
             status(global, paths, fix, json)?;
         }
         Commands::Init { path, use_defaults } => {

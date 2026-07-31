@@ -7,6 +7,10 @@ version = "0.24.1"
 authors = ["someone"]
 edition = "2024"
 
+[lib]
+name = "stow_cm"
+path = "src/lib.rs"
+
 [dependencies]
 stow-cm-macros = { path = "stow-cm-macros" }
 same-file = "1"
@@ -57,6 +61,9 @@ panic = "abort"
 # the default is "none", true = "symbols", false = "none"
 strip = true
 
+[dev-dependencies]
+tempfile = "3"
+
 [lints.clippy]
 pedantic = { level = "deny", priority = -1 }
 exit = "deny"
@@ -66,6 +73,7 @@ index_refutable_slice = "deny"
 indexing_slicing = "deny"
 
 match_wild_err_arm = "deny"
+missing_errors_doc = "allow"
 missing_panics_doc = "deny"
 panic = "deny"
 string_slice = "deny"

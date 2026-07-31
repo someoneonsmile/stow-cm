@@ -4,25 +4,23 @@ mod crypto;
 mod init;
 mod install;
 mod list;
+mod reload;
 mod remove;
 mod status;
 
+use std::path::{Path, PathBuf};
+
 pub use adopt::adopt;
+use anyhow::anyhow;
 pub use clean::clean;
 pub use crypto::{decrypt, encrypt};
 pub use init::init;
 pub use install::install;
 pub use list::list;
+pub use reload::reload;
 pub use remove::remove;
 pub use status::status;
 
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-
-use anyhow::anyhow;
-use maplit::hashmap;
-
-use crate::config::Config;
 use crate::constants::{PACK_ID_ENV, PACK_NAME_ENV, TRACK_FILE_NAME};
 use crate::error::Result;
 use crate::paths::{pack_track_file, stow_cm_state_dir};
@@ -39,13 +37,15 @@ pub(super) fn pack_envs(pack: &Path, pack_name: &str) -> [(&'static str, String)
 }
 
 /// 解析 pack 对应的 track file 路径，消除 `install`/`clean`/`remove` 中的重复逻辑。
-pub(super) fn resolve_track_file(pack: &Path, pack_name: &str) -> Result<PathBuf> {
-    let context_map = hashmap! {
-        PACK_ID_ENV => util::hash(&pack.to_string_lossy()),
-        PACK_NAME_ENV => pack_name.to_owned(),
-    };
-    let track_file =
-        util::shell_expand_full_with_context(pack_track_file(), |key| context_map.get(key))?;
+pub fn resolve_track_file(pack: &Path) -> Result<PathBuf> {
+    let pack_id = util::hash(&pack.to_string_lossy());
+    let track_file = util::shell_expand_full_with_context(pack_track_file(), |key| {
+        if key == PACK_ID_ENV {
+            Some(pack_id.clone())
+        } else {
+            None
+        }
+    })?;
     Ok(track_file)
 }
 
@@ -135,11 +135,4 @@ pub fn resolve_pack_ids(ids: &[String]) -> Result<Vec<PathBuf>> {
     }
 
     Ok(results)
-}
-
-/// reload packages
-pub fn reload(config: &Arc<Config>, pack: impl AsRef<Path>) -> Result<()> {
-    remove::remove(config, &pack)?;
-    install::install(config, &pack)?;
-    Ok(())
 }

@@ -1,6 +1,6 @@
 use std::{
     fmt::{Debug, Display},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use anyhow::{Context, anyhow};
@@ -26,6 +26,8 @@ pub enum SymlinkMode {
     Symlink,
     #[serde(rename = "copy")]
     Copy,
+    #[serde(rename = "move")]
+    Move,
 }
 
 impl Display for Symlink {
@@ -87,6 +89,25 @@ impl SymlinkMode {
                     .with_context(|| format!("failed to create symlink: {symlink}"))?;
                 Ok(())
             }
+            SymlinkMode::Move => {
+                // 优先尝试 rename（同文件系统下高效），失败则回退到 copy+delete
+                if std::fs::rename(&symlink.src, &symlink.dst).is_err() {
+                    let meta = std::fs::symlink_metadata(&symlink.src)
+                        .with_context(|| format!("failed to read metadata: {symlink}"))?;
+                    if meta.is_dir() {
+                        copy_dir_all(&symlink.src, &symlink.dst)
+                            .with_context(|| format!("failed to copy dir: {symlink}"))?;
+                        std::fs::remove_dir_all(&symlink.src)
+                            .with_context(|| format!("failed to remove source dir: {symlink}"))?;
+                    } else {
+                        std::fs::copy(&symlink.src, &symlink.dst)
+                            .with_context(|| format!("failed to copy file: {symlink}"))?;
+                        std::fs::remove_file(&symlink.src)
+                            .with_context(|| format!("failed to remove source file: {symlink}"))?;
+                    }
+                }
+                Ok(())
+            }
         }
     }
 
@@ -108,11 +129,28 @@ impl SymlinkMode {
                     Err(e) => Err(e.into()),
                 }
             }
-            SymlinkMode::Copy => {
+            SymlinkMode::Copy | SymlinkMode::Move => {
                 std::fs::remove_file(&symlink.dst)
                     .with_context(|| format!("failed to remove symlink: {symlink}"))?;
                 Ok(())
             }
         }
     }
+}
+
+/// 递归复制目录（用于 Move 模式的跨文件系统回退）
+fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let src_child = entry.path();
+        let dst_child = dst.join(entry.file_name());
+        if ty.is_dir() {
+            copy_dir_all(&src_child, &dst_child)?;
+        } else {
+            std::fs::copy(&src_child, &dst_child)?;
+        }
+    }
+    Ok(())
 }

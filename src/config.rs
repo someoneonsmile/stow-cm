@@ -11,7 +11,6 @@ use maplit::hashmap;
 use merge::option::with_recurse_strategy;
 use regex::RegexSet;
 use serde::{Deserialize, Serialize};
-
 use stow_cm_macros::Finalize;
 
 use crate::base64;

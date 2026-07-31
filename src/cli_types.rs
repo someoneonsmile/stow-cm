@@ -18,6 +18,10 @@ pub struct Cli {
     #[arg(short = 'q', long = "quiet", action = clap::ArgAction::SetTrue, global = true, conflicts_with = "verbose")]
     pub quiet: bool,
 
+    /// Preview changes without applying them
+    #[arg(short = 'n', long = "dry-run", action = clap::ArgAction::SetTrue, global = true)]
+    pub dry_run: bool,
+
     #[command(subcommand)]
     pub command: Commands,
 }

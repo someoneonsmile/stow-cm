@@ -58,7 +58,7 @@ pub fn init(pack_path: &Path, global: Option<&Config>, use_defaults: bool) -> Re
             )
         })?;
         util::scoped_log_prefix(&default_name, || -> Result<()> {
-            write_default_config(&config_path, global, pack_path, &default_name)?;
+            write_default_config(&config_path, global, pack_path, &default_name, None)?;
             info!("created {}", config_path.display());
             Ok(())
         })?;
@@ -95,11 +95,16 @@ pub fn init(pack_path: &Path, global: Option<&Config>, use_defaults: bool) -> Re
     Ok(())
 }
 
-fn write_default_config(
+/// 为 pack 目录生成默认的 `stow-cm.toml`。
+///
+/// `target` 非 `None` 且与全局默认 target 实际路径不一致时，写入显式
+/// `target = '...'`；否则沿用全局默认 target（注释形式）。
+pub(crate) fn write_default_config(
     config_path: &Path,
     global: &Config,
     pack_path: &Path,
     pack_name: &str,
+    target: Option<&Path>,
 ) -> Result<()> {
     let resolved = Config::for_pack(pack_path, global, None, true)?;
     let resolved_target = resolved
@@ -112,10 +117,29 @@ fn write_default_config(
         .as_ref()
         .map_or_else(default_pack_target, |p| p.to_string_lossy().to_string());
 
-    let content = DEFAULT_TEMPLATE
-        .replace("__PACK_NAME__", pack_name)
-        .replace("__TARGET_RAW__", &raw_target)
-        .replace("__TARGET__", &resolved_target);
+    let content = if let Some(target_path) = target {
+        let target_str = target_path.to_string_lossy();
+        let differs = target_str.as_ref() != resolved_target;
+
+        if differs {
+            DEFAULT_TEMPLATE
+                .replace("__PACK_NAME__", pack_name)
+                .replace(
+                    "# target inherits from global config (default: __TARGET_RAW__)\n# target = \"__TARGET__\"",
+                    &format!("target = '{target_str}'"),
+                )
+        } else {
+            DEFAULT_TEMPLATE
+                .replace("__PACK_NAME__", pack_name)
+                .replace("__TARGET_RAW__", &raw_target)
+                .replace("__TARGET__", &resolved_target)
+        }
+    } else {
+        DEFAULT_TEMPLATE
+            .replace("__PACK_NAME__", pack_name)
+            .replace("__TARGET_RAW__", &raw_target)
+            .replace("__TARGET__", &resolved_target)
+    };
 
     std::fs::write(config_path, &content)
         .map_err(|e| anyhow!("{pack_name}: failed to write {CONFIG_FILE_NAME}: {e}"))?;

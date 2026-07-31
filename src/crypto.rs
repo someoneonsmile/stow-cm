@@ -1,7 +1,6 @@
 use std::borrow::Cow;
 
 use anyhow::{anyhow, bail};
-use log::debug;
 use ring::aead::{
     AES_128_GCM, AES_256_GCM, Aad, Algorithm, CHACHA20_POLY1305, LessSafeKey, NONCE_LEN, Nonce,
     UnboundKey,
@@ -13,7 +12,9 @@ use crate::base64;
 use crate::error::Result;
 use crate::util;
 
-/// decrypt content
+/// 内联加密：扫描 `&{...}` 块，将明文加密后以 `ENC:...` 格式写回。
+///
+/// 幂等保护：若块内容以 `ENC:` 开头则视为已加密，原样保留。
 pub fn encrypt_inline(
     content: &str,
     alg_name: &str,
@@ -22,13 +23,20 @@ pub fn encrypt_inline(
     right_boundary: &str,
     unwrap: bool,
 ) -> Result<String> {
-    util::var_inplace(content, left_boundary, right_boundary, unwrap, |content| {
-        encrypt(content, alg_name, key)
+    util::var_inplace(content, left_boundary, right_boundary, unwrap, |inner| {
+        if inner.starts_with("ENC:") {
+            Ok(inner.to_string())
+        } else {
+            let encrypted = encrypt(inner, alg_name, key)?;
+            Ok(format!("ENC:{encrypted}"))
+        }
     })
     .map(Cow::into_owned)
 }
 
-/// decrypt content
+/// 内联解密：扫描 `&{ENC:...}` 块，去掉 `ENC:` 壳后解密还原。
+///
+/// 幂等保护：若块内容不以 `ENC:` 开头则视为明文，原样保留。
 pub fn decrypt_inline(
     content: &str,
     alg_name: &str,
@@ -37,8 +45,12 @@ pub fn decrypt_inline(
     right_boundary: &str,
     unwrap: bool,
 ) -> Result<String> {
-    util::var_inplace(content, left_boundary, right_boundary, unwrap, |content| {
-        decrypt(content, alg_name, key)
+    util::var_inplace(content, left_boundary, right_boundary, unwrap, |inner| {
+        if let Some(cipher) = inner.strip_prefix("ENC:") {
+            decrypt(cipher, alg_name, key)
+        } else {
+            Ok(inner.to_string())
+        }
     })
     .map(Cow::into_owned)
 }
@@ -77,7 +89,6 @@ pub fn decrypt(content: &str, alg_name: &str, key: &[u8]) -> Result<String> {
         "
         )),
     }?;
-    debug!("encrypted_content={encrypted_content_base64}, nonce={nonce_base64}");
     let mut encrypted_content = base64::decode(encrypted_content_base64)?;
     let nonce = base64::decode(nonce_base64)?;
 

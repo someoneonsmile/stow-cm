@@ -17,6 +17,7 @@ pub fn decode(data: &str) -> Result<Vec<u8>> {
         .with_context(|| anyhow!("base64 decode error, content={data}"))
 }
 
+#[must_use]
 pub fn encode(data: &[u8]) -> String {
     debug!("encode: {data:?}");
     general_purpose::STANDARD.encode(data)

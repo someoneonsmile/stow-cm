@@ -1,8 +1,7 @@
 use std::borrow::Cow;
+use std::cell::{Cell, RefCell};
 use std::env::VarError;
 use std::path::{Path, PathBuf};
-
-use std::cell::{Cell, RefCell};
 
 use anyhow::Context;
 use sha3::{Digest, Sha3_256};
@@ -196,7 +195,10 @@ where
 
             if let Some(nl) = next_left {
                 let after_right = after_left + ri + right.len();
-                debug_assert!(after_right <= nl, "left 与 right 重叠，跳转优化不适用");
+                debug_assert!(
+                    after_right <= nl,
+                    "left and right overlap, jump optimization not applicable"
+                );
                 result.push_str(&content[after_right..nl]);
                 pos = nl;
             } else {
@@ -236,6 +238,15 @@ pub fn pack_name(pack: &Path) -> Result<String> {
         .ok_or_else(|| anyhow!("path error: {}", pack.display()))
 }
 
+/// 检查两个路径是否指向同一物理文件（同一 inode）。
+///
+/// 委托给 `same_file` crate，通过比较设备 ID 和 inode 判断，
+/// 无需路径规范化或解析符号链接。
+#[must_use]
+pub fn same_file(a: &Path, b: &Path) -> bool {
+    same_file::is_same_file(a, b).unwrap_or(false)
+}
+
 #[inline]
 pub fn canonicalize(paths: Vec<PathBuf>) -> Result<Vec<PathBuf>> {
     paths
@@ -247,6 +258,7 @@ pub fn canonicalize(paths: Vec<PathBuf>) -> Result<Vec<PathBuf>> {
 }
 
 #[inline]
+#[must_use]
 pub fn hash(content: &str) -> String {
     let mut hasher = Sha3_256::new();
     hasher.update(content);
@@ -285,7 +297,8 @@ pub fn scoped_log_prefix<R>(prefix: &str, f: impl FnOnce() -> R) -> R {
 }
 
 /// 读取当前日志前缀堆栈（在 `env_logger` 自定义 format 中使用）。
-pub(crate) fn get_log_prefixes() -> Vec<(String, u8)> {
+#[must_use]
+pub fn get_log_prefixes() -> Vec<(String, u8)> {
     LOG_PREFIX.with(|cell| cell.borrow().clone())
 }
 
