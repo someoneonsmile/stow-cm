@@ -1,9 +1,7 @@
 use std::convert::identity;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-
-use anyhow::anyhow;
-use log::{info, warn};
 
 use super::{pack_envs, resolve_track_file};
 use crate::config::{Config, EncryptedParams};
@@ -13,6 +11,8 @@ use crate::planner;
 use crate::planner::{MergeOption, PlanOption, TrackWriteInfo};
 use crate::track_file::Track;
 use crate::vtree;
+use anyhow::anyhow;
+use log::{info, warn};
 
 /// reload packages — 一次扫描，先 remove 后 install，合并为单个 `ActionPlan`
 pub fn reload(config: &Arc<Config>, pack: impl AsRef<Path>, dry_run: bool) -> Result<()> {
@@ -58,7 +58,7 @@ fn reload_link(config: &Arc<Config>, pack: &Arc<PathBuf>, dry_run: bool) -> Resu
 
     // ── 读取旧的 track file ──
     let old_track = if track_file.try_exists()? {
-        let content = std::fs::read_to_string(&track_file)?;
+        let content = fs::read_to_string(&track_file)?;
         Some(toml::from_str::<Track>(&content)?)
     } else {
         None

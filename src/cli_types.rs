@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
+use clap::{ArgAction, Parser, Subcommand};
 
 /// config manager (gnu-stow like)
 #[derive(Parser, Debug)]
@@ -11,15 +11,15 @@ use clap::{Parser, Subcommand};
 #[command(arg_required_else_help = true)]
 pub struct Cli {
     /// Increase log verbosity (-v debug, -vv trace)
-    #[arg(short = 'v', long = "verbose", action = clap::ArgAction::Count, global = true)]
+    #[arg(short = 'v', long = "verbose", action = ArgAction::Count, global = true)]
     pub verbose: u8,
 
     /// Quiet mode, only output errors
-    #[arg(short = 'q', long = "quiet", action = clap::ArgAction::SetTrue, global = true, conflicts_with = "verbose")]
+    #[arg(short = 'q', long = "quiet", action = ArgAction::SetTrue, global = true, conflicts_with = "verbose")]
     pub quiet: bool,
 
     /// Preview changes without applying them
-    #[arg(short = 'n', long = "dry-run", action = clap::ArgAction::SetTrue, global = true)]
+    #[arg(short = 'n', long = "dry-run", action = ArgAction::SetTrue, global = true)]
     pub dry_run: bool,
 
     #[command(subcommand)]

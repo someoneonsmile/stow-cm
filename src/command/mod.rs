@@ -8,6 +8,7 @@ mod reload;
 mod remove;
 mod status;
 
+use std::fs;
 use std::path::{Path, PathBuf};
 
 pub use adopt::adopt;
@@ -65,7 +66,7 @@ pub fn resolve_pack_ids(ids: &[String]) -> Result<Vec<PathBuf>> {
     }
 
     let mut installed: Vec<(String, PathBuf)> = Vec::new();
-    for entry in std::fs::read_dir(&state_dir)? {
+    for entry in fs::read_dir(&state_dir)? {
         let entry = entry?;
         let id_dir = entry.path();
         if !id_dir.is_dir() {
@@ -82,7 +83,7 @@ pub fn resolve_pack_ids(ids: &[String]) -> Result<Vec<PathBuf>> {
         else {
             continue;
         };
-        let Ok(content) = std::fs::read_to_string(&track_path) else {
+        let Ok(content) = fs::read_to_string(&track_path) else {
             continue;
         };
         let track: Track = match toml::from_str(&content) {

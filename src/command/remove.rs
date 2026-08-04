@@ -1,3 +1,4 @@
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -43,7 +44,7 @@ fn remove_link(config: &Config, pack: &Arc<PathBuf>, dry_run: bool) -> Result<()
         return Ok(());
     }
 
-    let track: Track = toml::from_str(&std::fs::read_to_string(track_file.as_path())?)?;
+    let track: Track = toml::from_str(&fs::read_to_string(track_file.as_path())?)?;
 
     // 优先使用 track 中记录的 target（安装时记录），降级使用 config.target
     let target = track
@@ -64,7 +65,7 @@ fn remove_link(config: &Config, pack: &Arc<PathBuf>, dry_run: bool) -> Result<()
         .collect();
     let guide_vnode = vtree::VNode::from_paths(target, &track_rel_paths);
     let mut target_tree = vtree::VNode::scan_guided(target, &guide_vnode, false)?;
-    let state_dir = track_file.parent().map(std::path::Path::to_path_buf);
+    let state_dir = track_file.parent().map(Path::to_path_buf);
     let plan = planner::plan_remove(&track, &mut target_tree, state_dir.as_deref());
 
     executor::execute_plan(&plan, dry_run)?;

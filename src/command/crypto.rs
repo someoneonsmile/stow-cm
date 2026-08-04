@@ -1,8 +1,11 @@
+use std::convert::identity;
+use std::fs;
 use std::ops::Not;
 use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{Context, anyhow};
+use binaryornot::is_binary;
 use log::{debug, info, warn};
 use walkdir::WalkDir;
 
@@ -10,7 +13,7 @@ use crate::config::{Config, EncryptedParams};
 use crate::crypto;
 use crate::error::Result;
 
-type CryptoFn = fn(&str, &str, &[u8], &str, &str, bool) -> crate::error::Result<String>;
+type CryptoFn = fn(&str, &str, &[u8], &str, &str, bool) -> Result<String>;
 
 /// 提取 encrypt/decrypt 共享的加密配置参数，执行文件扫描和流式处理。
 ///
@@ -31,7 +34,7 @@ fn crypto_process<P: AsRef<Path>>(
     let enabled = config
         .encrypted
         .as_ref()
-        .is_some_and(|it| it.enable.is_some_and(std::convert::identity));
+        .is_some_and(|it| it.enable.is_some_and(identity));
 
     if !enabled {
         warn!("pack is not enable encrypted");
@@ -74,7 +77,7 @@ fn crypto_process<P: AsRef<Path>>(
         })
         .filter(|entry| {
             let a = entry.path();
-            binaryornot::is_binary(a).is_ok_and(Not::not)
+            is_binary(a).is_ok_and(Not::not)
         })
         .collect();
 
@@ -84,7 +87,7 @@ fn crypto_process<P: AsRef<Path>>(
     debug!("{op_name} paths {files:?}");
     for file in &files {
         let path = file.path();
-        let Ok(content) = std::fs::read_to_string(path) else {
+        let Ok(content) = fs::read_to_string(path) else {
             warn!("{} contains not invalid utf-8", path.display());
             continue;
         };
@@ -107,7 +110,7 @@ fn crypto_process<P: AsRef<Path>>(
             info!("would {op_name}: {}", path.display());
         } else {
             info!("{op_name} {}", path.display());
-            std::fs::write(path, processed).with_context(|| {
+            fs::write(path, processed).with_context(|| {
                 format!(
                     "{pack_name}: failed to write {content_label} to path={}",
                     path.display()

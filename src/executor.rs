@@ -1,8 +1,8 @@
+use std::fs;
 use std::ops::Deref;
+use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::sync::Arc;
-
-use log::{debug, info, warn};
 
 use crate::action::{Action, ActionPlan};
 use crate::config::Config;
@@ -10,6 +10,9 @@ use crate::crypto;
 use crate::error::Result;
 use crate::symlink::Symlink;
 use crate::util;
+use anyhow::{anyhow, bail};
+use binaryornot::is_binary;
+use log::{debug, info, warn};
 
 // TODO: 等 RFC 3955 (Named Fn trait parameters) 稳定后，
 // 可以在闭包签名中直接用 `dry_run: bool` 命名参数替代此类型别名。
@@ -30,7 +33,7 @@ where
     let global = common_config
         .deref()
         .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("global config not loaded"))?;
+        .ok_or_else(|| anyhow!("global config not loaded"))?;
     let mut errors = Vec::new();
     for pack in packs {
         let config = match Config::for_pack(pack.as_ref(), global, None, false) {
@@ -54,12 +57,12 @@ where
     if errors.is_empty() {
         Ok(())
     } else {
-        Err(anyhow::anyhow!(
+        Err(anyhow!(
             "{} pack(s) failed:\n{}",
             errors.len(),
             errors
                 .iter()
-                .map(std::string::ToString::to_string)
+                .map(ToString::to_string)
                 .collect::<Vec<_>>()
                 .join("\n")
         ))
@@ -81,7 +84,7 @@ pub fn execute_plan(plan: &ActionPlan, dry_run: bool) -> Result<()> {
                 details.push(format!("  {} ({})", dst.display(), reason));
             }
         }
-        anyhow::bail!(
+        bail!(
             "{} conflict(s) detected — resolve before executing:\n{}",
             details.len(),
             details.join("\n")
@@ -117,10 +120,10 @@ fn execute_action(action: &Action) -> Result<()> {
             };
             symlink.remove()
         }
-        Action::CreateDir(path) => std::fs::create_dir_all(path)
-            .map_err(|e| anyhow::anyhow!("Failed to create directory {}: {e}", path.display())),
+        Action::CreateDir(path) => fs::create_dir_all(path)
+            .map_err(|e| anyhow!("Failed to create directory {}: {e}", path.display())),
         Action::Conflict { dst, reason } => {
-            anyhow::bail!(
+            bail!(
                 "Unexpected conflict reached execution phase: {} ({})",
                 dst.display(),
                 reason
@@ -135,18 +138,17 @@ fn execute_action(action: &Action) -> Result<()> {
             right_boundary,
         } => {
             // 二进制文件跳过加解密，创建从解密路径到原文件的软链接（与 crypto_process 行为一致）
-            if binaryornot::is_binary(src).unwrap_or(true) {
+            if is_binary(src).unwrap_or(true) {
                 warn!(
                     "{} is binary file, symlinking without decryption",
                     src.display()
                 );
                 if let Some(parent) = to.parent() {
-                    std::fs::create_dir_all(parent).map_err(|e| {
-                        anyhow::anyhow!("Failed to create decrypt target directory: {e}")
-                    })?;
+                    fs::create_dir_all(parent)
+                        .map_err(|e| anyhow!("Failed to create decrypt target directory: {e}"))?;
                 }
-                return std::os::unix::fs::symlink(src, to).map_err(|e| {
-                    anyhow::anyhow!(
+                return symlink(src, to).map_err(|e| {
+                    anyhow!(
                         "Failed to symlink binary file {} -> {}: {e}",
                         src.display(),
                         to.display()
@@ -154,52 +156,49 @@ fn execute_action(action: &Action) -> Result<()> {
                 });
             }
 
-            let content = std::fs::read_to_string(src).map_err(|e| {
-                anyhow::anyhow!("Failed to read file for decryption {}: {e}", src.display())
+            let content = fs::read_to_string(src).map_err(|e| {
+                anyhow!("Failed to read file for decryption {}: {e}", src.display())
             })?;
 
             let decrypted =
                 crypto::decrypt_inline(&content, alg, key, left_boundary, right_boundary, true)?;
 
             if let Some(parent) = to.parent() {
-                std::fs::create_dir_all(parent).map_err(|e| {
-                    anyhow::anyhow!("Failed to create decrypt target directory: {e}")
-                })?;
+                fs::create_dir_all(parent)
+                    .map_err(|e| anyhow!("Failed to create decrypt target directory: {e}"))?;
             }
-            std::fs::write(to, decrypted).map_err(|e| {
-                anyhow::anyhow!("Failed to write decrypted file {}: {e}", to.display())
-            })
+            fs::write(to, decrypted)
+                .map_err(|e| anyhow!("Failed to write decrypted file {}: {e}", to.display()))
         }
         Action::RemoveDir { path, .. } => {
             if path.try_exists()? {
-                std::fs::remove_dir_all(path).map_err(|e| {
-                    anyhow::anyhow!("Failed to clean decrypted dir {}: {e}", path.display())
-                })
+                fs::remove_dir_all(path)
+                    .map_err(|e| anyhow!("Failed to clean decrypted dir {}: {e}", path.display()))
             } else {
                 Ok(())
             }
         }
         Action::RemoveFile { path, .. } => {
             if path.try_exists()? {
-                std::fs::remove_file(path)
-                    .map_err(|e| anyhow::anyhow!("Failed to remove file {}: {e}", path.display()))
+                fs::remove_file(path)
+                    .map_err(|e| anyhow!("Failed to remove file {}: {e}", path.display()))
             } else {
                 Ok(())
             }
         }
         Action::WriteTrackFile { path, track } => {
             if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent).map_err(|e| {
-                    anyhow::anyhow!(
+                fs::create_dir_all(parent).map_err(|e| {
+                    anyhow!(
                         "Failed to create track file parent {}: {e}",
                         parent.display()
                     )
                 })?;
             }
             let content = toml::to_string_pretty(track)
-                .map_err(|e| anyhow::anyhow!("Failed to serialize track file: {e}"))?;
-            std::fs::write(path, &content)
-                .map_err(|e| anyhow::anyhow!("Failed to write track file {}: {e}", path.display()))
+                .map_err(|e| anyhow!("Failed to serialize track file: {e}"))?;
+            fs::write(path, &content)
+                .map_err(|e| anyhow!("Failed to write track file {}: {e}", path.display()))
         }
     }
 }

@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::action::{Action, ActionPlan};
-use crate::symlink::SymlinkMode;
+use crate::symlink::{Symlink, SymlinkMode};
 use crate::track_file::Track;
 
 use super::{VNode, VNodeKind};
@@ -106,7 +106,7 @@ pub fn plan_remove(track: &Track, target_tree: &mut VNode, state_dir: Option<&Pa
 }
 
 /// 判断 track 中的链接记录与文件系统实际节点是否一致。
-fn is_consistent(link: &crate::symlink::Symlink, node: &VNode) -> bool {
+fn is_consistent(link: &Symlink, node: &VNode) -> bool {
     match (&link.mode, &node.kind) {
         (SymlinkMode::Symlink, VNodeKind::Symlink { target }) => target == &link.src,
         (SymlinkMode::Copy, VNodeKind::File) => true,
@@ -115,7 +115,7 @@ fn is_consistent(link: &crate::symlink::Symlink, node: &VNode) -> bool {
 }
 
 /// 生成一致性检查失败的原因描述。
-fn consistency_failure_reason(link: &crate::symlink::Symlink, node: &VNode) -> String {
+fn consistency_failure_reason(link: &Symlink, node: &VNode) -> String {
     match (&link.mode, &node.kind) {
         (SymlinkMode::Symlink, VNodeKind::Symlink { target }) => {
             format!(

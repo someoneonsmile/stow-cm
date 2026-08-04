@@ -9,6 +9,8 @@ use crate::error::Result;
 use crate::symlink::SymlinkMode;
 use crate::track_file::Track;
 
+use super::install::plan_install;
+use super::remove::plan_remove;
 use super::{PlanOption, VNode};
 
 /// 为 reload 操作生成合并后的移除+安装计划。
@@ -30,7 +32,7 @@ pub fn plan_reload(
     track: &Track,
     options: &PlanOption,
 ) -> Result<ActionPlan> {
-    let remove_plan = super::remove::plan_remove(track, remove_target, None);
+    let remove_plan = plan_remove(track, remove_target, None);
 
     // 移除阶段有冲突时跳过安装，executor 会因冲突终止整个 reload
     if remove_plan.has_conflicts() {
@@ -40,10 +42,10 @@ pub fn plan_reload(
     // install_target 为 None 时表示与 remove 同一棵树 → 使用清理后的版本，
     // 但需先将 remove 阶段留下的 ShallowDir 按 pack 树展开为完整 Dir 节点
     let install_plan = if let Some(install_tree) = install_target {
-        super::install::plan_install(pack_tree, install_tree, options)?
+        plan_install(pack_tree, install_tree, options)?
     } else {
         remove_target.expand_shallow(pack_tree)?;
-        super::install::plan_install(pack_tree, remove_target, options)?
+        plan_install(pack_tree, remove_target, options)?
     };
 
     let track_mode = track.symlink_mode.as_ref().unwrap_or(&SymlinkMode::Symlink);

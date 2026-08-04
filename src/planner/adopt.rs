@@ -5,6 +5,7 @@
 use crate::action::{ActionPlan, PlanStats};
 use crate::error::Result;
 
+use super::install::plan_install;
 use super::{PlanOption, VNode};
 
 /// 为 adopt（反向接管）生成文件移动计划。
@@ -19,7 +20,7 @@ pub fn plan_adopt(
     pack_tree: &mut VNode,
     options: &PlanOption,
 ) -> Result<ActionPlan> {
-    let install_plan = super::install::plan_install(source_tree, pack_tree, options)?;
+    let install_plan = plan_install(source_tree, pack_tree, options)?;
 
     Ok(ActionPlan {
         stats: PlanStats {

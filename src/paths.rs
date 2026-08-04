@@ -1,15 +1,17 @@
 use std::path::PathBuf;
 
+use dirs::{config_dir, home_dir, state_dir};
+
 use crate::constants::TRACK_FILE_NAME;
 
 fn config_home() -> PathBuf {
-    dirs::config_dir()
-        .or_else(|| dirs::home_dir().map(|h| h.join(".config")))
+    config_dir()
+        .or_else(|| home_dir().map(|h| h.join(".config")))
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
 fn state_home() -> PathBuf {
-    dirs::state_dir().unwrap_or_default()
+    state_dir().unwrap_or_default()
 }
 
 /// 全局 XDG 用户配置文件完整路径（运行时解析）

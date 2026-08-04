@@ -1,8 +1,7 @@
 use std::collections::BTreeMap;
+use std::fs;
+use std::ops::Not;
 use std::path::{Path, PathBuf};
-
-use log::{info, warn};
-use serde::Serialize;
 
 use crate::command::resolve_track_file;
 use crate::config::Config;
@@ -12,6 +11,8 @@ use crate::paths::stow_cm_state_dir;
 use crate::symlink::{Symlink, SymlinkMode};
 use crate::track_file::Track;
 use crate::util;
+use log::{info, warn};
+use serde::Serialize;
 
 /// 链接状态枚举，按严重程度升序排列（OK < MISSING/DANGLING < OVERWRITTEN/DRIFT）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -44,13 +45,13 @@ struct LinkEntry {
     src: String,
     dst: String,
     mode: String,
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[serde(skip_serializing_if = "Not::not")]
     fixed: bool,
 }
 
 /// 检查单个链接的实际状态
 fn check_symlink(link: &Symlink) -> LinkStatus {
-    let metadata = std::fs::symlink_metadata(&link.dst);
+    let metadata = fs::symlink_metadata(&link.dst);
     match metadata {
         Err(_) => LinkStatus::Missing,
         Ok(meta) => match link.mode {
@@ -58,13 +59,13 @@ fn check_symlink(link: &Symlink) -> LinkStatus {
                 if !meta.file_type().is_symlink() {
                     return LinkStatus::Overwritten;
                 }
-                let Ok(target) = std::fs::read_link(&link.dst) else {
+                let Ok(target) = fs::read_link(&link.dst) else {
                     return LinkStatus::Missing;
                 };
                 if target != link.src {
                     return LinkStatus::Drift;
                 }
-                match std::fs::symlink_metadata(&link.src) {
+                match fs::symlink_metadata(&link.src) {
                     Ok(_) => LinkStatus::Ok,
                     Err(_) => LinkStatus::Dangling,
                 }
@@ -73,7 +74,7 @@ fn check_symlink(link: &Symlink) -> LinkStatus {
                 if !meta.file_type().is_file() && !meta.file_type().is_symlink() {
                     return LinkStatus::Overwritten;
                 }
-                match std::fs::metadata(&link.src) {
+                match fs::metadata(&link.src) {
                     Ok(_) => LinkStatus::Ok,
                     Err(_) => LinkStatus::Dangling,
                 }
@@ -123,7 +124,7 @@ fn check_pack_links(pack_name: &str, track: &Track, fix: bool) -> Vec<LinkEntry>
 
 /// 从 track.toml 路径解析 pack 名称和 Track 记录
 fn read_track_from_path(track_path: &Path) -> Option<(String, Track)> {
-    let content = std::fs::read_to_string(track_path).ok()?;
+    let content = fs::read_to_string(track_path).ok()?;
     let track: Track = toml::from_str(&content).ok()?;
     let pack_name = track.pack_name.clone().unwrap_or_else(|| {
         track
@@ -156,7 +157,7 @@ fn status_all(fix: bool, json: bool) -> Result<()> {
     }
 
     let mut all_entries: Vec<LinkEntry> = Vec::new();
-    for entry in std::fs::read_dir(&state_dir)? {
+    for entry in fs::read_dir(&state_dir)? {
         let entry = entry?;
         let entry_path = entry.path();
         if !entry_path.is_dir() {
@@ -199,7 +200,7 @@ fn status_packs(global_config: &Config, paths: Vec<PathBuf>, fix: bool, json: bo
             continue;
         }
 
-        let content = std::fs::read_to_string(&track_file)?;
+        let content = fs::read_to_string(&track_file)?;
         let track: Track = toml::from_str(&content)?;
         let entries = check_pack_links(&pack_name, &track, fix);
         all_entries.extend(entries);

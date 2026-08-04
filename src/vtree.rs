@@ -4,6 +4,11 @@
 //! 支持递归扫描、路径查找、节点移除等操作。
 //! 该模块是虚拟树差异管线（diff pipeline）的基础。
 
+use std::collections::HashSet;
+use std::ffi::OsString;
+use std::fs::{self, DirEntry};
+use std::io::ErrorKind;
+use std::mem;
 use std::path::{Path, PathBuf};
 
 use anyhow::Context;
@@ -50,9 +55,9 @@ impl VNode {
     /// 如果 `root` 路径不存在，返回一个空的 Dir 节点。
     /// 如果 `root` 存在，委托给 [`scan_recursive`] 进行递归扫描。
     pub fn scan(root: &Path, follow_symlinks: bool) -> Result<VNode> {
-        match std::fs::symlink_metadata(root) {
+        match fs::symlink_metadata(root) {
             Ok(_) => scan_recursive(root, &PathBuf::new(), follow_symlinks),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(VNode {
+            Err(e) if e.kind() == ErrorKind::NotFound => Ok(VNode {
                 rel_path: PathBuf::new(),
                 abs_path: root.to_path_buf(),
                 kind: VNodeKind::Dir,
@@ -76,11 +81,11 @@ impl VNode {
         guide_tree: &VNode,
         follow_symlinks: bool,
     ) -> Result<VNode> {
-        match std::fs::symlink_metadata(target_root) {
+        match fs::symlink_metadata(target_root) {
             Ok(_) => {
                 scan_guided_recursive(target_root, &PathBuf::new(), guide_tree, follow_symlinks)
             }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(VNode {
+            Err(e) if e.kind() == ErrorKind::NotFound => Ok(VNode {
                 rel_path: PathBuf::new(),
                 abs_path: target_root.to_path_buf(),
                 kind: VNodeKind::Dir,
@@ -225,7 +230,7 @@ impl VNode {
     ///
     /// `Dir` 节点会递归展开其子节点，`File`/`Symlink` 保持不变。
     pub fn expand_shallow(&mut self, guide: &VNode) -> Result<()> {
-        let children = std::mem::take(&mut self.children);
+        let children = mem::take(&mut self.children);
         for mut child in children {
             if matches!(child.kind, VNodeKind::ShallowDir) {
                 if let Some(guide_child) = guide
@@ -337,11 +342,11 @@ fn insert_leaf_path(parent: &mut VNode, rel_path: &Path) {
 
 /// 递归扫描单个路径，构建 `VNode` 子树。
 ///
-/// 使用 `std::fs::symlink_metadata` 而非 `std::fs::metadata`
+/// 使用 `fs::symlink_metadata` 而非 `fs::metadata`
 /// 以避免 TOCTOU 竞态条件。符号链接在未启用 `follow_symlinks` 时
 /// 不会被跟随。
 fn scan_recursive(abs_path: &Path, rel_path: &Path, follow_symlinks: bool) -> Result<VNode> {
-    let meta = std::fs::symlink_metadata(abs_path)
+    let meta = fs::symlink_metadata(abs_path)
         .with_context(|| format!("Failed to read file metadata: {}", abs_path.display()))?;
 
     let ft = meta.file_type();
@@ -349,7 +354,7 @@ fn scan_recursive(abs_path: &Path, rel_path: &Path, follow_symlinks: bool) -> Re
     // ── 符号链接处理 ──
     if ft.is_symlink() {
         if !follow_symlinks {
-            let target = std::fs::read_link(abs_path)
+            let target = fs::read_link(abs_path)
                 .with_context(|| format!("Failed to read symlink: {}", abs_path.display()))?;
             return Ok(VNode {
                 rel_path: rel_path.to_path_buf(),
@@ -360,7 +365,7 @@ fn scan_recursive(abs_path: &Path, rel_path: &Path, follow_symlinks: bool) -> Re
         }
 
         // 跟随符号链接：使用 metadata 获取目标文件属性
-        let resolved = std::fs::metadata(abs_path)
+        let resolved = fs::metadata(abs_path)
             .with_context(|| format!("Failed to resolve symlink target: {}", abs_path.display()))?;
         if resolved.is_dir() {
             return scan_dir_children(abs_path, rel_path, follow_symlinks);
@@ -396,13 +401,13 @@ fn scan_recursive(abs_path: &Path, rel_path: &Path, follow_symlinks: bool) -> Re
 fn scan_dir_children(abs_path: &Path, rel_path: &Path, follow_symlinks: bool) -> Result<VNode> {
     let mut children = Vec::new();
 
-    let mut entries: Vec<_> = std::fs::read_dir(abs_path)
+    let mut entries: Vec<_> = fs::read_dir(abs_path)
         .with_context(|| format!("Failed to read directory: {}", abs_path.display()))?
-        .filter_map(std::result::Result::ok)
+        .filter_map(Result::ok)
         .collect();
 
     // 按文件名排序以保证确定性输出
-    entries.sort_by_key(std::fs::DirEntry::file_name);
+    entries.sort_by_key(DirEntry::file_name);
 
     for entry in entries {
         let child_abs = entry.path();
@@ -410,10 +415,10 @@ fn scan_dir_children(abs_path: &Path, rel_path: &Path, follow_symlinks: bool) ->
 
         // 检查子条目是否为符号链接（不跟随的情况）
         if !follow_symlinks
-            && let Ok(child_meta) = std::fs::symlink_metadata(&child_abs)
+            && let Ok(child_meta) = fs::symlink_metadata(&child_abs)
             && child_meta.file_type().is_symlink()
         {
-            let target = std::fs::read_link(&child_abs).with_context(|| {
+            let target = fs::read_link(&child_abs).with_context(|| {
                 format!("Failed to read child symlink: {}", child_abs.display())
             })?;
             children.push(VNode {
@@ -446,14 +451,14 @@ fn scan_guided_recursive(
     guide_node: &VNode,
     follow_symlinks: bool,
 ) -> Result<VNode> {
-    let meta = std::fs::symlink_metadata(abs_path)
+    let meta = fs::symlink_metadata(abs_path)
         .with_context(|| format!("Failed to read file metadata: {}", abs_path.display()))?;
 
     let ft = meta.file_type();
 
     if ft.is_symlink() {
         if !follow_symlinks {
-            let target = std::fs::read_link(abs_path)
+            let target = fs::read_link(abs_path)
                 .with_context(|| format!("Failed to read symlink: {}", abs_path.display()))?;
             return Ok(VNode {
                 rel_path: rel_path.to_path_buf(),
@@ -463,7 +468,7 @@ fn scan_guided_recursive(
             });
         }
 
-        let resolved = std::fs::metadata(abs_path)
+        let resolved = fs::metadata(abs_path)
             .with_context(|| format!("Failed to resolve symlink target: {}", abs_path.display()))?;
         if resolved.is_dir() {
             return scan_guided_dir_children(abs_path, rel_path, guide_node, follow_symlinks);
@@ -496,10 +501,8 @@ fn scan_guided_dir_children(
     guide_node: &VNode,
     follow_symlinks: bool,
 ) -> Result<VNode> {
-    use std::collections::HashSet;
-
     // 从 guide 中提取关心的目录名集合（仅目录，文件/链接不影响递归决策）
-    let guide_dirs: HashSet<std::ffi::OsString> = guide_node
+    let guide_dirs: HashSet<OsString> = guide_node
         .children
         .iter()
         .filter(|c| c.is_dir())
@@ -508,12 +511,12 @@ fn scan_guided_dir_children(
 
     let mut children = Vec::new();
 
-    let mut entries: Vec<_> = std::fs::read_dir(abs_path)
+    let mut entries: Vec<_> = fs::read_dir(abs_path)
         .with_context(|| format!("Failed to read directory: {}", abs_path.display()))?
-        .filter_map(std::result::Result::ok)
+        .filter_map(Result::ok)
         .collect();
 
-    entries.sort_by_key(std::fs::DirEntry::file_name);
+    entries.sort_by_key(DirEntry::file_name);
 
     for entry in entries {
         let child_abs = entry.path();
@@ -521,10 +524,10 @@ fn scan_guided_dir_children(
 
         // 符号链接处理（与 scan_dir_children 一致）
         if !follow_symlinks
-            && let Ok(child_meta) = std::fs::symlink_metadata(&child_abs)
+            && let Ok(child_meta) = fs::symlink_metadata(&child_abs)
             && child_meta.file_type().is_symlink()
         {
-            let target = std::fs::read_link(&child_abs).with_context(|| {
+            let target = fs::read_link(&child_abs).with_context(|| {
                 format!("Failed to read child symlink: {}", child_abs.display())
             })?;
             children.push(VNode {
@@ -536,7 +539,7 @@ fn scan_guided_dir_children(
             continue;
         }
 
-        let child_meta = std::fs::symlink_metadata(&child_abs)?;
+        let child_meta = fs::symlink_metadata(&child_abs)?;
 
         if child_meta.is_dir() {
             if guide_dirs.contains(&child_rel) {

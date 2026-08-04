@@ -1,11 +1,16 @@
 use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
-use std::env::VarError;
-use std::path::{Path, PathBuf};
+use std::env::{self, VarError};
+use std::ffi::OsStr;
+use std::fs;
+use std::os::unix::fs::symlink;
+use std::path::{Path, PathBuf, absolute};
 
 use anyhow::Context;
+use hex::encode as hex_encode;
+use same_file::is_same_file;
 use sha3::{Digest, Sha3_256};
-use shellexpand::LookupError;
+use shellexpand::{self, LookupError, env_with_context, full, tilde};
 use walkdir::WalkDir;
 
 use crate::error::{Result, anyhow};
@@ -16,9 +21,7 @@ pub fn shell_expand_full<P: AsRef<Path>>(path: P) -> Result<PathBuf> {
         .as_ref()
         .to_str()
         .ok_or_else(|| anyhow!("path error"))?;
-    Ok(PathBuf::from(
-        shellexpand::tilde(shellexpand::full(path)?.as_ref()).as_ref(),
-    ))
+    Ok(PathBuf::from(tilde(full(path)?.as_ref()).as_ref()))
 }
 
 pub fn shell_expand_full_with_context<P, C, S>(path: P, context: C) -> Result<PathBuf>
@@ -32,12 +35,10 @@ where
         .to_str()
         .ok_or_else(|| anyhow!("path error"))?;
     Ok(PathBuf::from(
-        shellexpand::tilde(
-            shellexpand::env_with_context(path, |key| {
+        tilde(
+            env_with_context(path, |key| {
                 std::result::Result::<Option<String>, LookupError<VarError>>::Ok(
-                    context(key)
-                        .map(std::convert::Into::into)
-                        .or_else(|| std::env::var(key).ok()),
+                    context(key).map(Into::into).or_else(|| env::var(key).ok()),
                 )
             })?
             .as_ref(),
@@ -48,13 +49,13 @@ where
 
 /// expand the dir and symlink the subpath under the dir
 pub fn expand_symlink_dir(expand_symlink: impl AsRef<Path>) -> Result<()> {
-    let sub_paths = std::fs::read_dir(&expand_symlink)?;
-    let point_to = std::fs::read_link(&expand_symlink)?;
-    std::fs::remove_file(&expand_symlink)?;
-    std::fs::create_dir_all(&expand_symlink)?;
+    let sub_paths = fs::read_dir(&expand_symlink)?;
+    let point_to = fs::read_link(&expand_symlink)?;
+    fs::remove_file(&expand_symlink)?;
+    fs::create_dir_all(&expand_symlink)?;
     for sub_path in sub_paths {
         let sub_path = sub_path?;
-        std::os::unix::fs::symlink(
+        symlink(
             // TODO: change_base_path
             point_to.join(sub_path.path().strip_prefix(&expand_symlink)?),
             sub_path.path(),
@@ -68,7 +69,7 @@ pub fn expand_symlink_dir(expand_symlink: impl AsRef<Path>) -> Result<()> {
 pub fn is_empty_dir(path: impl AsRef<Path>) -> bool {
     !path.as_ref().exists()
         || (path.as_ref().is_dir()
-            && walkdir::WalkDir::new(path)
+            && WalkDir::new(path)
                 .follow_links(true)
                 .into_iter()
                 .filter_entry(|e| e.file_type().is_file())
@@ -86,11 +87,11 @@ pub fn find_prefix_symlink(
         for entry in WalkDir::new(dir_path)
             .follow_links(false)
             .into_iter()
-            .filter_map(std::result::Result::ok)
+            .filter_map(Result::ok)
         {
             let path = entry.into_path();
             if path.is_symlink() {
-                let point_to = std::fs::read_link(&path)?;
+                let point_to = fs::read_link(&path)?;
                 if point_to.starts_with(&link_prefix) {
                     paths.push(Symlink {
                         src: point_to,
@@ -224,16 +225,16 @@ where
 #[inline]
 pub fn pack_name(pack: &Path) -> Result<String> {
     // 快速路径：直接从路径提取
-    if let Some(name) = pack.file_name().and_then(std::ffi::OsStr::to_str) {
+    if let Some(name) = pack.file_name().and_then(OsStr::to_str) {
         return Ok(name.to_owned());
     }
     // 回退：对 ".", "./", "..", "../" 等特殊路径，先解析再提取
-    let resolved = std::fs::canonicalize(pack).or_else(|_| std::path::absolute(pack));
+    let resolved = fs::canonicalize(pack).or_else(|_| absolute(pack));
     let resolved =
         resolved.map_err(|e| anyhow!("failed to resolve path '{}': {e}", pack.display()))?;
     resolved
         .file_name()
-        .and_then(std::ffi::OsStr::to_str)
+        .and_then(OsStr::to_str)
         .map(String::from)
         .ok_or_else(|| anyhow!("path error: {}", pack.display()))
 }
@@ -244,16 +245,14 @@ pub fn pack_name(pack: &Path) -> Result<String> {
 /// 无需路径规范化或解析符号链接。
 #[must_use]
 pub fn same_file(a: &Path, b: &Path) -> bool {
-    same_file::is_same_file(a, b).unwrap_or(false)
+    is_same_file(a, b).unwrap_or(false)
 }
 
 #[inline]
 pub fn canonicalize(paths: Vec<PathBuf>) -> Result<Vec<PathBuf>> {
     paths
         .into_iter()
-        .map(|path| {
-            std::fs::canonicalize(&path).with_context(|| format!("path: {}", path.display()))
-        })
+        .map(|path| fs::canonicalize(&path).with_context(|| format!("path: {}", path.display())))
         .collect()
 }
 
@@ -265,7 +264,7 @@ pub fn hash(content: &str) -> String {
     let result = hasher.finalize();
     // format!("{result:x}")
     // result.iter().map(|b| format!("{:02x}", b)).collect::<String>()
-    hex::encode(result)
+    hex_encode(result)
 }
 
 thread_local! {

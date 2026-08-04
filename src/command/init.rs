@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::fmt::Write;
+use std::fs;
 use std::path::Path;
 
 use anyhow::{anyhow, bail};
@@ -51,7 +52,7 @@ pub fn init(pack_path: &Path, global: Option<&Config>, use_defaults: bool) -> Re
 
     if use_defaults {
         let global = global.ok_or_else(|| anyhow!("global config not loaded"))?;
-        std::fs::create_dir_all(pack_path).map_err(|e| {
+        fs::create_dir_all(pack_path).map_err(|e| {
             anyhow!(
                 "{default_name}: failed to create directory '{}': {e}",
                 pack_path.display()
@@ -66,7 +67,7 @@ pub fn init(pack_path: &Path, global: Option<&Config>, use_defaults: bool) -> Re
         let global = global.ok_or_else(|| anyhow!("global config not loaded"))?;
         let gathered = gather_interactive(global, pack_path, &default_name)?;
 
-        std::fs::create_dir_all(pack_path).map_err(|e| {
+        fs::create_dir_all(pack_path).map_err(|e| {
             anyhow!(
                 "{}: failed to create directory '{}': {e}",
                 gathered.pack_name,
@@ -141,7 +142,7 @@ pub(crate) fn write_default_config(
             .replace("__TARGET__", &resolved_target)
     };
 
-    std::fs::write(config_path, &content)
+    fs::write(config_path, &content)
         .map_err(|e| anyhow!("{pack_name}: failed to write {CONFIG_FILE_NAME}: {e}"))?;
     Ok(())
 }
@@ -282,7 +283,7 @@ fn write_config(config_path: &Path, meta: &PackMeta<'_>) -> Result<()> {
     };
     content.push_str(&template);
 
-    std::fs::write(config_path, &content).map_err(|e| {
+    fs::write(config_path, &content).map_err(|e| {
         anyhow!(
             "{}: failed to write {CONFIG_FILE_NAME}: {e}",
             meta.pack_name

@@ -7,7 +7,8 @@ use std::path::Path;
 
 use crate::action::{Action, ActionPlan, PlanStats};
 use crate::error::Result;
-use crate::symlink::SymlinkMode;
+use crate::symlink::{Symlink, SymlinkMode};
+use crate::track_file::Track;
 use crate::util;
 
 use super::{ChildrenPlan, PlanOption, VNode, VNodeKind};
@@ -73,11 +74,11 @@ pub fn plan_install(
 
     // 注入 track file 写入
     if let Some(tw) = &options.track_write {
-        let symlinks: Vec<crate::symlink::Symlink> = plan
+        let symlinks: Vec<Symlink> = plan
             .actions
             .iter()
             .filter_map(|a| match a {
-                Action::CreateLink { src, dst, mode } => Some(crate::symlink::Symlink {
+                Action::CreateLink { src, dst, mode } => Some(Symlink {
                     src: src.clone(),
                     dst: dst.clone(),
                     mode: mode.clone(),
@@ -88,7 +89,7 @@ pub fn plan_install(
 
         plan.actions.push(Action::WriteTrackFile {
             path: tw.track_file.clone(),
-            track: crate::track_file::Track {
+            track: Track {
                 decrypted_path: options.decrypt.as_ref().map(|d| d.decrypted_path.clone()),
                 encrypted: tw.encrypted,
                 links: symlinks,

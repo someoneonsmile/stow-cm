@@ -4,11 +4,12 @@ use std::ffi::OsStr;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
+use std::process::{Command as StdCommand, Stdio};
 
 use anyhow::{Context, anyhow, bail};
 use maplit::hashmap;
-use merge::option::with_recurse_strategy;
+use merge::option::{overwrite_none, recurse, with_recurse_strategy};
+use merge::vec::append;
 use regex::RegexSet;
 use serde::{Deserialize, Serialize};
 use stow_cm_macros::Finalize;
@@ -28,7 +29,7 @@ use crate::util;
 
 /// pack config
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Merge, Finalize)]
-#[merge(strategy = merge::option::overwrite_none)]
+#[merge(strategy = overwrite_none)]
 pub struct Config {
     /// 自定义包名，取代目录名作为 `PACK_NAME` 的值
     #[finalize(skip)]
@@ -43,12 +44,12 @@ pub struct Config {
     pub target: Option<PathBuf>,
 
     /// ignore file regx
-    #[merge(strategy = with_recurse_strategy(merge::vec::append))]
+    #[merge(strategy = with_recurse_strategy(append))]
     pub ignore: Option<Vec<String>>,
 
     /// override file regx
     #[serde(rename = "override")]
-    #[merge(strategy = with_recurse_strategy(merge::vec::append))]
+    #[merge(strategy = with_recurse_strategy(append))]
     pub over: Option<Vec<String>>,
 
     /// force override
@@ -69,7 +70,7 @@ pub struct Config {
 
 /// encrypted config
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Merge, Finalize)]
-#[merge(strategy = merge::option::overwrite_none)]
+#[merge(strategy = overwrite_none)]
 pub struct EncryptedConfig {
     /// enable default to false
     #[finalize(skip)]
@@ -134,8 +135,8 @@ impl Config {
     pub fn global() -> Result<Config> {
         let global_config = Config::from_path(global_config_path())?;
         let mut global_xdg_config = Config::from_path(global_xdg_config_path())?;
-        merge::option::recurse(&mut global_xdg_config, global_config);
-        merge::option::recurse(&mut global_xdg_config, Some(Config::default()));
+        recurse(&mut global_xdg_config, global_config);
+        recurse(&mut global_xdg_config, Some(Config::default()));
         global_xdg_config.ok_or_else(|| anyhow!("failed to load global config"))
     }
 
@@ -207,7 +208,7 @@ impl Config {
     }
 
     /// 从 `self.ignore` 构造 `RegexSet`，消除 `command.rs` 和 `crypto_process` 中的重复构造逻辑。
-    pub fn ignore_regex(&self) -> crate::error::Result<Option<RegexSet>> {
+    pub fn ignore_regex(&self) -> Result<Option<RegexSet>> {
         self.ignore
             .as_ref()
             .map(RegexSet::new)
@@ -216,7 +217,7 @@ impl Config {
     }
 
     /// 从 `self.over` 构造 `RegexSet`，消除 `command.rs` 中的重复构造逻辑。
-    pub fn over_regex(&self) -> crate::error::Result<Option<RegexSet>> {
+    pub fn over_regex(&self) -> Result<Option<RegexSet>> {
         self.over
             .as_ref()
             .map(RegexSet::new)
@@ -254,34 +255,34 @@ impl Command {
         V: AsRef<OsStr>,
     {
         let mut command = match self {
-            Self::Bin(path) => std::process::Command::new(path.as_os_str()),
+            Self::Bin(path) => StdCommand::new(path.as_os_str()),
 
             Self::Make(path) => {
-                let mut c = std::process::Command::new("make");
+                let mut c = StdCommand::new("make");
                 c.arg(path.as_os_str());
                 c
             }
 
             Self::Shell(path) => {
-                let mut c = std::process::Command::new("sh");
+                let mut c = StdCommand::new("sh");
                 c.arg(path.as_os_str());
                 c
             }
 
             Self::Python(path) => {
-                let mut c = std::process::Command::new("python");
+                let mut c = StdCommand::new("python");
                 c.arg(path.as_os_str());
                 c
             }
 
             Self::Lua(path) => {
-                let mut c = std::process::Command::new("lua");
+                let mut c = StdCommand::new("lua");
                 c.arg(path.as_os_str());
                 c
             }
 
             Self::ShellStr(content) => {
-                let mut c = std::process::Command::new("sh");
+                let mut c = StdCommand::new("sh");
                 c.current_dir(&wd);
                 c.envs(envs.clone());
                 c.stdin(Stdio::piped());
@@ -311,7 +312,7 @@ impl EncryptedConfig {
         if !key_path.try_exists()? {
             bail!("{pack_name}: key_path not exist");
         }
-        let key_base64 = std::fs::read_to_string(key_path).with_context(|| {
+        let key_base64 = fs::read_to_string(key_path).with_context(|| {
             format!(
                 "{pack_name}: failed to read from key_path={}",
                 key_path.display()

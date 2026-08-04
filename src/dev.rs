@@ -1,5 +1,5 @@
 #![allow(unused)]
-use std::fmt::Display;
+use std::fmt;
 
 use anyhow::Context;
 
@@ -28,8 +28,8 @@ pub struct Location {
     column: u32,
 }
 
-impl Display for Location {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for Location {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!(
             "at {} line {} column {}",
             self.file, self.line, self.column
@@ -43,7 +43,7 @@ pub trait ErrorLocation<T> {
 
 impl<T, E> ErrorLocation<T> for Result<T, E>
 where
-    E: Display,
+    E: fmt::Display,
     Result<T, E>: Context<T, E>,
 {
     fn location(self, loc: &Location) -> Result<T> {

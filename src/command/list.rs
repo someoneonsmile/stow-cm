@@ -1,13 +1,15 @@
+use std::collections::HashSet;
 use std::env;
-
-use log::debug;
-use serde::Serialize;
+use std::fs;
 
 use crate::constants::TRACK_FILE_NAME;
 use crate::error::Result;
 use crate::paths::stow_cm_state_dir;
 use crate::symlink::SymlinkMode;
 use crate::track_file::Track;
+use dirs::home_dir;
+use log::debug;
+use serde::Serialize;
 
 /// list 输出的单行记录（同时用于 JSON 序列化）
 #[derive(Serialize)]
@@ -32,7 +34,7 @@ pub fn list(json: bool) -> Result<()> {
     }
 
     let mut entries: Vec<PackEntry> = Vec::new();
-    for entry in std::fs::read_dir(&state_dir)? {
+    for entry in fs::read_dir(&state_dir)? {
         let entry = entry?;
         let entry_path = entry.path();
         if !entry_path.is_dir() {
@@ -47,7 +49,7 @@ pub fn list(json: bool) -> Result<()> {
             .and_then(|n| n.to_str())
             .unwrap_or("unknown");
 
-        let content = match std::fs::read_to_string(&track_path) {
+        let content = match fs::read_to_string(&track_path) {
             Ok(c) => c,
             Err(e) => {
                 debug!("Failed to read track file {}: {e}", track_path.display());
@@ -133,7 +135,7 @@ fn abbrev_len(entries: &[PackEntry]) -> usize {
 
     let mut len = MIN_LEN;
     while len < max_possible {
-        let mut seen = std::collections::HashSet::<String>::new();
+        let mut seen = HashSet::<String>::new();
         let all_unique = entries.iter().all(|e| seen.insert(prefix(&e.pack_id, len)));
         if all_unique {
             break;
@@ -229,7 +231,7 @@ fn char_truncate(path: &str, max_width: usize) -> String {
 }
 
 fn print_table(entries: &[PackEntry]) {
-    let home = dirs::home_dir()
+    let home = home_dir()
         .and_then(|h| h.to_str().map(String::from))
         .unwrap_or_default();
     let term_w = terminal_width();
