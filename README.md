@@ -22,6 +22,7 @@ Commands:
 Options:
   -v, --verbose...  Increase log verbosity (-v debug, -vv trace)
   -q, --quiet       Quiet mode, only output errors
+  -n, --dry-run     Preview changes without applying them
   -h, --help        Print help
   -V, --version     Print version
 ```
@@ -45,6 +46,13 @@ stow-cm adopt ~/.config/fish ~/.config/nvim -t ~/stow     # adopt multiple dirs
 stow-cm encrypt ./nvim /path/to/pack
 stow-cm decrypt ./nvim /path/to/pack
 
+# dry-run: preview what would happen without making changes
+stow-cm install --dry-run ./nvim                          # preview install plan
+stow-cm reload -n ./nvim                                  # preview reload operations
+stow-cm remove -n --id a1b2c3d4                           # preview removal
+stow-cm clean -n ./nvim                                   # preview cleanup
+stow-cm adopt -n ~/.config/fish -t ~/my-dotfiles          # preview adoption
+
 stow-cm install ./*
 ```
 
@@ -62,6 +70,18 @@ stow-cm install ./*
 
 Use `stow-cm status --fix` to automatically repair `MISSING` links by recreating them.
 `OVERWRITTEN` and `DRIFT` are never auto-fixed — they require manual review.
+
+### Dry Run
+
+`-n` / `--dry-run` is a global flag that previews what would happen without actually modifying the filesystem. It works with all mutation commands (`install`, `remove`, `reload`, `clean`, `adopt`):
+
+- **install**: shows the link plan and init script, but creates no symlinks, writes no track file, and skips script execution
+- **remove**: shows which links would be removed and which clear script would run
+- **reload**: shows both the remove and install plans
+- **clean**: shows orphaned symlinks that would be cleaned up
+- **adopt**: shows which files would be moved and which links would be created
+
+Dry-run is always safe — it performs no filesystem writes.
 
 ## INSTALL
 
