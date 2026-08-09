@@ -10,6 +10,8 @@ use clap_mangen::Man;
 include!("src/cli_types.rs");
 
 fn main() -> Result<(), Box<dyn Error>> {
+    println!("cargo:rerun-if-changed=src/cli_types.rs");
+
     let outdir: PathBuf = match env::var_os("SHELL_HELP_DIR").or_else(|| env::var_os("OUT_DIR")) {
         None => return Ok(()),
 

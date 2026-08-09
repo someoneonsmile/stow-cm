@@ -293,11 +293,17 @@ impl Command {
                     .ok_or_else(|| anyhow!("open sh error"))?
                     .write_all(content.as_bytes())?;
                 // stdin 句柄在 write_all 完成后自动 drop，EOF 已发送
-                child.wait()?;
+                let exit_status = child.wait()?;
+                if !exit_status.success() {
+                    bail!("init/clear script exited with {exit_status}");
+                }
                 return Ok(());
             }
         };
-        command.current_dir(wd).envs(envs).status()?;
+        let exit_status = command.current_dir(wd).envs(envs).status()?;
+        if !exit_status.success() {
+            bail!("init/clear script exited with {exit_status}");
+        }
         Ok(())
     }
 }
