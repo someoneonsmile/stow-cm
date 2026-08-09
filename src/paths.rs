@@ -11,7 +11,9 @@ fn config_home() -> PathBuf {
 }
 
 fn state_home() -> PathBuf {
-    state_dir().unwrap_or_default()
+    state_dir()
+        .or_else(|| home_dir().map(|h| h.join(".local").join("state")))
+        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 /// 全局 XDG 用户配置文件完整路径（运行时解析）
