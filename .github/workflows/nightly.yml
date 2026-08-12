@@ -51,7 +51,7 @@ jobs:
     if: needs.check.outputs.proceed == 'true'
     uses: ./.github/workflows/build.yml
     with:
-      version_suffix: -nightly.${{ needs.check.outputs.date }}.${{ needs.check.outputs.short_sha }}
+      version_suffix: -nightly-${{ needs.check.outputs.date }}-g${{ needs.check.outputs.short_sha }}
 
   release:
     needs: build
@@ -131,9 +131,12 @@ jobs:
 
       - name: Update PKGBUILD version
         run: |
-          DATE="$(date +%Y%m%d)"
-          sed -i "s/^pkgver=.*/pkgver=${DATE}/" aur-nightly/PKGBUILD
+          CARGO_VER=$(awk -F'"' '/^version = /{print $2; exit}' Cargo.toml)
+          SHORT_SHA=$(git rev-parse --short=8 HEAD)
+          PKGVER="${CARGO_VER}+nightly+$(date +%Y%m%d)+g${SHORT_SHA}"
+          sed -i "s/^pkgver=.*/pkgver=${PKGVER}/" aur-nightly/PKGBUILD
           sed -i 's/^pkgrel=.*/pkgrel=1/' aur-nightly/PKGBUILD
+          echo "AUR pkgver: ${PKGVER}"
 
       - name: Regenerate .SRCINFO
         run: |
@@ -160,10 +163,12 @@ jobs:
         env:
           AUR_REPO: ssh://aur@aur.archlinux.org/stow-cm-nightly-bin.git
         run: |
-          DATE="$(date +%Y%m%d)"
+          CARGO_VER=$(awk -F'"' '/^version = /{print $2; exit}' Cargo.toml)
+          SHORT_SHA=$(git rev-parse --short=8 HEAD)
+          PKGVER="${CARGO_VER}+nightly+$(date +%Y%m%d)+g${SHORT_SHA}"
           # Commit changes in main repo
           git add aur-nightly/
-          git commit -m "chore: update nightly AUR to ${DATE}" || echo "No changes to commit"
+          git commit -m "chore: update nightly AUR to ${PKGVER}" || echo "No changes to commit"
 
           # Clone AUR repo, copy files, commit and push
           TMP=$(mktemp -d)
@@ -172,6 +177,6 @@ jobs:
           git -C "$TMP" add -A
           git -C "$TMP" config user.name "GitHub Actions"
           git -C "$TMP" config user.email "actions@github.com"
-          git -C "$TMP" commit -m "chore: update to ${DATE}" || echo "No changes"
+          git -C "$TMP" commit -m "chore: update to ${PKGVER}" || echo "No changes"
           git -C "$TMP" push origin master
           rm -rf "$TMP"
