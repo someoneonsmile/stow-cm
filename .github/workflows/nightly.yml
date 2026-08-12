@@ -178,5 +178,9 @@ jobs:
           git -C "$TMP" config user.name "GitHub Actions"
           git -C "$TMP" config user.email "actions@github.com"
           git -C "$TMP" commit -m "chore: update to ${PKGVER}" || echo "No changes"
-          git -C "$TMP" push origin master
+          for i in 1 2 3; do
+            git -C "$TMP" push origin master && break
+            echo "Push attempt $i failed, retrying in 10s..."
+            sleep 10
+          done
           rm -rf "$TMP"
