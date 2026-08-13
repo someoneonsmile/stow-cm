@@ -13,8 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       proceed: ${{ steps.check.outputs.proceed }}
-      date: ${{ steps.vars.outputs.date }}
-      short_sha: ${{ steps.vars.outputs.short_sha }}
+      version_suffix: ${{ steps.vars.outputs.version_suffix }}
+      pkgver: ${{ steps.vars.outputs.pkgver }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -23,8 +23,20 @@ jobs:
       - name: Compute nightly version vars
         id: vars
         run: |
-          echo "date=$(date +%Y%m%d)" >> "$GITHUB_OUTPUT"
-          echo "short_sha=$(git rev-parse --short=8 HEAD)" >> "$GITHUB_OUTPUT"
+          DATE=$(date +%Y%m%d)
+          SHORT_SHA=$(git rev-parse --short=8 HEAD)
+          # 距上次稳定版 tag (v*) 的提交次数，保证当天多次构建时版本号单调递增（参考 neovim nightly）
+          LAST_STABLE_TAG=$(git describe --tags --match 'v*' --abbrev=0 2>/dev/null) || true
+          if [ -n "$LAST_STABLE_TAG" ]; then
+            COMMIT_COUNT=$(git rev-list --count "${LAST_STABLE_TAG}..HEAD")
+          else
+            COMMIT_COUNT=$(git rev-list --count HEAD)
+          fi
+          CARGO_VER=$(awk -F'"' '/^version = /{print $2; exit}' Cargo.toml)
+
+          # 版本号只在此处计算一次，其余 job 直接引用输出，避免重复计算导致不一致
+          echo "version_suffix=-nightly-${DATE}-${COMMIT_COUNT}-g${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "pkgver=${CARGO_VER}+nightly+${DATE}+${COMMIT_COUNT}+g${SHORT_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Check for changes since last nightly
         id: check
@@ -51,7 +63,7 @@ jobs:
     if: needs.check.outputs.proceed == 'true'
     uses: ./.github/workflows/build.yml
     with:
-      version_suffix: -nightly-${{ needs.check.outputs.date }}-g${{ needs.check.outputs.short_sha }}
+      version_suffix: ${{ needs.check.outputs.version_suffix }}
 
   release:
     needs: build
@@ -117,7 +129,7 @@ jobs:
           body: ${{ steps.changelog.outputs.changelog }}
 
   aur:
-    needs: release
+    needs: [release, check]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -130,10 +142,9 @@ jobs:
           git config user.email "actions@github.com"
 
       - name: Update PKGBUILD version
+        env:
+          PKGVER: ${{ needs.check.outputs.pkgver }}
         run: |
-          CARGO_VER=$(awk -F'"' '/^version = /{print $2; exit}' Cargo.toml)
-          SHORT_SHA=$(git rev-parse --short=8 HEAD)
-          PKGVER="${CARGO_VER}+nightly+$(date +%Y%m%d)+g${SHORT_SHA}"
           sed -i "s/^pkgver=.*/pkgver=${PKGVER}/" aur-nightly/PKGBUILD
           sed -i 's/^pkgrel=.*/pkgrel=1/' aur-nightly/PKGBUILD
           echo "AUR pkgver: ${PKGVER}"
@@ -162,10 +173,8 @@ jobs:
       - name: Push to AUR nightly
         env:
           AUR_REPO: ssh://aur@aur.archlinux.org/stow-cm-nightly-bin.git
+          PKGVER: ${{ needs.check.outputs.pkgver }}
         run: |
-          CARGO_VER=$(awk -F'"' '/^version = /{print $2; exit}' Cargo.toml)
-          SHORT_SHA=$(git rev-parse --short=8 HEAD)
-          PKGVER="${CARGO_VER}+nightly+$(date +%Y%m%d)+g${SHORT_SHA}"
           # Commit changes in main repo
           git add aur-nightly/
           git commit -m "chore: update nightly AUR to ${PKGVER}" || echo "No changes to commit"
