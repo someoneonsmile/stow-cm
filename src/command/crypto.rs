@@ -12,6 +12,7 @@ use walkdir::WalkDir;
 use crate::config::{Config, EncryptedParams};
 use crate::crypto;
 use crate::error::Result;
+use crate::util;
 
 type CryptoFn = fn(&str, &str, &[u8], &str, &str, bool) -> Result<String>;
 
@@ -91,6 +92,11 @@ fn crypto_process<P: AsRef<Path>>(
             warn!("{} contains not invalid utf-8", path.display());
             continue;
         };
+        // 不含完整占位符的文件无需加解密，直接跳过（与 install 的解密判定共用同一 helper）
+        if !util::has_placeholder(&content, left_boundary, right_boundary) {
+            skipped += 1;
+            continue;
+        }
         let processed = crypto_fn(
             &content,
             encrypted_alg,

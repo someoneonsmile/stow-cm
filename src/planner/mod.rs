@@ -104,6 +104,12 @@ struct ChildrenPlan {
     foldable: bool,
     /// 是否存在被忽略的子孙节点。
     had_ignored: bool,
+    /// 子树中是否存在需要解密的文件。
+    ///
+    /// 仅当配置启用了加密（`PlanOption::decrypt` 为 `Some`）且文件内容含占位符时
+    /// 才为 `true`。含此类文件的目录不能折叠为单个目录 symlink（否则解密会被整体
+    /// 跳过，见 BUG-1），因此该标记会参与 `foldable` 传播。
+    needs_decrypt: bool,
 }
 
 impl ChildrenPlan {
@@ -113,6 +119,7 @@ impl ChildrenPlan {
             stats: Box::default(),
             foldable: true,
             had_ignored: false,
+            needs_decrypt: false,
         }
     }
 }

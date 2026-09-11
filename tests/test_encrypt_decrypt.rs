@@ -307,3 +307,229 @@ fn encrypted_install_with_subdir_fold_decrypts() {
         "installed subdir file should be decrypted, not expose ciphertext"
     );
 }
+
+// ─────────────────────────────────────────────
+// 测试 7: 无占位符文件直接链接 pack 原文件
+// ─────────────────────────────────────────────
+
+/// 加密 pack 中仅含完整占位符（左+右边界）的文件才生成解密副本；
+/// 普通文本、无完整占位符文本与二进制文件保持直接 symlink 到 pack 原文件
+/// （改源即生效、不复制）。
+#[test]
+fn encrypted_install_links_plain_files_directly() {
+    let env = common::TestEnv::new();
+    let (key_path, _key) = common::create_test_key(&env);
+
+    let target_dir = env.config_path().join("crypto-mixed");
+    std::fs::create_dir_all(&target_dir).unwrap();
+
+    let pack_base = env.state_path().join("packs");
+    std::fs::create_dir_all(&pack_base).unwrap();
+    let pack_dir = pack_base.join("crypto-mixed");
+    std::fs::create_dir_all(&pack_dir).unwrap();
+
+    let config_toml =
+        common::pack_config_encrypted(&target_dir.to_string_lossy(), &key_path.to_string_lossy());
+    std::fs::write(pack_dir.join("stow-cm.toml"), config_toml).expect("write config");
+
+    common::write_pack_file(&pack_dir, "secret.txt", "public &{my secret} public\n");
+    common::write_pack_file(&pack_dir, "plain.txt", "just plain\n");
+    // 只有左边界、没有右边界 → 不是完整占位符，加解密与安装都应跳过
+    let dangling = "dangling &{ marker\n";
+    common::write_pack_file(&pack_dir, "dangling.txt", dangling);
+    let binary: &[u8] = &[0xFF, 0xFE, 0x00, 0x01, 0x02];
+    common::write_pack_file(&pack_dir, "data.bin", binary);
+
+    let pack_dir = std::fs::canonicalize(&pack_dir).expect("canonicalize");
+
+    let global = common::make_global_config();
+    let config = for_crypto_pack(&pack_dir, &global);
+
+    encrypt(&config, &pack_dir, false).expect("encrypt should succeed");
+    assert_eq!(
+        std::fs::read_to_string(pack_dir.join("dangling.txt")).expect("read dangling"),
+        dangling,
+        "file without a complete placeholder must not be encrypted"
+    );
+    install(&config, &pack_dir, false).expect("install encrypted pack should succeed");
+
+    // 占位符文件 → 指向解密副本
+    let secret_target =
+        std::fs::read_link(target_dir.join("secret.txt")).expect("read secret symlink");
+    assert!(
+        !secret_target.starts_with(&pack_dir),
+        "placeholder file should point to decrypted path, not pack dir"
+    );
+    assert_eq!(
+        std::fs::read_to_string(target_dir.join("secret.txt")).expect("read decrypted"),
+        "public my secret public\n"
+    );
+
+    // 普通文本、无完整占位符文本与二进制文件 → 直接链接 pack 原文件
+    common::assert_symlink(target_dir.join("plain.txt"), pack_dir.join("plain.txt"));
+    common::assert_symlink(
+        target_dir.join("dangling.txt"),
+        pack_dir.join("dangling.txt"),
+    );
+    common::assert_symlink(target_dir.join("data.bin"), pack_dir.join("data.bin"));
+    assert_eq!(
+        std::fs::read(target_dir.join("data.bin")).expect("read binary link"),
+        binary
+    );
+
+    // 解密目录里只应有占位符文件
+    let decrypted_dir = secret_target
+        .parent()
+        .expect("decrypted parent")
+        .to_path_buf();
+    assert!(
+        decrypted_dir.join("secret.txt").try_exists().unwrap(),
+        "decrypted dir should contain secret.txt"
+    );
+    assert!(
+        !decrypted_dir.join("plain.txt").try_exists().unwrap(),
+        "plain file must not be copied into decrypted dir"
+    );
+    assert!(
+        !decrypted_dir.join("dangling.txt").try_exists().unwrap(),
+        "file without a complete placeholder must not be copied into decrypted dir"
+    );
+    assert!(
+        !decrypted_dir.join("data.bin").try_exists().unwrap(),
+        "binary file must not be copied into decrypted dir"
+    );
+
+    // symlink“改源即生效”
+    common::write_pack_file(&pack_dir, "plain.txt", "changed plain\n");
+    assert_eq!(
+        std::fs::read_to_string(target_dir.join("plain.txt")).expect("read updated plain"),
+        "changed plain\n",
+        "plain file symlink should reflect pack source changes"
+    );
+
+    common::assert_track_links(&pack_dir, 4);
+
+    remove(&config, &pack_dir, false).expect("remove encrypted pack should succeed");
+    common::assert_not_exists(target_dir.join("secret.txt"));
+    common::assert_not_exists(target_dir.join("plain.txt"));
+    common::assert_not_exists(target_dir.join("dangling.txt"));
+    common::assert_not_exists(target_dir.join("data.bin"));
+    common::assert_not_exists(&decrypted_dir);
+}
+
+// ─────────────────────────────────────────────
+// 测试 8: 全为无占位符文件时不创建解密目录
+// ─────────────────────────────────────────────
+
+/// pack 中没有任何含占位符的文件时，不应创建解密目录，也不生成解密副本。
+#[test]
+fn encrypted_install_all_plain_skips_decrypted_dir() {
+    let env = common::TestEnv::new();
+    let (key_path, _key) = common::create_test_key(&env);
+
+    let target_dir = env.config_path().join("crypto-plain");
+    std::fs::create_dir_all(&target_dir).unwrap();
+
+    let pack_base = env.state_path().join("packs");
+    std::fs::create_dir_all(&pack_base).unwrap();
+    let pack_dir = pack_base.join("crypto-plain");
+    std::fs::create_dir_all(&pack_dir).unwrap();
+
+    let config_toml =
+        common::pack_config_encrypted(&target_dir.to_string_lossy(), &key_path.to_string_lossy());
+    std::fs::write(pack_dir.join("stow-cm.toml"), config_toml).expect("write config");
+
+    common::write_pack_file(&pack_dir, "plain.txt", "no markers\n");
+
+    let pack_dir = std::fs::canonicalize(&pack_dir).expect("canonicalize");
+
+    let global = common::make_global_config();
+    let config = for_crypto_pack(&pack_dir, &global);
+    let decrypted_path = config
+        .encrypted
+        .as_ref()
+        .and_then(|it| it.decrypted_path.clone())
+        .expect("decrypted_path is configured");
+
+    install(&config, &pack_dir, false).expect("install encrypted pack should succeed");
+
+    common::assert_symlink(target_dir.join("plain.txt"), pack_dir.join("plain.txt"));
+    assert!(
+        !decrypted_path.try_exists().unwrap(),
+        "decrypted dir should not be created when no file needs decryption"
+    );
+
+    common::assert_track_links(&pack_dir, 1);
+
+    remove(&config, &pack_dir, false).expect("remove encrypted pack should succeed");
+    common::assert_not_exists(target_dir.join("plain.txt"));
+}
+
+// ─────────────────────────────────────────────
+// 测试 9: 加密 pack 仅折叠纯普通文件目录
+// ─────────────────────────────────────────────
+
+/// fold 与加密不再整体互斥：纯普通文件目录仍折叠为单个目录 symlink，
+/// 含占位符的目录保持逐文件解密。
+#[test]
+fn encrypted_install_folds_plain_dirs_only() {
+    let env = common::TestEnv::new();
+    let (key_path, _key) = common::create_test_key(&env);
+
+    let target_dir = env.config_path().join("crypto-fold");
+    std::fs::create_dir_all(&target_dir).unwrap();
+
+    let pack_base = env.state_path().join("packs");
+    std::fs::create_dir_all(&pack_base).unwrap();
+    let pack_dir = pack_base.join("crypto-fold");
+    std::fs::create_dir_all(&pack_dir).unwrap();
+
+    let config_toml =
+        common::pack_config_encrypted(&target_dir.to_string_lossy(), &key_path.to_string_lossy());
+    std::fs::write(pack_dir.join("stow-cm.toml"), config_toml).expect("write config");
+
+    common::write_pack_file(&pack_dir, "plain_dir/a.txt", "plain a\n");
+    common::write_pack_file(&pack_dir, "plain_dir/b.txt", "plain b\n");
+    common::write_pack_file(
+        &pack_dir,
+        "secret_dir/c.txt",
+        "public &{my secret} public\n",
+    );
+
+    let pack_dir = std::fs::canonicalize(&pack_dir).expect("canonicalize");
+
+    let global = common::make_global_config();
+    let config = for_crypto_pack(&pack_dir, &global);
+
+    encrypt(&config, &pack_dir, false).expect("encrypt should succeed");
+    install(&config, &pack_dir, false).expect("install encrypted pack should succeed");
+
+    // 纯普通文件目录折叠为目录链接
+    common::assert_symlink(target_dir.join("plain_dir"), pack_dir.join("plain_dir"));
+    assert_eq!(
+        std::fs::read_to_string(target_dir.join("plain_dir/a.txt")).expect("read folded file"),
+        "plain a\n"
+    );
+
+    // 含占位符目录不折叠，逐文件解密
+    let secret_dir_meta =
+        std::fs::symlink_metadata(target_dir.join("secret_dir")).expect("secret_dir metadata");
+    assert!(
+        secret_dir_meta.is_dir(),
+        "dir with placeholders must not be folded into a symlink"
+    );
+    let secret_target =
+        std::fs::read_link(target_dir.join("secret_dir/c.txt")).expect("read secret symlink");
+    assert!(
+        !secret_target.starts_with(&pack_dir),
+        "placeholder file should point to decrypted path"
+    );
+    assert_eq!(
+        std::fs::read_to_string(target_dir.join("secret_dir/c.txt")).expect("read decrypted"),
+        "public my secret public\n"
+    );
+
+    remove(&config, &pack_dir, false).expect("remove encrypted pack should succeed");
+    common::assert_not_exists(target_dir.join("plain_dir"));
+    common::assert_not_exists(target_dir.join("secret_dir/c.txt"));
+}

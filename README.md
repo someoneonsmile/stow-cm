@@ -143,8 +143,9 @@ ignore = [
 # ignore = ['!']            # clear all ignore patterns
 
 # default, create a tree-folding symlink
-# NOTE: fold is ignored (treated as false) when [encrypted] is enabled,
-#       because decryption requires file-by-file processing.
+# NOTE: when [encrypted] is enabled, only directories whose files contain no
+#       placeholder are folded; directories containing placeholders are expanded
+#       and decrypted file-by-file.
 fold = true
 
 # default, use symlink, another mode is 'copy'
@@ -188,6 +189,11 @@ enable = true
 
 # Path to the key file (required — file must contain base64-encoded key bytes)
 key_path = '/path/to/key'
+
+# During install only files whose content contains both the left and the right
+# boundary (a complete placeholder) are decrypted; files without placeholders
+# (and binary files) are linked/copied as-is, so edits to the pack take effect
+# immediately.
 ```
 
 ## TODO

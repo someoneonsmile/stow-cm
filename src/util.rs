@@ -7,6 +7,7 @@ use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf, absolute};
 
 use anyhow::Context;
+use binaryornot::is_binary;
 use hex::encode as hex_encode;
 use same_file::is_same_file;
 use sha3::{Digest, Sha3_256};
@@ -248,6 +249,46 @@ pub fn same_file(a: &Path, b: &Path) -> bool {
     is_same_file(a, b).unwrap_or(false)
 }
 
+/// 判断文本内容是否包含一处完整的占位符（`left_boundary` … `right_boundary`）。
+///
+/// `encrypt` / `decrypt` 与 `install` 共用的语义入口：不含完整占位符的内容
+/// 无需内联加解密，可被直接跳过。
+///
+/// 惰性匹配：只从第一个 `left_boundary` 之后寻找第一个 `right_boundary`，
+/// 找到一处即返回 `true`。若第一个左边界之后不存在右边界，则更晚的左边界
+/// 之后同样不存在，因此只检查第一个左边界即可。
+#[must_use]
+pub fn has_placeholder(content: &str, left_boundary: &str, right_boundary: &str) -> bool {
+    let Some(left) = content.find(left_boundary) else {
+        return false;
+    };
+    content
+        .get(left + left_boundary.len()..)
+        .is_some_and(|rest| rest.contains(right_boundary))
+}
+
+/// 判断文件内容是否包含一处完整的占位符（`left_boundary` … `right_boundary`）。
+///
+/// - 二进制文件不参与内联加解密，直接返回 `false`；
+/// - 读取失败时保守返回 `true`，交由调用方在后续处理阶段报错。
+///
+/// `is_binary` 只读取文件开头 1KB，避免为超大二进制文件读入全量内容。
+#[must_use]
+pub fn file_has_placeholder(
+    path: impl AsRef<Path>,
+    left_boundary: &str,
+    right_boundary: &str,
+) -> bool {
+    let path = path.as_ref();
+    if is_binary(path).unwrap_or(true) {
+        return false;
+    }
+    match fs::read_to_string(path) {
+        Ok(content) => has_placeholder(&content, left_boundary, right_boundary),
+        Err(_) => true,
+    }
+}
+
 #[inline]
 pub fn canonicalize(paths: Vec<PathBuf>) -> Result<Vec<PathBuf>> {
     paths
@@ -389,6 +430,47 @@ mod tests {
                 var_inplace("&{a &{b}", "&{", "}", false, |s| Ok(s.to_uppercase())).unwrap(),
                 "&{a &{B}"
             );
+        }
+    }
+
+    mod has_placeholder {
+        use super::*;
+
+        #[test]
+        fn complete_pair() {
+            assert!(has_placeholder("a &{secret} b", "&{", "}"));
+        }
+
+        #[test]
+        fn right_boundary_before_left() {
+            assert!(!has_placeholder("} a &{ b", "&{", "}"));
+        }
+
+        #[test]
+        fn left_without_right() {
+            assert!(!has_placeholder("prefix &{no_close suffix", "&{", "}"));
+        }
+
+        #[test]
+        fn no_boundaries() {
+            assert!(!has_placeholder("plain text", "&{", "}"));
+        }
+
+        #[test]
+        fn first_left_unclosed_then_right() {
+            // 第一个左边界未闭合，但右边界仍在更晚处，惰性匹配应命中
+            assert!(has_placeholder("&{a &{b}", "&{", "}"));
+        }
+
+        #[test]
+        fn empty_inner() {
+            assert!(has_placeholder("&{}", "&{", "}"));
+        }
+
+        #[test]
+        fn custom_boundaries() {
+            assert!(has_placeholder("${{{123}}}", "${{{", "}}"));
+            assert!(!has_placeholder("${{{123", "${{{", "}}"));
         }
     }
 }

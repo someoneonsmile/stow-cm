@@ -21,11 +21,12 @@ use super::{ChildrenPlan, PlanOption, VNode, VNodeKind};
 ///
 /// 同步更新 `target_tree`（虚拟文件树），使其反映计划执行后的预期状态。
 ///
-/// 如果 `options.decrypt` 已设置，生成的计划中会在 `CreateLink` 之前
-/// 插入 `DecryptFile` 操作，并将 `CreateLink.src` 重写为解密后的路径。
+/// 如果 `options.decrypt` 已设置，仅对内容含 `left_boundary` 占位符的文件
+/// 生成 `DecryptFile` 并把 `CreateLink.src` 重写为解密后的路径；其余文件保持
+/// 直接链接 pack 原文件（保留 symlink“改源即生效”的语义，且不额外复制）。
 ///
 /// 如果 `track_write` 已设置，会额外生成：
-/// - `CreateDir(decrypted_path)`（解密场景下）
+/// - `CreateDir(decrypted_path)`（确有文件需要解密时）
 /// - `WriteTrackFile` 写入安装后的 track 记录
 pub fn plan_install(
     pack_tree: &mut VNode,
@@ -38,38 +39,23 @@ pub fn plan_install(
         &mut target_tree.children,
         &target_base,
         options,
-    );
+    )?;
     let mut plan = ActionPlan {
         actions: children_plan.actions,
         stats: *children_plan.stats,
     };
 
-    // 注入解密动作
-    if let Some(decrypt) = &options.decrypt {
-        // 创建解密目标目录
+    // 解密目录：只有确实生成了 DecryptFile 才需要预先创建顶层目录
+    // （逐文件的父目录由 executor 兜底创建），避免为全普通文件的加密包建空目录。
+    if let Some(decrypt) = &options.decrypt
+        && plan
+            .actions
+            .iter()
+            .any(|a| matches!(a, Action::DecryptFile { .. }))
+    {
         plan.actions
             .insert(0, Action::CreateDir(decrypt.decrypted_path.clone()));
         plan.stats.dirs_to_create += 1;
-
-        let mut decrypt_actions = Vec::new();
-        for action in &mut plan.actions {
-            if let Action::CreateLink { src, .. } = action {
-                let decrypted_file_path =
-                    util::change_base_path(&*src, &decrypt.pack_path, &decrypt.decrypted_path)?;
-                decrypt_actions.push(Action::DecryptFile {
-                    src: src.clone(),
-                    to: decrypted_file_path.clone(),
-                    key: decrypt.key.clone(),
-                    alg: decrypt.alg.clone(),
-                    left_boundary: decrypt.left_boundary.clone(),
-                    right_boundary: decrypt.right_boundary.clone(),
-                });
-                *src = decrypted_file_path;
-            }
-        }
-        plan.stats.encrypted = decrypt_actions.len();
-        // 将 DecryptFile 插入到 CreateDir 之后、CreateLink 之前
-        plan.actions.splice(1..1, decrypt_actions);
     }
 
     // 注入 track file 写入
@@ -114,7 +100,7 @@ fn install_children(
     target_children: &mut Vec<VNode>,
     target_base: &Path,
     options: &PlanOption,
-) -> ChildrenPlan {
+) -> Result<ChildrenPlan> {
     let mut result = ChildrenPlan::empty();
 
     // 检查 target 中是否存在 pack 没有的子节点（外部文件），需在迭代前判断，
@@ -140,7 +126,7 @@ fn install_children(
                 Some(target_idx),
                 &child_target_base,
                 options,
-            )
+            )?
         } else {
             install_node(
                 pack_children,
@@ -149,7 +135,7 @@ fn install_children(
                 None,
                 &child_target_base,
                 options,
-            )
+            )?
         };
 
         // 合并统计信息
@@ -164,6 +150,9 @@ fn install_children(
         if child_plan.had_ignored {
             result.had_ignored = true;
         }
+        if child_plan.needs_decrypt {
+            result.needs_decrypt = true;
+        }
         if !child_plan.foldable {
             result.foldable = false;
         }
@@ -171,9 +160,13 @@ fn install_children(
         result.actions.extend(child_plan.actions);
     }
 
-    // 负责 foldable 传播
-    result.foldable = result.foldable && !result.had_ignored && !has_new_sub;
-    result
+    // 负责 foldable 传播：
+    // - 有被忽略的子节点 / target 存在外部文件时不可折叠
+    // - 子树中存在需要解密的文件时不可折叠
+    //   （折叠会把整个目录做成单个 symlink，解密会被整体跳过，见 BUG-1）
+    result.foldable =
+        result.foldable && !result.had_ignored && !has_new_sub && !result.needs_decrypt;
+    Ok(result)
 }
 
 /// - `pack_parent` / `pack_idx` — pack 节点在其父列表中的位置（Move 模式 possibly remove）
@@ -187,7 +180,7 @@ fn install_node(
     target_idx: Option<usize>,
     target_dst: &Path,
     options: &PlanOption,
-) -> ChildrenPlan {
+) -> Result<ChildrenPlan> {
     let pack = &pack_parent[pack_idx];
 
     // ── 忽略检查 ──
@@ -196,12 +189,13 @@ fn install_node(
     {
         let mut stats = Box::<PlanStats>::default();
         stats.ignored = 1;
-        return ChildrenPlan {
+        return Ok(ChildrenPlan {
             actions: Vec::new(),
             stats,
             foldable: false,
             had_ignored: true,
-        };
+            needs_decrypt: false,
+        });
     }
 
     match &pack.kind {
@@ -232,6 +226,10 @@ fn install_node(
 /// - Move 模式：`pack_parent.remove(pack_idx)` 从 pack 父节点移除
 /// - 覆盖时：`target_parent[target_idx] = new_node` 替换目标节点
 /// - 新建时：`target_parent.push(new_node)` 插入目标节点
+///
+/// 启用解密时，仅当配置开启了加密且文件内容含占位符
+/// （[`util::file_has_placeholder`]）才生成 `DecryptFile` 并把链接指向解密副本；
+/// 其余文件直接链接 pack 原文件，保留 symlink“改源即生效”的语义且不额外复制。
 #[allow(clippy::indexing_slicing)]
 fn plan_leaf(
     pack_parent: &mut Vec<VNode>,
@@ -240,7 +238,7 @@ fn plan_leaf(
     target_idx: Option<usize>,
     target_dst: &Path,
     options: &PlanOption,
-) -> ChildrenPlan {
+) -> Result<ChildrenPlan> {
     let mode = options.merge.symlink_mode.clone().unwrap_or_default();
 
     // 提取 pack 节点信息（clone），释放对 pack_parent 的 immutable borrow
@@ -253,6 +251,27 @@ fn plan_leaf(
         pack_parent.remove(pack_idx);
     }
 
+    // 只有「加密配置已开启」且「文件内容含完整占位符」时才需要解密，
+    // 其余文件（含未开启加密时的所有文件）都直接链接 pack 原文件。
+    let decrypt = options.decrypt.as_ref().filter(|decrypt| {
+        util::file_has_placeholder(&pack_abs, &decrypt.left_boundary, &decrypt.right_boundary)
+    });
+    let needs_decrypt = decrypt.is_some();
+    let (link_src, decrypt_action) = if let Some(decrypt) = decrypt {
+        let to = util::change_base_path(&pack_abs, &decrypt.pack_path, &decrypt.decrypted_path)?;
+        let action = Action::DecryptFile {
+            src: pack_abs.clone(),
+            to: to.clone(),
+            key: decrypt.key.clone(),
+            alg: decrypt.alg.clone(),
+            left_boundary: decrypt.left_boundary.clone(),
+            right_boundary: decrypt.right_boundary.clone(),
+        };
+        (to, Some(action))
+    } else {
+        (pack_abs.clone(), None)
+    };
+
     if let Some(target_idx) = target_idx {
         // 目标已存在 — 检查是否可覆盖
         if let Some(over_re) = &options.merge.over
@@ -264,7 +283,7 @@ fn plan_leaf(
 
             let kind = match &mode {
                 SymlinkMode::Symlink => VNodeKind::Symlink {
-                    target: pack_abs.clone(),
+                    target: link_src.clone(),
                 },
                 SymlinkMode::Copy | SymlinkMode::Move => pack_kind.clone(),
             };
@@ -278,6 +297,7 @@ fn plan_leaf(
             let mut stats = Box::<PlanStats>::default();
             stats.links_to_create = 1;
             stats.overridden = 1;
+            stats.encrypted = usize::from(needs_decrypt);
 
             let mut actions = Vec::new();
             // 覆盖前先清理旧目标
@@ -297,33 +317,37 @@ fn plan_leaf(
                     stats.files_removed = 1;
                 }
             }
+            // 先解密再创建链接
+            actions.extend(decrypt_action);
             actions.push(Action::CreateLink {
-                src: pack_abs.clone(),
+                src: link_src,
                 dst,
                 mode,
             });
 
-            return ChildrenPlan {
+            return Ok(ChildrenPlan {
                 actions,
                 stats,
                 foldable: true,
                 had_ignored: false,
-            };
+                needs_decrypt,
+            });
         }
         // 检查是否是事实上的同一文件（同一 inode），如果是则无需操作
         if util::same_file(&pack_abs, &target_parent[target_idx].abs_path) {
-            return ChildrenPlan {
+            return Ok(ChildrenPlan {
                 actions: Vec::new(),
                 stats: Box::default(),
                 foldable: true,
                 had_ignored: false,
-            };
+                needs_decrypt,
+            });
         }
 
         // 存在且不可覆盖 → 冲突，不可折叠
         let mut stats = Box::<PlanStats>::default();
         stats.conflicts = 1;
-        ChildrenPlan {
+        Ok(ChildrenPlan {
             actions: vec![Action::Conflict {
                 dst: target_parent[target_idx].abs_path.clone(),
                 reason: "file already exists".to_string(),
@@ -331,12 +355,13 @@ fn plan_leaf(
             stats,
             foldable: false,
             had_ignored: false,
-        }
+            needs_decrypt,
+        })
     } else {
         // 目标不存在 → 正常创建链接
         let kind = match &mode {
             SymlinkMode::Symlink => VNodeKind::Symlink {
-                target: pack_abs.clone(),
+                target: link_src.clone(),
             },
             SymlinkMode::Copy | SymlinkMode::Move => pack_kind.clone(),
         };
@@ -349,16 +374,24 @@ fn plan_leaf(
 
         let mut stats = Box::<PlanStats>::default();
         stats.links_to_create = 1;
-        ChildrenPlan {
-            actions: vec![Action::CreateLink {
-                src: pack_abs,
-                dst: target_dst.to_path_buf(),
-                mode,
-            }],
+        stats.encrypted = usize::from(needs_decrypt);
+
+        let mut actions = Vec::new();
+        // 先解密再创建链接
+        actions.extend(decrypt_action);
+        actions.push(Action::CreateLink {
+            src: link_src,
+            dst: target_dst.to_path_buf(),
+            mode,
+        });
+
+        Ok(ChildrenPlan {
+            actions,
             stats,
             foldable: true,
             had_ignored: false,
-        }
+            needs_decrypt,
+        })
     }
 }
 
@@ -376,7 +409,7 @@ fn plan_dir(
     target_idx: Option<usize>,
     target_dst: &Path,
     options: &PlanOption,
-) -> ChildrenPlan {
+) -> Result<ChildrenPlan> {
     let mode = options.merge.symlink_mode.clone().unwrap_or_default();
     let fold_enabled = options.merge.fold.unwrap_or(false);
 
@@ -395,16 +428,14 @@ fn plan_dir(
             target_children,
             target_dst,
             options,
-        )
+        )?
     };
 
-    // 负责能不能 fold
-    // 加密启用时不折叠目录：fold 会把整个目录做成单个 symlink，而解密必须逐文件进行，
-    // 二者语义互斥（否则目录链接会漏进 DecryptFile 被当作二进制跳过解密，见 BUG-1）。
-    let should_fold = fold_enabled
-        && mode != SymlinkMode::Copy
-        && options.decrypt.is_none()
-        && children_plan.foldable;
+    // 负责能不能 fold。
+    // 含占位符、需要逐文件解密的目录已由 install_children 通过 foldable=false 排除
+    // （折叠会把整个目录做成单个 symlink，解密会被整体跳过，见 BUG-1），
+    // 因此启用加密不再与 fold 整体互斥，仅含普通文件的目录仍可折叠。
+    let should_fold = fold_enabled && mode != SymlinkMode::Copy && children_plan.foldable;
 
     if should_fold {
         // Move 模式：从 pack 父节点中移除整个目录
@@ -461,28 +492,31 @@ fn plan_dir(
         });
         stats.links_to_create = 1;
 
-        ChildrenPlan {
+        Ok(ChildrenPlan {
             actions,
             stats,
             foldable: true,
             had_ignored: false,
-        }
+            needs_decrypt: false,
+        })
     } else {
-        children_plan
+        Ok(children_plan)
     }
 }
 
 #[cfg(test)]
 #[allow(clippy::indexing_slicing)]
 mod tests {
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     use super::super::{
         MergeOption, default_options, dir_node, file_node, fold_options, symlink_node,
     };
     use super::*;
     use crate::action::Action;
+    use crate::planner::DecryptOption;
     use crate::symlink::SymlinkMode;
+    use crate::vtree;
 
     #[test]
     fn plan_install_basic_file() {
@@ -888,5 +922,219 @@ mod tests {
             assert_eq!(src, &PathBuf::from("/pack/sub"));
             assert_eq!(*mode, SymlinkMode::Move);
         }
+    }
+
+    // ── 解密（占位符检测）──
+
+    /// 构造启用解密、fold 打开的选项。
+    fn decrypt_options(pack: &Path, decrypted: &Path) -> PlanOption {
+        PlanOption {
+            merge: MergeOption {
+                ignore: None,
+                over: None,
+                fold: Some(true),
+                symlink_mode: None,
+            },
+            decrypt: Some(DecryptOption {
+                decrypted_path: decrypted.to_path_buf(),
+                key: vec![0u8; 32],
+                alg: "ChaCha20-Poly1305".to_string(),
+                left_boundary: "&{".to_string(),
+                right_boundary: "}".to_string(),
+                pack_path: pack.to_path_buf(),
+            }),
+            track_write: None,
+        }
+    }
+
+    /// 返回指向 `dst` 的 `CreateLink.src`。
+    fn link_src(plan: &ActionPlan, dst: &Path) -> PathBuf {
+        plan.actions
+            .iter()
+            .find_map(|a| match a {
+                Action::CreateLink { src, dst: d, .. } if d == dst => Some(src.clone()),
+                _ => None,
+            })
+            .expect("no CreateLink for the given dst")
+    }
+
+    fn has_create_link_to(plan: &ActionPlan, dst: &Path) -> bool {
+        plan.actions
+            .iter()
+            .any(|a| matches!(a, Action::CreateLink { dst: d, .. } if d == dst))
+    }
+
+    #[test]
+    fn plan_install_decrypt_only_placeholder_files() {
+        let dir = tempfile::TempDir::with_prefix("stow-cm-test-").unwrap();
+        let pack = dir.path().join("pack");
+        let target = dir.path().join("target");
+        let decrypted = dir.path().join("decrypted");
+        std::fs::create_dir_all(&pack).unwrap();
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(pack.join("secret.txt"), "public &{secret} public\n").unwrap();
+        std::fs::write(pack.join("plain.txt"), "no markers here\n").unwrap();
+
+        let mut pack_tree = vtree::VNode::scan(&pack, false).unwrap();
+        let mut target_tree = vtree::VNode::scan_guided(&target, &pack_tree, false).unwrap();
+        let plan = plan_install(
+            &mut pack_tree,
+            &mut target_tree,
+            &decrypt_options(&pack, &decrypted),
+        )
+        .unwrap();
+
+        // 只有占位符文件生成 DecryptFile
+        assert_eq!(plan.stats.encrypted, 1);
+        assert_eq!(
+            plan.actions
+                .iter()
+                .filter(|a| matches!(a, Action::DecryptFile { .. }))
+                .count(),
+            1
+        );
+        // 解密目录按需创建
+        assert!(matches!(plan.actions.first(), Some(Action::CreateDir(_))));
+
+        assert_eq!(
+            link_src(&plan, &target.join("secret.txt")),
+            decrypted.join("secret.txt")
+        );
+        // 普通文件直接链接 pack 原文件
+        assert_eq!(
+            link_src(&plan, &target.join("plain.txt")),
+            pack.join("plain.txt")
+        );
+    }
+
+    #[test]
+    fn plan_install_decrypt_ignores_unclosed_placeholder() {
+        let dir = tempfile::TempDir::with_prefix("stow-cm-test-").unwrap();
+        let pack = dir.path().join("pack");
+        let target = dir.path().join("target");
+        let decrypted = dir.path().join("decrypted");
+        std::fs::create_dir_all(&pack).unwrap();
+        std::fs::create_dir_all(&target).unwrap();
+        // 只有左边界、没有右边界 → 不是完整占位符，无需解密
+        std::fs::write(pack.join("dangling.txt"), "a &{no close\n").unwrap();
+
+        let mut pack_tree = vtree::VNode::scan(&pack, false).unwrap();
+        let mut target_tree = vtree::VNode::scan_guided(&target, &pack_tree, false).unwrap();
+        let plan = plan_install(
+            &mut pack_tree,
+            &mut target_tree,
+            &decrypt_options(&pack, &decrypted),
+        )
+        .unwrap();
+
+        assert_eq!(plan.stats.encrypted, 0);
+        assert!(
+            !plan
+                .actions
+                .iter()
+                .any(|a| matches!(a, Action::DecryptFile { .. }))
+        );
+        assert!(
+            !plan
+                .actions
+                .iter()
+                .any(|a| matches!(a, Action::CreateDir(_)))
+        );
+        assert_eq!(
+            link_src(&plan, &target.join("dangling.txt")),
+            pack.join("dangling.txt")
+        );
+    }
+
+    #[test]
+    fn plan_install_decrypt_plain_only_skips_decrypted_dir() {
+        let dir = tempfile::TempDir::with_prefix("stow-cm-test-").unwrap();
+        let pack = dir.path().join("pack");
+        let target = dir.path().join("target");
+        let decrypted = dir.path().join("decrypted");
+        std::fs::create_dir_all(&pack).unwrap();
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(pack.join("plain.txt"), "no markers here\n").unwrap();
+
+        let mut pack_tree = vtree::VNode::scan(&pack, false).unwrap();
+        let mut target_tree = vtree::VNode::scan_guided(&target, &pack_tree, false).unwrap();
+        let plan = plan_install(
+            &mut pack_tree,
+            &mut target_tree,
+            &decrypt_options(&pack, &decrypted),
+        )
+        .unwrap();
+
+        assert_eq!(plan.stats.encrypted, 0);
+        assert!(
+            !plan
+                .actions
+                .iter()
+                .any(|a| matches!(a, Action::DecryptFile { .. }))
+        );
+        assert!(
+            !plan
+                .actions
+                .iter()
+                .any(|a| matches!(a, Action::CreateDir(_)))
+        );
+        assert_eq!(
+            link_src(&plan, &target.join("plain.txt")),
+            pack.join("plain.txt")
+        );
+    }
+
+    #[test]
+    fn plan_install_decrypt_folds_plain_dirs_only() {
+        let dir = tempfile::TempDir::with_prefix("stow-cm-test-").unwrap();
+        let pack = dir.path().join("pack");
+        let target = dir.path().join("target");
+        let decrypted = dir.path().join("decrypted");
+        std::fs::create_dir_all(pack.join("plain_dir")).unwrap();
+        std::fs::create_dir_all(pack.join("secret_dir")).unwrap();
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(pack.join("plain_dir/a.txt"), "plain a\n").unwrap();
+        std::fs::write(pack.join("plain_dir/b.txt"), "plain b\n").unwrap();
+        std::fs::write(pack.join("secret_dir/c.txt"), "x &{secret} y\n").unwrap();
+
+        let mut pack_tree = vtree::VNode::scan(&pack, false).unwrap();
+        let mut target_tree = vtree::VNode::scan_guided(&target, &pack_tree, false).unwrap();
+        let plan = plan_install(
+            &mut pack_tree,
+            &mut target_tree,
+            &decrypt_options(&pack, &decrypted),
+        )
+        .unwrap();
+
+        // 纯普通文件目录折叠为单个目录链接
+        assert_eq!(
+            link_src(&plan, &target.join("plain_dir")),
+            pack.join("plain_dir")
+        );
+        // 含占位符目录不折叠，逐文件解密
+        assert!(!has_create_link_to(&plan, &target.join("secret_dir")));
+        assert_eq!(
+            link_src(&plan, &target.join("secret_dir/c.txt")),
+            decrypted.join("secret_dir/c.txt")
+        );
+        assert_eq!(plan.stats.encrypted, 1);
+    }
+
+    #[test]
+    fn plan_install_fold_ignores_placeholder_when_encryption_disabled() {
+        let dir = tempfile::TempDir::with_prefix("stow-cm-test-").unwrap();
+        let pack = dir.path().join("pack");
+        let target = dir.path().join("target");
+        std::fs::create_dir_all(pack.join("sub")).unwrap();
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(pack.join("sub/secret.txt"), "x &{secret} y\n").unwrap();
+
+        let mut pack_tree = vtree::VNode::scan(&pack, false).unwrap();
+        let mut target_tree = vtree::VNode::scan_guided(&target, &pack_tree, false).unwrap();
+        // 未开启加密配置：占位符只是普通文本，目录仍应折叠
+        let plan = plan_install(&mut pack_tree, &mut target_tree, &fold_options()).unwrap();
+
+        assert_eq!(link_src(&plan, &target.join("sub")), pack.join("sub"));
+        assert_eq!(plan.stats.encrypted, 0);
     }
 }
