@@ -399,7 +399,12 @@ fn plan_dir(
     };
 
     // 负责能不能 fold
-    let should_fold = fold_enabled && mode != SymlinkMode::Copy && children_plan.foldable;
+    // 加密启用时不折叠目录：fold 会把整个目录做成单个 symlink，而解密必须逐文件进行，
+    // 二者语义互斥（否则目录链接会漏进 DecryptFile 被当作二进制跳过解密，见 BUG-1）。
+    let should_fold = fold_enabled
+        && mode != SymlinkMode::Copy
+        && options.decrypt.is_none()
+        && children_plan.foldable;
 
     if should_fold {
         // Move 模式：从 pack 父节点中移除整个目录

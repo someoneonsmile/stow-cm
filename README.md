@@ -143,6 +143,8 @@ ignore = [
 # ignore = ['!']            # clear all ignore patterns
 
 # default, create a tree-folding symlink
+# NOTE: fold is ignored (treated as false) when [encrypted] is enabled,
+#       because decryption requires file-by-file processing.
 fold = true
 
 # default, use symlink, another mode is 'copy'

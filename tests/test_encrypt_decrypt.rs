@@ -254,3 +254,56 @@ fn encrypted_install_full_lifecycle() {
     remove(&config, &pack_dir, false).expect("remove encrypted pack should succeed");
     common::assert_not_exists(&link_path);
 }
+
+// ─────────────────────────────────────────────
+// 测试 6: 加密 pack + 子目录 + 默认 fold
+// ─────────────────────────────────────────────
+
+/// 加密 pack 含子目录且未显式关闭 fold（默认 fold=true）时，子目录内的加密文件应被正确解密。
+///
+/// 回归测试（BUG-1）：修复前 fold 会把目录折叠为单个 symlink，目录链接漏进 DecryptFile
+/// 后被 is_binary 误判为二进制而跳过解密，导致 target 静默暴露密文。
+#[test]
+fn encrypted_install_with_subdir_fold_decrypts() {
+    let env = common::TestEnv::new();
+    let (key_path, _key) = common::create_test_key(&env);
+
+    let target_dir = env.config_path().join("crypto-subdir");
+    std::fs::create_dir_all(&target_dir).unwrap();
+
+    // pack 放在 state 下，与 target 分离
+    let pack_base = env.state_path().join("packs");
+    std::fs::create_dir_all(&pack_base).unwrap();
+    let pack_dir = pack_base.join("crypto-subdir");
+    std::fs::create_dir_all(&pack_dir).unwrap();
+
+    // 不显式写 fold 字段，使用默认 fold = true（触发 BUG-1 的条件）
+    let config_toml =
+        common::pack_config_encrypted(&target_dir.to_string_lossy(), &key_path.to_string_lossy());
+    std::fs::write(pack_dir.join("stow-cm.toml"), config_toml).expect("write config");
+
+    let original = "public &{my secret} public\n";
+    common::write_pack_file(&pack_dir, "sub/secret.txt", original);
+
+    let pack_dir = std::fs::canonicalize(&pack_dir).expect("canonicalize");
+
+    let global = common::make_global_config();
+    let config = for_crypto_pack(&pack_dir, &global);
+
+    encrypt(&config, &pack_dir, false).expect("encrypt should succeed");
+    let encrypted =
+        std::fs::read_to_string(pack_dir.join("sub/secret.txt")).expect("read encrypted pack file");
+    assert_ne!(encrypted, original, "encrypt should modify file content");
+
+    install(&config, &pack_dir, false).expect("install encrypted pack should succeed");
+
+    let link_path = target_dir.join("sub/secret.txt");
+    assert!(link_path.exists(), "symlink should exist in target subdir");
+
+    let decrypted_content =
+        std::fs::read_to_string(&link_path).expect("read decrypted target file");
+    assert_eq!(
+        decrypted_content, "public my secret public\n",
+        "installed subdir file should be decrypted, not expose ciphertext"
+    );
+}

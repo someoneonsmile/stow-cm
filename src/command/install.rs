@@ -76,6 +76,12 @@ fn install_link(config: &Arc<Config>, pack: &Arc<PathBuf>, dry_run: bool) -> Res
         .as_ref()
         .and_then(|it| it.decrypted_path.as_ref());
 
+    if decrypted && config.fold == Some(true) {
+        warn!(
+            "{pack_name}: encrypted pack does not support directory folding (fold); installing file-by-file"
+        );
+    }
+
     if decrypted {
         let decrypted_path = decrypted_path
             .ok_or_else(|| anyhow!("{pack_name}: decrypted path is not configured"))?;
