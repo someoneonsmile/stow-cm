@@ -147,6 +147,22 @@ impl Config {
         self.merge(Config::system());
     }
 
+    /// 校验配置中用户不可指定的取值。
+    ///
+    /// `mode = "move"` 仅供 `adopt` 内部构造使用（`planner::plan_adopt` 直接设置
+    /// `MergeOption::symlink_mode`），若允许用户通过 `stow-cm.toml` / 全局配置启用，
+    /// `install` 会写出 `mode = "move"` 的 track，而该 track 在 `remove`/`status`
+    /// 下语义不完整（见报告 BUG-3）。因此在配置层直接拒绝，避免语义外泄。
+    pub fn validate(&self) -> Result<()> {
+        if self.symlink_mode == Some(SymlinkMode::Move) {
+            bail!(
+                "mode 'move' is reserved for internal adopt and cannot be configured; \
+                 use 'symlink' or 'copy'"
+            );
+        }
+        Ok(())
+    }
+
     /// 解析 `pack_name`：优先取 `self.name`（stow-cm.toml 中自定义），回退到 pack 路径的最后一级目录名。
     pub fn resolve_pack_name<'a>(&'a self, pack: &'a Path) -> Result<Cow<'a, str>> {
         if let Some(ref name) = self.name {
@@ -185,6 +201,9 @@ impl Config {
             }
         };
         config.normalize();
+        config
+            .validate()
+            .map_err(|e| anyhow!("{}: {e}", pack.display()))?;
 
         let pack_name = match override_pack_name {
             Some(name) => Cow::Borrowed(name),
@@ -500,5 +519,30 @@ mod test {
         merge::option::recurse(&mut pack, global);
         let config = pack.unwrap();
         assert_eq!(config.ignore, Some(vec!["a".to_owned(), "b".to_owned()]));
+    }
+
+    #[test]
+    fn validate_rejects_move_mode() {
+        // BUG-3：move 仅供 adopt 内部使用，用户配置必须被拒绝
+        let config = Config {
+            symlink_mode: Some(SymlinkMode::Move),
+            ..Config::default()
+        };
+        let err = config.validate().expect_err("move mode must be rejected");
+        assert!(
+            err.to_string().contains("move"),
+            "error should mention move: {err}"
+        );
+    }
+
+    #[test]
+    fn validate_accepts_public_modes() {
+        for mode in [SymlinkMode::Symlink, SymlinkMode::Copy] {
+            let config = Config {
+                symlink_mode: Some(mode),
+                ..Config::default()
+            };
+            assert!(config.validate().is_ok());
+        }
     }
 }

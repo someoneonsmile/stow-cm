@@ -265,3 +265,32 @@ fn test_install_target_none() {
     let track_file = stow_cm::command::resolve_track_file(&pack_dir).expect("track path");
     common::assert_not_exists(&track_file);
 }
+
+// ── mode 校验：拒绝内部 move（BUG-3） ──
+
+/// `mode = 'move'` 仅供 `adopt` 内部使用，用户配置必须在加载阶段被拒绝。
+#[test]
+fn test_install_rejects_move_mode_config() {
+    let env = common::TestEnv::new();
+    let pack_name = "movepack";
+    let target_dir = env.config_path().join("move_target");
+    std::fs::create_dir_all(&target_dir).expect("create target dir");
+
+    let config_toml = format!(
+        "target = '{}'\nmode = 'move'\n",
+        target_dir.to_string_lossy()
+    );
+    let pack_dir = common::create_pack(env.state_path(), pack_name, &config_toml);
+    common::write_pack_file(&pack_dir, "file.txt", "content\n");
+
+    let global = common::make_global_config();
+    let err = stow_cm::config::Config::for_pack(&pack_dir, &global, None, false)
+        .expect_err("mode='move' must be rejected");
+    assert!(
+        err.to_string().contains("move"),
+        "error should mention move: {err}"
+    );
+
+    // 拒绝发生在执行前，不应产生任何 target 文件
+    common::assert_not_exists(&target_dir.join("file.txt"));
+}
