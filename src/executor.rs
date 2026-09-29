@@ -4,7 +4,7 @@ use std::os::unix::fs::symlink;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::action::{Action, ActionPlan};
+use crate::action::{Action, ActionPlan, RemoveDirMode};
 use crate::config::Config;
 use crate::crypto;
 use crate::error::Result;
@@ -170,12 +170,29 @@ fn execute_action(action: &Action) -> Result<()> {
             fs::write(to, decrypted)
                 .map_err(|e| anyhow!("Failed to write decrypted file {}: {e}", to.display()))
         }
-        Action::RemoveDir { path, .. } => {
-            if path.try_exists()? {
-                fs::remove_dir_all(path)
-                    .map_err(|e| anyhow!("Failed to clean decrypted dir {}: {e}", path.display()))
-            } else {
-                Ok(())
+        Action::RemoveDir { path, mode, .. } => {
+            if !path.try_exists()? {
+                return Ok(());
+            }
+            match mode {
+                RemoveDirMode::All => fs::remove_dir_all(path)
+                    .map_err(|e| anyhow!("Failed to remove dir {}: {e}", path.display())),
+                // 计划层只给出最顶层空目录（嵌套空目录靠递归一并清理），
+                // 因此这里允许递归，但前提是整棵子树不含任何文件/链接。
+                RemoveDirMode::IfEmpty => {
+                    if contains_only_dirs(path)? {
+                        fs::remove_dir_all(path).map_err(|e| {
+                            anyhow!("Failed to remove empty dir {}: {e}", path.display())
+                        })
+                    } else {
+                        // 虚拟树判定为空、磁盘上却有文件/链接：计划与磁盘不一致，
+                        // 属于不变量被打破。绝不删除内容，同时报错暴露问题。
+                        bail!(
+                            "refusing to remove non-empty directory {}: expected it to contain only empty directories, found files or links — nothing was deleted",
+                            path.display()
+                        );
+                    }
+                }
             }
         }
         Action::RemoveFile { path, .. } => {
@@ -200,5 +217,111 @@ fn execute_action(action: &Action) -> Result<()> {
             fs::write(path, &content)
                 .map_err(|e| anyhow!("Failed to write track file {}: {e}", path.display()))
         }
+    }
+}
+
+/// 判断 `path` 这棵子树是否只由目录组成（不含普通文件、符号链接等）。
+///
+/// 用于 [`RemoveDirMode::IfEmpty`]：计划层只列出最顶层空目录，嵌套空目录
+/// 需要递归清理；但递归删除前必须先确认整棵子树里没有文件，避免虚拟树
+/// 与磁盘不一致时误删内容。
+fn contains_only_dirs(path: &Path) -> Result<bool> {
+    for entry in
+        fs::read_dir(path).map_err(|e| anyhow!("Failed to read dir {}: {e}", path.display()))?
+    {
+        let entry = entry.map_err(|e| anyhow!("Failed to read dir entry: {e}"))?;
+        let entry_path = entry.path();
+        // 用 symlink_metadata，避免跟随符号链接到目录
+        let meta = fs::symlink_metadata(&entry_path)
+            .map_err(|e| anyhow!("Failed to read metadata of {}: {e}", entry_path.display()))?;
+        if !meta.is_dir() || !contains_only_dirs(&entry_path)? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn remove_dir(path: &Path, mode: RemoveDirMode) -> Result<()> {
+        execute_action(&Action::RemoveDir {
+            path: path.to_path_buf(),
+            reason: "test".to_string(),
+            mode,
+        })
+    }
+
+    #[test]
+    fn remove_dir_if_empty_errors_on_non_empty() {
+        let dir = tempfile::TempDir::with_prefix("stow-cm-test-").unwrap();
+        let sub = dir.path().join("sub");
+        fs::create_dir(&sub).unwrap();
+        fs::write(sub.join("keep.txt"), "x").unwrap();
+
+        // 计划与磁盘不一致 → 报错暴露问题，同时绝不删除内容
+        assert!(remove_dir(&sub, RemoveDirMode::IfEmpty).is_err());
+        assert!(sub.join("keep.txt").exists());
+    }
+
+    #[test]
+    fn remove_dir_if_empty_removes_empty() {
+        let dir = tempfile::TempDir::with_prefix("stow-cm-test-").unwrap();
+        let sub = dir.path().join("sub");
+        fs::create_dir(&sub).unwrap();
+
+        remove_dir(&sub, RemoveDirMode::IfEmpty).unwrap();
+
+        assert!(!sub.exists());
+    }
+
+    #[test]
+    fn remove_dir_if_empty_removes_nested_empty() {
+        // 计划层只给最顶层空目录，嵌套空目录需要递归清理
+        let dir = tempfile::TempDir::with_prefix("stow-cm-test-").unwrap();
+        let sub = dir.path().join("sub");
+        fs::create_dir_all(sub.join("nested/deeper")).unwrap();
+
+        remove_dir(&sub, RemoveDirMode::IfEmpty).unwrap();
+
+        assert!(!sub.exists());
+    }
+
+    #[test]
+    fn remove_dir_if_empty_errors_on_nested_non_empty() {
+        let dir = tempfile::TempDir::with_prefix("stow-cm-test-").unwrap();
+        let sub = dir.path().join("sub");
+        fs::create_dir_all(sub.join("nested")).unwrap();
+        fs::write(sub.join("nested/keep.txt"), "x").unwrap();
+
+        assert!(remove_dir(&sub, RemoveDirMode::IfEmpty).is_err());
+        assert!(sub.join("nested/keep.txt").exists());
+    }
+
+    #[test]
+    fn remove_dir_if_empty_errors_on_symlink() {
+        // 目录里只有一条符号链接也算“非空”，不能递归删除
+        let dir = tempfile::TempDir::with_prefix("stow-cm-test-").unwrap();
+        let sub = dir.path().join("sub");
+        fs::create_dir(&sub).unwrap();
+        symlink(dir.path().join("missing"), sub.join("link")).unwrap();
+
+        assert!(remove_dir(&sub, RemoveDirMode::IfEmpty).is_err());
+
+        // 悬空链接用 exists() 会因跟随目标而返回 false，这里用 symlink_metadata
+        assert!(fs::symlink_metadata(sub.join("link")).is_ok());
+    }
+
+    #[test]
+    fn remove_dir_all_removes_non_empty() {
+        let dir = tempfile::TempDir::with_prefix("stow-cm-test-").unwrap();
+        let sub = dir.path().join("sub");
+        fs::create_dir(&sub).unwrap();
+        fs::write(sub.join("gone.txt"), "x").unwrap();
+
+        remove_dir(&sub, RemoveDirMode::All).unwrap();
+
+        assert!(!sub.exists());
     }
 }

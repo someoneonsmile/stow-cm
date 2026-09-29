@@ -4,6 +4,20 @@ use std::path::PathBuf;
 use crate::symlink::SymlinkMode;
 use crate::track_file::Track;
 
+/// [`Action::RemoveDir`] 的删除语义。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RemoveDirMode {
+    /// 递归删除目录及其全部内容：state 目录、解密目录的清理，
+    /// 以及折叠/覆盖时对旧目录的替换。
+    All,
+    /// 仅当目录子树中不含任何文件/链接时删除；含文件/链接则报错，绝不误删。
+    ///
+    /// 用于「移除链接后清理空目录」这类基于虚拟树推断出的空目录：
+    /// 计划层只列出最顶层空目录，执行时允许递归清理嵌套空目录，
+    /// 但一旦发现文件或链接就终止并报错，暴露「计划与磁盘不一致」。
+    IfEmpty,
+}
+
 /// 动作枚举，表示计划中的一个操作步骤
 #[derive(Debug, Clone)]
 pub enum Action {
@@ -33,7 +47,11 @@ pub enum Action {
         right_boundary: String,
     },
     /// 移除目录
-    RemoveDir { path: PathBuf, reason: String },
+    RemoveDir {
+        path: PathBuf,
+        reason: String,
+        mode: RemoveDirMode,
+    },
     /// 移除文件
     RemoveFile { path: PathBuf, reason: String },
     /// 写入 track file
@@ -121,7 +139,7 @@ impl fmt::Display for Action {
             Action::DecryptFile { src, to, .. } => {
                 write!(f, "~ DECRYPT  {}  ->  {}", src.display(), to.display())
             }
-            Action::RemoveDir { path, reason } => {
+            Action::RemoveDir { path, reason, .. } => {
                 write!(f, "- RMDIR    {}  ({})", path.display(), reason)
             }
             Action::RemoveFile { path, reason } => {
@@ -250,6 +268,7 @@ mod tests {
         let action = Action::RemoveDir {
             path: PathBuf::from("/tmp/decrypted"),
             reason: "cleanup decrypted files".to_string(),
+            mode: RemoveDirMode::All,
         };
         let output = format!("{action}");
         assert!(output.contains("- RMDIR"), "output: {output}");

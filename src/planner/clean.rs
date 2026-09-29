@@ -4,7 +4,7 @@
 
 use std::path::Path;
 
-use crate::action::{Action, ActionPlan, PlanStats};
+use crate::action::{Action, ActionPlan, PlanStats, RemoveDirMode};
 use crate::symlink::Symlink;
 
 /// 生成清理计划。
@@ -40,6 +40,7 @@ pub fn plan_clean(
         plan.actions.push(Action::RemoveDir {
             path: path.to_path_buf(),
             reason: "cleanup decrypted files directory".to_string(),
+            mode: RemoveDirMode::All,
         });
         plan.stats.dirs_removed += 1;
     }
@@ -48,6 +49,7 @@ pub fn plan_clean(
         plan.actions.push(Action::RemoveDir {
             path: dir.to_path_buf(),
             reason: "cleanup pack state directory".to_string(),
+            mode: RemoveDirMode::All,
         });
         plan.stats.dirs_removed += 1;
     }

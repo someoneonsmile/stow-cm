@@ -4,7 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::action::{Action, ActionPlan};
+use crate::action::{Action, ActionPlan, RemoveDirMode};
 use crate::symlink::{Symlink, SymlinkMode};
 use crate::track_file::Track;
 
@@ -75,6 +75,7 @@ pub fn plan_remove(track: &Track, target_tree: &mut VNode, state_dir: Option<&Pa
         plan.actions.push(Action::RemoveDir {
             path: dir.clone(),
             reason: "cleanup empty directory after removal".to_string(),
+            mode: RemoveDirMode::IfEmpty,
         });
         plan.stats.dirs_removed += 1;
         // 从虚拟树中移除，防止后续 plan_install 的 fold 对同一目录重复生成 RemoveDir
@@ -88,6 +89,7 @@ pub fn plan_remove(track: &Track, target_tree: &mut VNode, state_dir: Option<&Pa
         plan.actions.push(Action::RemoveDir {
             path: path.clone(),
             reason: "cleanup decrypted files directory".to_string(),
+            mode: RemoveDirMode::All,
         });
         plan.stats.dirs_removed += 1;
     }
@@ -98,6 +100,7 @@ pub fn plan_remove(track: &Track, target_tree: &mut VNode, state_dir: Option<&Pa
         plan.actions.push(Action::RemoveDir {
             path: dir.to_path_buf(),
             reason: "cleanup pack state directory".to_string(),
+            mode: RemoveDirMode::All,
         });
         plan.stats.dirs_removed += 1;
     }

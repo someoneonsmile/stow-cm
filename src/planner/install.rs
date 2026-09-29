@@ -5,7 +5,7 @@
 
 use std::path::Path;
 
-use crate::action::{Action, ActionPlan, PlanStats};
+use crate::action::{Action, ActionPlan, PlanStats, RemoveDirMode};
 use crate::error::Result;
 use crate::symlink::{Symlink, SymlinkMode};
 use crate::track_file::Track;
@@ -306,6 +306,7 @@ fn plan_leaf(
                     actions.push(Action::RemoveDir {
                         path: dst.clone(),
                         reason: "overridden".to_string(),
+                        mode: RemoveDirMode::All,
                     });
                     stats.dirs_removed = 1;
                 }
@@ -455,6 +456,7 @@ fn plan_dir(
             actions.push(Action::RemoveDir {
                 path: dst.clone(),
                 reason: "folded directory replaced".to_string(),
+                mode: RemoveDirMode::All,
             });
             stats.dirs_removed = 1;
 
