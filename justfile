@@ -26,7 +26,7 @@
 #   just aur-release             Update version + push to AUR (VERSION=...)
 #   just aur-nightly-srcinfo     Regenerate aur-nightly/.SRCINFO
 #   just aur-nightly-push        Commit and push aur-nightly/ to AUR
-#   just aur-nightly-release     Update date + push to nightly AUR
+#   just aur-nightly-release     Update nightly version + push to nightly AUR
 #
 # AUR variables:
 #   VERSION   Version for aur-release    (default: from Cargo.toml)
@@ -167,20 +167,30 @@ aur-nightly-push:
     git -C "$TMP" commit -m "chore: update nightly AUR package" || true
     git -C "$TMP" push origin master
 
-# Publish Nightly AUR
+# Publish Nightly AUR (version formula matches nightly workflow: CARGO_VER+nightly+DATE+COMMIT_COUNT+gSHORT_SHA)
 aur-nightly-release:
     #!/usr/bin/env bash
     set -euo pipefail
     DATE=$(date +%Y%m%d)
-    sed -i "s/^pkgver=.*/pkgver=${DATE}/" aur-nightly/PKGBUILD
+    SHORT_SHA=$(git rev-parse --short=8 HEAD)
+    # Number of commits since the last stable tag (v*), keeps parity with the nightly workflow formula
+    LAST_STABLE_TAG=$(git describe --tags --match 'v*' --abbrev=0 2>/dev/null) || true
+    if [ -n "$LAST_STABLE_TAG" ]; then
+      COMMIT_COUNT=$(git rev-list --count "${LAST_STABLE_TAG}..HEAD")
+    else
+      COMMIT_COUNT=$(git rev-list --count HEAD)
+    fi
+    CARGO_VER=$(awk -F'"' '/^version = /{print $2; exit}' Cargo.toml)
+    PKGVER="${CARGO_VER}+nightly+${DATE}+${COMMIT_COUNT}+g${SHORT_SHA}"
+    sed -i "s/^pkgver=.*/pkgver=${PKGVER}/" aur-nightly/PKGBUILD
     sed -i 's/^pkgrel=.*/pkgrel=1/' aur-nightly/PKGBUILD
     (cd aur-nightly && makepkg --printsrcinfo > .SRCINFO)
     git add aur-nightly/
-    git commit -m "chore: update nightly AUR to ${DATE}" || true
+    git commit -m "chore: update nightly AUR to ${PKGVER}" || true
     TMP=$(mktemp -d)
     trap 'rm -rf "$TMP"' EXIT
     git clone ssh://aur@aur.archlinux.org/stow-cm-nightly-bin.git "$TMP"
     cp aur-nightly/PKGBUILD aur-nightly/.SRCINFO "$TMP/"
     git -C "$TMP" add -A
-    git -C "$TMP" commit -m "chore: update nightly AUR to ${DATE}" || true
+    git -C "$TMP" commit -m "chore: update nightly AUR to ${PKGVER}" || true
     git -C "$TMP" push origin master
