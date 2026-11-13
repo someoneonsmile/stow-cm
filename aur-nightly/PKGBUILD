@@ -8,6 +8,7 @@ pkgdesc="Config manager (gnu-stow like) — nightly build"
 arch=('x86_64' 'aarch64')
 url="https://github.com/someoneonsmile/stow-cm"
 license=('GPL2')
+options=('!strip' '!debug')
 
 _source_base="${url}/releases/download/nightly"
 
